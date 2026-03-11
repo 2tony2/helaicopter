@@ -150,7 +150,7 @@ async function findSessionFiles(
 /** Convert a Codex cwd to a project path similar to Claude's encoding */
 function cwdToProjectPath(cwd: string): string {
   if (!cwd) return "codex-unknown";
-  // Encode like Claude: /Users/tony/Code/foo → -Users-tony-Code-foo
+  // Encode like Claude: /path/to/workspace → -path-to-workspace
   return cwd.replace(/\//g, "-");
 }
 

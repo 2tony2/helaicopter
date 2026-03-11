@@ -10,7 +10,13 @@ import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export function MessageCard({ message }: { message: ProcessedMessage }) {
+export function MessageCard({
+  message,
+  provider,
+}: {
+  message: ProcessedMessage;
+  provider?: "claude" | "codex";
+}) {
   const isUser = message.role === "user";
 
   return (
@@ -30,7 +36,12 @@ export function MessageCard({ message }: { message: ProcessedMessage }) {
             {message.model.replace("claude-", "").replace(/-\d+$/, "")}
           </Badge>
         )}
-        <TokenUsageBadge usage={message.usage} model={message.model} reasoningTokens={message.reasoningTokens} />
+        <TokenUsageBadge
+          usage={message.usage}
+          model={message.model}
+          reasoningTokens={message.reasoningTokens}
+          provider={provider}
+        />
         {message.speed === "fast" && (
           <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600">
             fast

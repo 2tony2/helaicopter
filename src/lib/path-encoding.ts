@@ -1,7 +1,7 @@
 /**
  * Encode a project directory name for use in URL paths.
  * The project directories in ~/.claude/projects/ use dashes for slashes,
- * e.g. "-Users-tony-Documents-project" for "/Users/tony/Documents/project"
+ * e.g. "-path-to-project" for "/path/to/project"
  */
 export function encodeProjectPath(dirName: string): string {
   return encodeURIComponent(dirName);
@@ -13,7 +13,7 @@ export function decodeProjectPath(encoded: string): string {
 
 /**
  * Convert a project directory name back to a readable filesystem path.
- * e.g. "-Users-tony-Documents-curadev-dbt-worktree" → "/Users/tony/Documents/curadev/dbt-worktree"
+ * e.g. "-path-to-workspace" -> "/path/to/workspace"
  */
 export function projectDirToDisplayName(dirName: string): string {
   if (dirName.startsWith("codex:")) {

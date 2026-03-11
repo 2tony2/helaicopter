@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: helaicopter-db
+Version: 0.1.0
+Summary: Database refresh pipeline for Helaicopter
+Requires-Python: >=3.13
+Requires-Dist: alembic>=1.14.1
+Requires-Dist: duckdb>=1.4.0
+Requires-Dist: duckdb-engine>=0.17.0
+Requires-Dist: sqlalchemy>=2.0.38

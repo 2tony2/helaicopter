@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useConversation, useTasks, useSubagentConversation } from "@/hooks/use-conversations";
+import {
+  useConversation,
+  useConversationEvaluations,
+  useTasks,
+  useSubagentConversation,
+} from "@/hooks/use-conversations";
 import { MessageCard } from "./message-card";
 import { TokenUsageBadge } from "./token-usage-badge";
 import { Badge } from "@/components/ui/badge";
@@ -11,12 +16,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
-import { Bot, ExternalLink, ChevronLeft, Database, Gauge, Download, Brain, FileText } from "lucide-react";
+import { Bot, ExternalLink, ChevronLeft, Database, Gauge, Download, Brain, FileText, AlertTriangle } from "lucide-react";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import type { SubagentInfo, TokenUsage } from "@/lib/types";
+import type { DisplayToolCallBlock, ProcessedMessage, SubagentInfo, TokenUsage } from "@/lib/types";
 import { ContextTab } from "./context-tab";
 import { PlanPanel } from "@/components/plans/plan-panel";
+import { ToolCallBlock } from "./tool-call-block";
+import { EvaluationDialog } from "./evaluation-dialog";
+import { EvaluationsTab } from "./evaluations-tab";
 
 function providerLabel(provider: "claude" | "codex"): string {
   return provider === "claude" ? "Claude" : "Codex";
@@ -38,6 +46,54 @@ function totalContext(usage: TokenUsage): number {
     (usage.output_tokens || 0) +
     (usage.cache_creation_input_tokens || 0) +
     (usage.cache_read_input_tokens || 0)
+  );
+}
+
+function providerFromProjectPath(projectPath: string): "claude" | "codex" {
+  return projectPath.startsWith("codex:") ? "codex" : "claude";
+}
+
+interface FailedToolCallEntry {
+  message: ProcessedMessage;
+  block: DisplayToolCallBlock;
+  index: number;
+}
+
+function FailedToolCallsTab({
+  failures,
+}: {
+  failures: FailedToolCallEntry[];
+}) {
+  if (failures.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm mt-4">
+        No failed tool calls were captured for this conversation.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4 mt-4">
+      {failures.map((failure) => (
+        <Card key={`${failure.message.id}:${failure.index}`} className="border-destructive/30">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant={failure.message.role === "user" ? "default" : "secondary"}>
+                {failure.message.role}
+              </Badge>
+              <Badge variant="outline" className="text-xs gap-1 text-destructive border-destructive/40">
+                <AlertTriangle className="h-3 w-3" />
+                failed tool call
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {format(failure.message.timestamp, "MMM d, yyyy h:mm:ss a")}
+              </span>
+            </div>
+            <ToolCallBlock block={failure.block} />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
 
@@ -114,6 +170,7 @@ function SubagentViewer({
     sessionId,
     agentId
   );
+  const provider = providerFromProjectPath(projectPath);
 
   return (
     <div className="space-y-4">
@@ -150,7 +207,11 @@ function SubagentViewer({
                 {formatModelName(conversation.model)}
               </Badge>
             )}
-            <TokenUsageBadge usage={conversation.totalUsage} model={conversation.model} />
+            <TokenUsageBadge
+              usage={conversation.totalUsage}
+              model={conversation.model}
+              provider={provider}
+            />
             <Badge variant="outline" className="text-xs font-mono gap-1">
               <Database className="h-3 w-3" />
               {formatTokens(totalContext(conversation.totalUsage))} context
@@ -161,7 +222,7 @@ function SubagentViewer({
           </div>
           <div className="space-y-4">
             {conversation.messages.map((message) => (
-              <MessageCard key={message.id} message={message} />
+              <MessageCard key={message.id} message={message} provider={provider} />
             ))}
           </div>
         </div>
@@ -182,10 +243,27 @@ export function ConversationViewer({
   sessionId: string;
 }) {
   const { data: conversation, isLoading, error } = useConversation(projectPath, sessionId);
+  const { data: evaluations, mutate: mutateEvaluations } = useConversationEvaluations(
+    projectPath,
+    sessionId
+  );
   const { data: tasks } = useTasks(sessionId);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [showEvaluationToast, setShowEvaluationToast] = useState(false);
   const plans = conversation?.plans || [];
+
+  useEffect(() => {
+    if (!showEvaluationToast) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowEvaluationToast(false);
+    }, 3500);
+
+    return () => window.clearTimeout(timeout);
+  }, [showEvaluationToast]);
 
   if (isLoading) {
     return (
@@ -206,71 +284,106 @@ export function ConversationViewer({
   }
 
   const subagents = conversation.subagents || [];
+  const failedToolCalls = conversation.messages.flatMap((message) =>
+    message.blocks.flatMap((block, index) =>
+      block.type === "tool_call" && block.isError
+        ? [{ message, block, index }]
+        : []
+    )
+  );
   const selectedSubagent = subagents.find((agent) => agent.agentId === selectedAgent);
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
+  const conversationEvaluations = evaluations ?? [];
+  const provider = providerFromProjectPath(projectPath);
 
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        {conversation.model && (
-          <Badge className={`text-xs border-0 ${getModelBadgeClasses(conversation.model)}`}>
-            {formatModelName(conversation.model)}
+      <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          {conversation.model && (
+            <Badge className={`text-xs border-0 ${getModelBadgeClasses(conversation.model)}`}>
+              {formatModelName(conversation.model)}
+            </Badge>
+          )}
+          {conversation.gitBranch && (
+            <Badge variant="secondary">{conversation.gitBranch}</Badge>
+          )}
+          {conversation.reasoningEffort && (
+            <Badge variant="outline" className="text-xs">
+              effort: {conversation.reasoningEffort}
+            </Badge>
+          )}
+          {conversation.speed === "fast" && (
+            <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600">
+              fast
+            </Badge>
+          )}
+          {conversation.totalReasoningTokens && conversation.totalReasoningTokens > 0 && (
+            <Badge variant="outline" className="text-xs font-mono gap-1 text-amber-600 dark:text-amber-400">
+              <Brain className="h-3 w-3" />
+              {formatTokens(conversation.totalReasoningTokens)} reasoning
+            </Badge>
+          )}
+          <TokenUsageBadge
+            usage={conversation.totalUsage}
+            model={conversation.model}
+            provider={provider}
+          />
+          <Badge variant="outline" className="text-xs font-mono gap-1" title="Peak context window: largest single API call input (input + cache write + cache read)">
+            <Gauge className="h-3 w-3" />
+            {formatTokens(conversation.contextWindow.peakContextWindow)} peak
           </Badge>
-        )}
-        {conversation.gitBranch && (
-          <Badge variant="secondary">{conversation.gitBranch}</Badge>
-        )}
-        {conversation.reasoningEffort && (
-          <Badge variant="outline" className="text-xs">
-            effort: {conversation.reasoningEffort}
+          <Badge variant="outline" className="text-xs font-mono gap-1" title={`Cumulative tokens across ${conversation.contextWindow.apiCalls} API calls`}>
+            <Database className="h-3 w-3" />
+            {formatTokens(conversation.contextWindow.cumulativeTokens)} cumulative
           </Badge>
-        )}
-        {conversation.speed === "fast" && (
-          <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600">
-            fast
-          </Badge>
-        )}
-        {conversation.totalReasoningTokens && conversation.totalReasoningTokens > 0 && (
-          <Badge variant="outline" className="text-xs font-mono gap-1 text-amber-600 dark:text-amber-400">
-            <Brain className="h-3 w-3" />
-            {formatTokens(conversation.totalReasoningTokens)} reasoning
-          </Badge>
-        )}
-        <TokenUsageBadge usage={conversation.totalUsage} model={conversation.model} />
-        <Badge variant="outline" className="text-xs font-mono gap-1" title="Peak context window: largest single API call input (input + cache write + cache read)">
-          <Gauge className="h-3 w-3" />
-          {formatTokens(conversation.contextWindow.peakContextWindow)} peak
-        </Badge>
-        <Badge variant="outline" className="text-xs font-mono gap-1" title={`Cumulative tokens across ${conversation.contextWindow.apiCalls} API calls`}>
-          <Database className="h-3 w-3" />
-          {formatTokens(conversation.contextWindow.cumulativeTokens)} cumulative
-        </Badge>
-        <span className="text-sm text-muted-foreground">
-          {conversation.messages.length} messages / {conversation.contextWindow.apiCalls} API calls
-        </span>
-        {subagents.length > 0 && (
-          <span className="text-sm text-muted-foreground flex items-center gap-1">
-            <Bot className="h-3.5 w-3.5" />
-            {subagents.length} sub-agents
-          </span>
-        )}
-        {plans.length > 0 && (
-          <span className="text-sm text-muted-foreground flex items-center gap-1">
-            <FileText className="h-3.5 w-3.5" />
-            {plans.length} plans
-          </span>
-        )}
-        {tasks && tasks.length > 0 && (
           <span className="text-sm text-muted-foreground">
-            {tasks.length} tasks
+            {conversation.messages.length} messages / {conversation.contextWindow.apiCalls} API calls
           </span>
-        )}
-        <span className="text-sm text-muted-foreground">
-          {conversation.startTime
-            ? format(conversation.startTime, "MMM d, yyyy h:mm a")
-            : ""}
-        </span>
+          {subagents.length > 0 && (
+            <span className="text-sm text-muted-foreground flex items-center gap-1">
+              <Bot className="h-3.5 w-3.5" />
+              {subagents.length} sub-agents
+            </span>
+          )}
+          {plans.length > 0 && (
+            <span className="text-sm text-muted-foreground flex items-center gap-1">
+              <FileText className="h-3.5 w-3.5" />
+              {plans.length} plans
+            </span>
+          )}
+          {tasks && tasks.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              {tasks.length} tasks
+            </span>
+          )}
+          {failedToolCalls.length > 0 && (
+            <span className="text-sm text-muted-foreground flex items-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+              {failedToolCalls.length} failed calls
+            </span>
+          )}
+          {conversationEvaluations.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              {conversationEvaluations.length} evaluations
+            </span>
+          )}
+          <span className="text-sm text-muted-foreground">
+            {conversation.startTime
+              ? format(conversation.startTime, "MMM d, yyyy h:mm a")
+              : ""}
+          </span>
+        </div>
+
+        <EvaluationDialog
+          projectPath={projectPath}
+          sessionId={sessionId}
+          onCreated={(evaluation) => {
+            void mutateEvaluations((current) => [evaluation, ...(current ?? [])], false);
+          }}
+          onSubmitted={() => setShowEvaluationToast(true)}
+        />
       </div>
 
       <Tabs defaultValue="messages">
@@ -278,6 +391,12 @@ export function ConversationViewer({
           <TabsTrigger value="messages">Messages</TabsTrigger>
           <TabsTrigger value="plans">
             Plans {plans.length > 0 ? `(${plans.length})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="evaluations">
+            Evaluations {conversationEvaluations.length > 0 ? `(${conversationEvaluations.length})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="failed">
+            Failed Calls {failedToolCalls.length > 0 ? `(${failedToolCalls.length})` : ""}
           </TabsTrigger>
           <TabsTrigger value="context">Context</TabsTrigger>
           <TabsTrigger value="subagents">
@@ -293,7 +412,7 @@ export function ConversationViewer({
         <TabsContent value="messages">
           <div className="space-y-4 mt-4">
             {conversation.messages.map((message) => (
-              <MessageCard key={message.id} message={message} />
+              <MessageCard key={message.id} message={message} provider={provider} />
             ))}
           </div>
         </TabsContent>
@@ -378,6 +497,14 @@ export function ConversationViewer({
           </div>
         </TabsContent>
 
+        <TabsContent value="evaluations">
+          <EvaluationsTab evaluations={conversationEvaluations} />
+        </TabsContent>
+
+        <TabsContent value="failed">
+          <FailedToolCallsTab failures={failedToolCalls} />
+        </TabsContent>
+
         <TabsContent value="context">
           <ContextTab
             analytics={conversation.contextAnalytics}
@@ -459,6 +586,14 @@ export function ConversationViewer({
           </div>
         </TabsContent>
       </Tabs>
+
+      {showEvaluationToast ? (
+        <Card className="fixed bottom-4 right-4 z-50 w-[320px] border-primary/20 shadow-lg">
+          <CardContent className="p-4 text-sm font-medium">
+            evaluation job sent to background
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

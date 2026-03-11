@@ -42,6 +42,12 @@ import {
   encodePlanId,
   summarizePlanContent,
 } from "./plan-utils";
+import {
+  getHistoricalConversation,
+  getHistoricalTasksForSession,
+  listHistoricalConversationSummaries,
+} from "./conversation-db";
+import { isTimestampToday, startOfTodayMs } from "./time-windows";
 
 async function listClaudeSessionPlans(): Promise<PlanSummary[]> {
   const plans: PlanSummary[] = [];
@@ -217,15 +223,20 @@ export async function listProjects(): Promise<ProjectInfo[]> {
   }
 }
 
-export async function listConversations(
+export async function listRawConversations(
   projectFilter?: string,
-  days?: number
+  days?: number,
+  options?: {
+    dayScope?: "all" | "today" | "beforeToday";
+  }
 ): Promise<ConversationSummary[]> {
   const conversations: ConversationSummary[] = [];
   // Use file mtime to skip files older than the cutoff — avoids expensive parsing
   const cutoffMs = days
     ? Date.now() - days * 24 * 60 * 60 * 1000
     : 0;
+  const dayScope = options?.dayScope ?? "all";
+  const todayStartMs = startOfTodayMs();
 
   try {
     const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
@@ -260,6 +271,8 @@ export async function listConversations(
           const c = cached as ConversationSummary;
           // Even cached entries must pass the timestamp cutoff
           if (cutoffMs && c.timestamp && c.timestamp < cutoffMs) continue;
+          if (dayScope === "today" && c.timestamp < todayStartMs) continue;
+          if (dayScope === "beforeToday" && c.timestamp >= todayStartMs) continue;
           conversations.push(c);
           continue;
         }
@@ -308,6 +321,8 @@ export async function listConversations(
           await summaryCache.set(filePath, conv);
           // Apply timestamp cutoff after parsing
           if (cutoffMs && conv.timestamp && conv.timestamp < cutoffMs) continue;
+          if (dayScope === "today" && conv.timestamp < todayStartMs) continue;
+          if (dayScope === "beforeToday" && conv.timestamp >= todayStartMs) continue;
           conversations.push(conv);
         } catch {
           // Skip files that can't be parsed
@@ -322,13 +337,22 @@ export async function listConversations(
   if (!projectFilter || projectFilter.startsWith("codex:")) {
     try {
       const codexConvs = await listCodexConversations(days);
+      const scopedCodexConvs = codexConvs.filter((conversation) => {
+        if (dayScope === "today") {
+          return conversation.timestamp >= todayStartMs;
+        }
+        if (dayScope === "beforeToday") {
+          return conversation.timestamp < todayStartMs;
+        }
+        return true;
+      });
       // If filtering by a codex project, apply the filter
       if (projectFilter) {
         conversations.push(
-          ...codexConvs.filter((c) => c.projectPath === projectFilter)
+          ...scopedCodexConvs.filter((c) => c.projectPath === projectFilter)
         );
       } else {
-        conversations.push(...codexConvs);
+        conversations.push(...scopedCodexConvs);
       }
     } catch {
       // Codex data not available — that's fine
@@ -336,6 +360,20 @@ export async function listConversations(
   }
 
   return conversations.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export async function listConversations(
+  projectFilter?: string,
+  days?: number
+): Promise<ConversationSummary[]> {
+  const [historicalConversations, liveConversations] = await Promise.all([
+    Promise.resolve(listHistoricalConversationSummaries(projectFilter, days)),
+    listRawConversations(projectFilter, days, { dayScope: "today" }),
+  ]);
+
+  return [...historicalConversations, ...liveConversations].sort(
+    (a, b) => b.timestamp - a.timestamp
+  );
 }
 
 /**
@@ -440,11 +478,10 @@ async function discoverSubagents(
   return subagents;
 }
 
-export async function getConversation(
+export async function getRawConversation(
   projectPath: string,
   sessionId: string
 ): Promise<ProcessedConversation | null> {
-  // Route Codex conversations to the Codex processor
   if (projectPath.startsWith("codex:")) {
     return getCodexConversation(sessionId);
   }
@@ -472,6 +509,18 @@ export async function getConversation(
   } catch {
     return null;
   }
+}
+
+export async function getConversation(
+  projectPath: string,
+  sessionId: string
+): Promise<ProcessedConversation | null> {
+  const historicalConversation = getHistoricalConversation(projectPath, sessionId);
+  if (historicalConversation) {
+    return historicalConversation;
+  }
+
+  return getRawConversation(projectPath, sessionId);
 }
 
 export async function getSubagentConversation(
@@ -580,7 +629,7 @@ export async function getHistory(limit = 100): Promise<HistoryEntry[]> {
     .slice(0, limit);
 }
 
-export async function getTasksForSession(
+export async function getRawTasksForSession(
   sessionId: string
 ): Promise<unknown[]> {
   const taskDir = join(TASKS_DIR, sessionId);
@@ -602,6 +651,17 @@ export async function getTasksForSession(
   } catch {
     return [];
   }
+}
+
+export async function getTasksForSession(
+  sessionId: string
+): Promise<unknown[]> {
+  const historicalTasks = getHistoricalTasksForSession(sessionId);
+  if (historicalTasks) {
+    return historicalTasks;
+  }
+
+  return getRawTasksForSession(sessionId);
 }
 
 export async function getAnalytics(days?: number, provider?: string): Promise<AnalyticsData> {

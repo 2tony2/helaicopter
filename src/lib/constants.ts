@@ -100,56 +100,56 @@ export const PRICING: Record<string, ModelPricing> = {
 };
 
 // OpenAI / Codex models
-// For OpenAI, cache writing is free (you pay normal input price), so cacheWrite5m/cacheWrite1h = input.
-// cacheRead maps to "Cached Input" pricing.
+// OpenAI bills cache fills as normal input, so there is no separate cache-write line item here.
+// cacheRead maps to discounted "Cached Input" pricing.
 export const OPENAI_PRICING: Record<string, ModelPricing> = {
   "gpt-5.4": {
     input: 2.5,
     output: 15.0,
-    cacheWrite5m: 2.5,
-    cacheWrite1h: 2.5,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     cacheRead: 0.25,
   },
   "gpt-5.2": {
     input: 1.75,
     output: 14.0,
-    cacheWrite5m: 1.75,
-    cacheWrite1h: 1.75,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     cacheRead: 0.175,
   },
   "gpt-5.1": {
     input: 1.25,
     output: 10.0,
-    cacheWrite5m: 1.25,
-    cacheWrite1h: 1.25,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     cacheRead: 0.125,
   },
   "gpt-5": {
     input: 1.25,
     output: 10.0,
-    cacheWrite5m: 1.25,
-    cacheWrite1h: 1.25,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     cacheRead: 0.125,
   },
   "gpt-5-mini": {
     input: 0.25,
     output: 2.0,
-    cacheWrite5m: 0.25,
-    cacheWrite1h: 0.25,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     cacheRead: 0.025,
   },
   "o3": {
     input: 2.0,
     output: 8.0,
-    cacheWrite5m: 2.0,
-    cacheWrite1h: 2.0,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     cacheRead: 0.5,
   },
   "o4-mini": {
     input: 1.1,
     output: 4.4,
-    cacheWrite5m: 1.1,
-    cacheWrite1h: 1.1,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     cacheRead: 0.275,
   },
 };

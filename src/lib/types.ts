@@ -306,6 +306,20 @@ export interface ProviderBreakdown {
   codex: number;
 }
 
+export type SupportedProvider = "claude" | "codex";
+
+export interface ProviderSubscriptionSetting {
+  provider: SupportedProvider;
+  hasSubscription: boolean;
+  monthlyCost: number;
+  updatedAt: string;
+}
+
+export interface SubscriptionSettings {
+  claude: ProviderSubscriptionSetting;
+  codex: ProviderSubscriptionSetting;
+}
+
 export interface AnalyticsData {
   totalConversations: number;
   totalInputTokens: number;
@@ -346,4 +360,81 @@ export interface DailyUsage {
   codexConversations: number;
   claudeSubagents: number;
   codexSubagents: number;
+}
+
+export interface DatabaseColumnSchema {
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue?: string | null;
+  isPrimaryKey: boolean;
+  references?: string | null;
+}
+
+export interface DatabaseTableSchema {
+  name: string;
+  rowCount: number;
+  columns: DatabaseColumnSchema[];
+}
+
+export interface DatabaseArtifactStatus {
+  key: "oltp" | "olap";
+  label: string;
+  engine: string;
+  path: string;
+  publicPath: string;
+  docsUrl: string;
+  tableCount: number;
+  tables: DatabaseTableSchema[];
+}
+
+export interface DatabaseStatus {
+  status: "idle" | "running" | "completed" | "failed";
+  trigger?: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  durationMs?: number | null;
+  error?: string | null;
+  lastSuccessfulRefreshAt?: string | null;
+  idempotencyKey?: string | null;
+  scopeLabel?: string;
+  windowDays?: number;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+  sourceConversationCount?: number;
+  refreshIntervalMinutes: number;
+  databases: {
+    oltp: DatabaseArtifactStatus;
+    olap: DatabaseArtifactStatus;
+  };
+}
+
+export interface EvaluationPrompt {
+  promptId: string;
+  name: string;
+  description?: string | null;
+  promptText: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationEvaluation {
+  evaluationId: string;
+  conversationId: string;
+  promptId?: string | null;
+  provider: "claude" | "codex";
+  model: string;
+  status: "running" | "completed" | "failed";
+  scope: "full" | "failed_tool_calls" | "guided_subset";
+  selectionInstruction?: string | null;
+  promptName: string;
+  promptText: string;
+  reportMarkdown?: string | null;
+  rawOutput?: string | null;
+  errorMessage?: string | null;
+  command: string;
+  createdAt: string;
+  finishedAt?: string | null;
+  durationMs?: number | null;
 }

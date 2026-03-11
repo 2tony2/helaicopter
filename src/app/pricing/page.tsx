@@ -173,7 +173,7 @@ export default function PricingPage() {
             </div>
           </div>
           <p className="text-muted-foreground">
-            Claude Code uses 5-minute prompt caching by default. This viewer estimates costs using 5-minute cache write rates.
+            Claude Code uses 5-minute prompt caching by default, so Claude estimates include a separate cache-write line item. OpenAI/Codex bills cache fills as normal input and only discounts cached input on reuse.
           </p>
         </CardContent>
       </Card>

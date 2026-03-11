@@ -145,7 +145,14 @@ export function ConversationList() {
                             {conv.taskCount}
                           </span>
                         )}
-                        <span className="flex items-center gap-1 font-mono" title={`Input: ${conv.totalInputTokens.toLocaleString()} / Output: ${conv.totalOutputTokens.toLocaleString()} / Cache write: ${conv.totalCacheCreationTokens.toLocaleString()} / Cache read: ${conv.totalCacheReadTokens.toLocaleString()}`}>
+                        <span
+                          className="flex items-center gap-1 font-mono"
+                          title={
+                            conv.projectPath.startsWith("codex:")
+                              ? `Input: ${conv.totalInputTokens.toLocaleString()} / Output: ${conv.totalOutputTokens.toLocaleString()} / Cached input: ${conv.totalCacheReadTokens.toLocaleString()}`
+                              : `Input: ${conv.totalInputTokens.toLocaleString()} / Output: ${conv.totalOutputTokens.toLocaleString()} / Cache write: ${conv.totalCacheCreationTokens.toLocaleString()} / Cache read: ${conv.totalCacheReadTokens.toLocaleString()}`
+                          }
+                        >
                           <Database className="h-3 w-3" />
                           {formatTokens(conv.totalInputTokens + conv.totalOutputTokens + conv.totalCacheCreationTokens + conv.totalCacheReadTokens)}
                         </span>

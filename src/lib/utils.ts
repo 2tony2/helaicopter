@@ -19,3 +19,9 @@ export function getModelBadgeClasses(model: string): string {
 export function formatModelName(model: string): string {
   return model.replace("claude-", "");
 }
+
+export function isOpenAIModel(model?: string): boolean {
+  if (!model) return false;
+  const m = model.toLowerCase();
+  return m.includes("gpt") || m.includes("o3") || m.includes("o4");
+}

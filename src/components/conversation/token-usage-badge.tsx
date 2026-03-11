@@ -9,6 +9,7 @@ import {
 import type { TokenUsage } from "@/lib/types";
 import { calculateCost, formatCost } from "@/lib/pricing";
 import { ArrowDownToLine, ArrowUpFromLine, DatabaseZap, BookOpen, Brain } from "lucide-react";
+import { isOpenAIModel } from "@/lib/utils";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -52,14 +53,18 @@ export function TokenUsageBadge({
   usage,
   model,
   reasoningTokens,
+  provider,
 }: {
   usage?: TokenUsage;
   model?: string;
   reasoningTokens?: number;
+  provider?: "claude" | "codex";
 }) {
   if (!usage) return null;
 
   const cost = calculateCost(usage, model);
+  const openAIUsage = provider === "codex" || isOpenAIModel(model);
+  const cacheReadLabel = openAIUsage ? "Cached input" : "Cache read";
 
   return (
     <div className="flex items-center gap-1">
@@ -77,18 +82,20 @@ export function TokenUsageBadge({
         label="Output"
         colorClass="text-green-500"
       />
-      <TokenBadge
-        icon={DatabaseZap}
-        tokens={usage.cache_creation_input_tokens || 0}
-        cost={cost.cacheWriteCost}
-        label="Cache write"
-        colorClass="text-yellow-500"
-      />
+      {!openAIUsage && (
+        <TokenBadge
+          icon={DatabaseZap}
+          tokens={usage.cache_creation_input_tokens || 0}
+          cost={cost.cacheWriteCost}
+          label="Cache write"
+          colorClass="text-yellow-500"
+        />
+      )}
       <TokenBadge
         icon={BookOpen}
         tokens={usage.cache_read_input_tokens || 0}
         cost={cost.cacheReadCost}
-        label="Cache read"
+        label={cacheReadLabel}
         colorClass="text-purple-500"
       />
       {reasoningTokens != null && reasoningTokens > 0 && (
@@ -111,8 +118,10 @@ export function TokenUsageBadge({
           <div className="space-y-0.5">
             <div>Input: {formatCost(cost.inputCost)}</div>
             <div>Output: {formatCost(cost.outputCost)}</div>
-            <div>Cache write: {formatCost(cost.cacheWriteCost)}</div>
-            <div>Cache read: {formatCost(cost.cacheReadCost)}</div>
+            {!openAIUsage && (
+              <div>Cache write: {formatCost(cost.cacheWriteCost)}</div>
+            )}
+            <div>{cacheReadLabel}: {formatCost(cost.cacheReadCost)}</div>
             <div className="border-t pt-0.5 font-medium">
               Total: {formatCost(cost.totalCost)}
             </div>

@@ -53,7 +53,7 @@ export interface CostBreakdown {
 
 /**
  * Calculate dollar cost from token usage and model.
- * Uses 5-minute cache write pricing (default for Claude Code).
+ * Claude uses explicit cache-write pricing; OpenAI/Codex bills cache fills as normal input.
  */
 export function calculateCost(
   usage: TokenUsage | { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number },
@@ -104,7 +104,6 @@ export function calculateCostWithLongContext(
   if (activeInput <= 200_000) return base;
 
   // Long context premium applies to the entire request
-  const p = getPricing(model);
   const isOpus = model?.includes("opus-4-6") || model?.includes("opus-4-5");
   const isSonnet =
     model?.includes("sonnet-4-6") ||

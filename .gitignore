@@ -41,3 +41,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ignore claude and codex hidden directories
+*.claude
+*.codex
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# generated database artifacts
+/public/database-artifacts/
+/public/database-schemas/
+/var/

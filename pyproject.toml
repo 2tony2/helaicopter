@@ -1,0 +1,24 @@
+[project]
+name = "helaicopter-db"
+version = "0.1.0"
+description = "Database refresh pipeline for Helaicopter"
+requires-python = ">=3.13"
+dependencies = [
+  "alembic>=1.14.1",
+  "duckdb>=1.4.0",
+  "duckdb-engine>=0.17.0",
+  "sqlalchemy>=2.0.38",
+]
+
+[build-system]
+requires = ["setuptools>=75.8.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "python"}
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.uv]
+package = true

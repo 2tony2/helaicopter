@@ -52,11 +52,11 @@ Per-tool and per-step token attribution with stacked bar charts and category fil
 Inline viewer for Claude Code sub-agent conversations with full message replay.
 
 ### Token Display
-Every token count is split into 4 color-coded badges with individual tooltips:
+Token counts are split into color-coded badges with individual tooltips:
 - **Input** (blue) — base input tokens
 - **Output** (green) — output tokens
-- **Cache write** (yellow) — prompt cache creation
-- **Cache read** (purple) — prompt cache hits
+- **Cache write** (yellow, Claude only) — prompt cache creation
+- **Cache read / Cached input** (purple) — prompt cache hits or discounted cached input for OpenAI/Codex
 
 Plus a **cost badge** (amber) showing estimated dollar cost with full breakdown on hover.
 

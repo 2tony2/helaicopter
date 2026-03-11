@@ -1,0 +1,4 @@
+alembic>=1.14.1
+duckdb>=1.4.0
+duckdb-engine>=0.17.0
+sqlalchemy>=2.0.38
