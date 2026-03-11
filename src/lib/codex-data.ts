@@ -45,7 +45,7 @@ interface CodexThread {
 }
 
 interface CodexConversationSummaryCache extends ConversationSummary {
-  _codexCacheVersion: 4;
+  _codexCacheVersion: 5;
   _codexParentThreadId?: string;
   _codexAgentRole?: string;
   _codexAgentNickname?: string;
@@ -254,7 +254,7 @@ export async function listCodexConversations(
   for (const { filePath, sessionId } of sessionFiles) {
     // Check cache first
     const cached = await summaryCache.get(filePath);
-    if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 4) {
+    if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 5) {
       const c = cached as CodexConversationSummaryCache;
       if (cutoffMs && c.timestamp && c.timestamp < cutoffMs) continue;
       conversations.push(c);
@@ -285,6 +285,7 @@ export async function listCodexConversations(
         totalCacheCreationTokens: 0,
         totalCacheReadTokens: summary.totalCachedInputTokens,
         toolUseCount: summary.toolUseCount,
+        failedToolCallCount: summary.failedToolCallCount,
         toolBreakdown: summary.toolBreakdown,
         subagentCount: summary.subagentCount,
         subagentTypeBreakdown: summary.subagentTypeBreakdown,
@@ -292,7 +293,7 @@ export async function listCodexConversations(
         gitBranch: thread?.git_branch || undefined,
         reasoningEffort: summary.reasoningEffort,
         totalReasoningTokens: summary.totalReasoningTokens > 0 ? summary.totalReasoningTokens : undefined,
-        _codexCacheVersion: 4,
+        _codexCacheVersion: 5,
         _codexParentThreadId: parentThreadId || summary.parentThreadId,
         _codexAgentRole: thread?.agent_role || summary.agentRole,
         _codexAgentNickname: thread?.agent_nickname || summary.agentNickname,

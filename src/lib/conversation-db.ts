@@ -246,6 +246,7 @@ export function listHistoricalConversationSummaries(
 
     const toolBreakdowns = new Map<string, Record<string, number>>();
     const subagentBreakdowns = new Map<string, Record<string, number>>();
+    const failedToolCallCounts = new Map<string, number>();
 
     if (conversationIds.length > 0) {
       const toolRows = db
@@ -270,6 +271,27 @@ export function listHistoricalConversationSummaries(
         const breakdown = toolBreakdowns.get(row.conversation_id) ?? {};
         breakdown[row.tool_name] = row.count;
         toolBreakdowns.set(row.conversation_id, breakdown);
+      }
+
+      const failedToolRows = db
+        .prepare(
+          `
+            SELECT cm.conversation_id, COUNT(*) AS count
+            FROM conversation_messages cm
+            JOIN message_blocks mb ON mb.message_id = cm.message_id
+            WHERE cm.conversation_id IN (${placeholders(conversationIds)})
+              AND mb.block_type = 'tool_call'
+              AND mb.is_error = 1
+            GROUP BY cm.conversation_id
+          `
+        )
+        .all(...conversationIds) as Array<{
+          conversation_id: string;
+          count: number;
+        }>;
+
+      for (const row of failedToolRows) {
+        failedToolCallCounts.set(row.conversation_id, row.count);
       }
 
       const subagentRows = db
@@ -308,6 +330,7 @@ export function listHistoricalConversationSummaries(
       totalCacheCreationTokens: row.total_cache_write_tokens,
       totalCacheReadTokens: row.total_cache_read_tokens,
       toolUseCount: row.tool_use_count,
+      failedToolCallCount: failedToolCallCounts.get(row.conversation_id) ?? 0,
       toolBreakdown: toolBreakdowns.get(row.conversation_id) ?? {},
       subagentCount: row.subagent_count,
       subagentTypeBreakdown:

@@ -105,6 +105,7 @@ export interface ConversationSummary {
   totalCacheCreationTokens: number;
   totalCacheReadTokens: number;
   toolUseCount: number;
+  failedToolCallCount: number;
   toolBreakdown: Record<string, number>;
   subagentCount: number;
   subagentTypeBreakdown: Record<string, number>;
@@ -324,6 +325,7 @@ export interface AnalyticsRates {
   reasoningTokens: AnalyticsRateValue;
   conversations: AnalyticsRateValue;
   toolCalls: AnalyticsRateValue;
+  failedToolCalls: AnalyticsRateValue;
   subagents: AnalyticsRateValue;
 }
 
@@ -343,6 +345,8 @@ export interface AnalyticsTimeSeriesPoint {
   totalTokens: number;
   conversations: number;
   toolCalls: number;
+  failedToolCalls: number;
+  toolErrorRatePct: number;
   subagents: number;
   claudeInputTokens: number;
   claudeOutputTokens: number;
@@ -352,6 +356,8 @@ export interface AnalyticsTimeSeriesPoint {
   claudeTotalTokens: number;
   claudeConversations: number;
   claudeToolCalls: number;
+  claudeFailedToolCalls: number;
+  claudeToolErrorRatePct: number;
   claudeSubagents: number;
   codexInputTokens: number;
   codexOutputTokens: number;
@@ -361,6 +367,8 @@ export interface AnalyticsTimeSeriesPoint {
   codexTotalTokens: number;
   codexConversations: number;
   codexToolCalls: number;
+  codexFailedToolCalls: number;
+  codexToolErrorRatePct: number;
   codexSubagents: number;
 }
 
@@ -393,6 +401,7 @@ export interface AnalyticsData {
   totalCacheReadTokens: number;
   totalReasoningTokens: number;
   totalToolCalls: number;
+  totalFailedToolCalls: number;
   modelBreakdown: Record<string, number>;
   toolBreakdown: Record<string, number>;
   subagentTypeBreakdown: Record<string, number>;

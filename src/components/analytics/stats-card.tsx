@@ -8,22 +8,31 @@ export function StatsCard({
   value,
   description,
   icon,
+  accentColor,
 }: {
   title: string;
   value: string | number;
   description?: string;
   icon?: ReactNode;
+  accentColor?: string;
 }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        {icon && <div className="text-muted-foreground">{icon}</div>}
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-1.5 truncate">
+          {icon && <span style={accentColor ? { color: accentColor } : undefined} className={accentColor ? "flex-shrink-0" : "text-muted-foreground flex-shrink-0"}>{icon}</span>}
+          <span className="truncate">{title}</span>
+        </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div
+          className="text-2xl font-bold tabular-nums tracking-tight truncate"
+          style={accentColor ? { color: accentColor } : undefined}
+        >
+          {value}
+        </div>
         {description && (
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          <p className="text-xs text-muted-foreground mt-1 tabular-nums">{description}</p>
         )}
       </CardContent>
     </Card>

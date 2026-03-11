@@ -148,6 +148,8 @@ function createEmptyTimeSeriesPoint(
     totalTokens: 0,
     conversations: 0,
     toolCalls: 0,
+    failedToolCalls: 0,
+    toolErrorRatePct: 0,
     subagents: 0,
     claudeInputTokens: 0,
     claudeOutputTokens: 0,
@@ -157,6 +159,8 @@ function createEmptyTimeSeriesPoint(
     claudeTotalTokens: 0,
     claudeConversations: 0,
     claudeToolCalls: 0,
+    claudeFailedToolCalls: 0,
+    claudeToolErrorRatePct: 0,
     claudeSubagents: 0,
     codexInputTokens: 0,
     codexOutputTokens: 0,
@@ -166,6 +170,8 @@ function createEmptyTimeSeriesPoint(
     codexTotalTokens: 0,
     codexConversations: 0,
     codexToolCalls: 0,
+    codexFailedToolCalls: 0,
+    codexToolErrorRatePct: 0,
     codexSubagents: 0,
   };
 }
@@ -213,6 +219,24 @@ function hasLongContextPremium(model?: string): boolean {
     model.includes("sonnet-4-5") ||
     model.includes("sonnet-4")
   );
+}
+
+function withToolErrorRates(
+  point: AnalyticsTimeSeriesPoint
+): AnalyticsTimeSeriesPoint {
+  return {
+    ...point,
+    toolErrorRatePct:
+      point.toolCalls > 0 ? (point.failedToolCalls / point.toolCalls) * 100 : 0,
+    claudeToolErrorRatePct:
+      point.claudeToolCalls > 0
+        ? (point.claudeFailedToolCalls / point.claudeToolCalls) * 100
+        : 0,
+    codexToolErrorRatePct:
+      point.codexToolCalls > 0
+        ? (point.codexFailedToolCalls / point.codexToolCalls) * 100
+        : 0,
+  };
 }
 
 async function listClaudeSessionPlans(): Promise<PlanSummary[]> {
@@ -433,7 +457,7 @@ export async function listRawConversations(
 
         // Check cache first
         const cached = await summaryCache.get(filePath);
-        if (cached) {
+        if (cached && (cached as { _summaryCacheVersion?: number })._summaryCacheVersion === 2) {
           const c = cached as ConversationSummary;
           // Even cached entries must pass the timestamp cutoff
           if (cutoffMs && c.timestamp && c.timestamp < cutoffMs) continue;
@@ -463,7 +487,7 @@ export async function listRawConversations(
             taskCount = tasks.length;
           } catch { /* no tasks dir */ }
 
-          const conv: ConversationSummary = {
+          const conv = {
             sessionId,
             projectPath: entry.name,
             projectName: projectDirToDisplayName(entry.name),
@@ -477,13 +501,15 @@ export async function listRawConversations(
             totalCacheCreationTokens: summary.totalCacheCreationTokens,
             totalCacheReadTokens: summary.totalCacheReadTokens,
             toolUseCount: summary.toolUseCount,
+            failedToolCallCount: summary.failedToolCallCount,
             toolBreakdown: summary.toolBreakdown,
             subagentCount,
             subagentTypeBreakdown: summary.subagentTypeBreakdown,
             taskCount,
             gitBranch: summary.gitBranch,
             speed: summary.speed,
-          };
+            _summaryCacheVersion: 2,
+          } as ConversationSummary & { _summaryCacheVersion: number };
 
           await summaryCache.set(filePath, conv);
           // Apply timestamp cutoff after parsing
@@ -853,6 +879,7 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
   let totalCacheReadTokens = 0;
   let totalReasoningTokens = 0;
   let totalToolCalls = 0;
+  let totalFailedToolCalls = 0;
   const modelBreakdown: Record<string, number> = {};
   const toolBreakdown: Record<string, number> = {};
   const subagentTypeBreakdown: Record<string, number> = {};
@@ -962,6 +989,7 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
     totalCacheReadTokens += conv.totalCacheReadTokens;
     totalReasoningTokens += reasoningTokens;
     totalToolCalls += conv.toolUseCount;
+    totalFailedToolCalls += conv.failedToolCallCount || 0;
     totalInputCost += baseCost.inputCost;
     totalOutputCost += baseCost.outputCost;
     totalCacheWriteCost += baseCost.cacheWriteCost;
@@ -1068,6 +1096,7 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
         existingBucket.totalTokens += totalTokensForConv;
         existingBucket.conversations += 1;
         existingBucket.toolCalls += conv.toolUseCount;
+        existingBucket.failedToolCalls += conv.failedToolCallCount || 0;
         existingBucket.subagents += conv.subagentCount;
 
         if (providerKey === "claude") {
@@ -1080,6 +1109,7 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
           existingBucket.claudeTotalTokens += totalTokensForConv;
           existingBucket.claudeConversations += 1;
           existingBucket.claudeToolCalls += conv.toolUseCount;
+          existingBucket.claudeFailedToolCalls += conv.failedToolCallCount || 0;
           existingBucket.claudeSubagents += conv.subagentCount;
         } else {
           existingBucket.codexEstimatedCost += convCostBreakdown.totalCost;
@@ -1091,6 +1121,7 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
           existingBucket.codexTotalTokens += totalTokensForConv;
           existingBucket.codexConversations += 1;
           existingBucket.codexToolCalls += conv.toolUseCount;
+          existingBucket.codexFailedToolCalls += conv.failedToolCallCount || 0;
           existingBucket.codexSubagents += conv.subagentCount;
         }
 
@@ -1155,6 +1186,11 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
       durationDays
     ),
     toolCalls: buildRateValue(totalToolCalls, durationHours, durationDays),
+    failedToolCalls: buildRateValue(
+      totalFailedToolCalls,
+      durationHours,
+      durationDays
+    ),
     subagents: buildRateValue(
       conversations.reduce((sum, conv) => sum + conv.subagentCount, 0),
       durationHours,
@@ -1162,10 +1198,10 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
     ),
   };
   const timeSeries: AnalyticsTimeSeries = {
-    hourly: materializeTimeSeries(timeSeriesMaps.hourly, "hourly"),
-    daily: materializeTimeSeries(timeSeriesMaps.daily, "daily"),
-    weekly: materializeTimeSeries(timeSeriesMaps.weekly, "weekly"),
-    monthly: materializeTimeSeries(timeSeriesMaps.monthly, "monthly"),
+    hourly: materializeTimeSeries(timeSeriesMaps.hourly, "hourly").map(withToolErrorRates),
+    daily: materializeTimeSeries(timeSeriesMaps.daily, "daily").map(withToolErrorRates),
+    weekly: materializeTimeSeries(timeSeriesMaps.weekly, "weekly").map(withToolErrorRates),
+    monthly: materializeTimeSeries(timeSeriesMaps.monthly, "monthly").map(withToolErrorRates),
   };
 
   return {
@@ -1176,6 +1212,7 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
     totalCacheReadTokens,
     totalReasoningTokens,
     totalToolCalls,
+    totalFailedToolCalls,
     modelBreakdown,
     toolBreakdown,
     subagentTypeBreakdown,

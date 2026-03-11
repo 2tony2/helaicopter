@@ -496,3 +496,82 @@ export function ActivityTrendChart({
     </Card>
   );
 }
+
+export function ToolErrorRateChart({
+  data,
+  granularityLabel,
+}: {
+  data: AnalyticsTimeSeriesPoint[];
+  granularityLabel: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Tool Call Error Rate by {granularityLabel}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={320}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="label" className="text-xs" minTickGap={24} />
+            <YAxis
+              className="text-xs"
+              tickFormatter={(value) => `${value.toFixed(0)}%`}
+            />
+            <Tooltip
+              formatter={(value, name, item) => {
+                if (typeof value !== "number") {
+                  return String(value);
+                }
+                const payload = item.payload as AnalyticsTimeSeriesPoint;
+                if (name === "Total error rate") {
+                  return [`${value.toFixed(2)}%`, `${payload.failedToolCalls}/${payload.toolCalls} failed`];
+                }
+                if (name === "Claude error rate") {
+                  return [
+                    `${value.toFixed(2)}%`,
+                    `${payload.claudeFailedToolCalls}/${payload.claudeToolCalls} failed`,
+                  ];
+                }
+                return [
+                  `${value.toFixed(2)}%`,
+                  `${payload.codexFailedToolCalls}/${payload.codexToolCalls} failed`,
+                ];
+              }}
+              labelStyle={{ color: "var(--foreground)" }}
+              contentStyle={{
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+              }}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="toolErrorRatePct"
+              stroke="#dc2626"
+              strokeWidth={2.5}
+              dot={false}
+              name="Total error rate"
+            />
+            <Line
+              type="monotone"
+              dataKey="claudeToolErrorRatePct"
+              stroke="#2563eb"
+              strokeWidth={2}
+              dot={false}
+              name="Claude error rate"
+            />
+            <Line
+              type="monotone"
+              dataKey="codexToolErrorRatePct"
+              stroke="#059669"
+              strokeWidth={2}
+              dot={false}
+              name="Codex error rate"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}

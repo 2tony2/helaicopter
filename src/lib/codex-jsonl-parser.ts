@@ -50,6 +50,7 @@ export async function extractCodexSummary(filePath: string): Promise<{
   totalReasoningTokens: number;
   reasoningEffort?: string;
   toolUseCount: number;
+  failedToolCallCount: number;
   toolBreakdown: Record<string, number>;
   subagentCount: number;
   subagentTypeBreakdown: Record<string, number>;
@@ -71,6 +72,7 @@ export async function extractCodexSummary(filePath: string): Promise<{
   let totalReasoningTokens = 0;
   let reasoningEffort: string | undefined;
   let toolUseCount = 0;
+  let failedToolCallCount = 0;
   const toolBreakdown: Record<string, number> = {};
   let subagentCount = 0;
   const subagentTypeBreakdown: Record<string, number> = {};
@@ -183,6 +185,13 @@ export async function extractCodexSummary(filePath: string): Promise<{
       }
 
       if (p.type === "function_call_output") {
+        const output = (p.output as string) || "";
+        if (output.includes("Process exited with code")) {
+          const exitMatch = output.match(/Process exited with code (\d+)/);
+          if (exitMatch && exitMatch[1] !== "0") {
+            failedToolCallCount++;
+          }
+        }
         const callId = (p.call_id as string) || "";
         const pendingSpawn = pendingSpawnCalls.get(callId);
         if (pendingSpawn) {
@@ -194,6 +203,13 @@ export async function extractCodexSummary(filePath: string): Promise<{
               (subagentTypeBreakdown[agentType] || 0) + 1;
           }
           pendingSpawnCalls.delete(callId);
+        }
+      }
+
+      if (p.type === "custom_tool_call_output") {
+        const rawOutput = (p.output as string) || "";
+        if (rawOutput.includes('"exit_code":') && !rawOutput.includes('"exit_code":0')) {
+          failedToolCallCount++;
         }
       }
     }
@@ -237,6 +253,7 @@ export async function extractCodexSummary(filePath: string): Promise<{
     totalReasoningTokens,
     reasoningEffort,
     toolUseCount,
+    failedToolCallCount,
     toolBreakdown,
     subagentCount,
     subagentTypeBreakdown,

@@ -12,6 +12,7 @@ import {
   SpendTrendChart,
   TokenMixChart,
   ActivityTrendChart,
+  ToolErrorRateChart,
 } from "@/components/analytics/charts";
 import { CostBreakdownCard } from "@/components/analytics/cost-breakdown-card";
 import {
@@ -149,37 +150,44 @@ export default function AnalyticsPage() {
             <StatsCard
               title="Conversations"
               value={analytics.totalConversations}
+              description={`${analytics.totalConversations} main · ${Object.values(analytics.subagentTypeBreakdown).reduce((a, b) => a + b, 0)} sub-agents`}
               icon={<MessageSquare className="h-4 w-4" />}
+              accentColor="#64748b"
             />
             <StatsCard
-              title="Input / Output Tokens"
+              title="I/O Tokens"
               value={formatTokens(
                 analytics.totalInputTokens + analytics.totalOutputTokens
               )}
-              description={`${formatTokens(analytics.totalInputTokens)} in / ${formatTokens(analytics.totalOutputTokens)} out`}
+              description={`${formatTokens(analytics.totalInputTokens)} in · ${formatTokens(analytics.totalOutputTokens)} out`}
               icon={<Database className="h-4 w-4" />}
+              accentColor="#2563eb"
             />
             <StatsCard
-              title="Cache Tokens"
+              title="Cache"
               value={formatTokens(
                 analytics.totalCacheCreationTokens + analytics.totalCacheReadTokens
               )}
-              description={`${formatTokens(analytics.totalCacheCreationTokens)} write / ${formatTokens(analytics.totalCacheReadTokens)} read`}
+              description={`${formatTokens(analytics.totalCacheCreationTokens)} write · ${formatTokens(analytics.totalCacheReadTokens)} read`}
               icon={<DatabaseZap className="h-4 w-4" />}
+              accentColor="#d97706"
             />
             <StatsCard
-              title="Reasoning Tokens"
+              title="Reasoning"
               value={formatTokens(analytics.totalReasoningTokens)}
-              description="Codex reasoning token volume"
+              description="tokens"
               icon={<Database className="h-4 w-4" />}
+              accentColor="#dc2626"
             />
             <StatsCard
-              title="Tool Calls"
+              title="Tools"
               value={analytics.totalToolCalls.toLocaleString()}
+              description="calls"
               icon={<Wrench className="h-4 w-4" />}
+              accentColor="#7c3aed"
             />
             <StatsCard
-              title="Subscription Spend"
+              title="Spend"
               value={
                 showSubscriptionPercent && activeSubscriptionBudget > 0
                   ? `${subscriptionSpendPercent.toFixed(1)}%`
@@ -187,10 +195,11 @@ export default function AnalyticsPage() {
               }
               description={
                 activeSubscriptionBudget > 0
-                  ? `$${filteredProviderCost.toFixed(2)} of $${activeSubscriptionBudget.toFixed(2)}/month`
-                  : "No active subscription budget"
+                  ? `$${filteredProviderCost.toFixed(2)} of $${activeSubscriptionBudget.toFixed(2)}/mo`
+                  : "No subscription budget"
               }
               icon={<CreditCard className="h-4 w-4" />}
+              accentColor="#059669"
             />
           </div>
 
@@ -334,10 +343,16 @@ export default function AnalyticsPage() {
                       granularityLabel={granularityLabel}
                     />
                   </div>
-                  <ActivityTrendChart
-                    data={selectedTimeSeries}
-                    granularityLabel={granularityLabel}
-                  />
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <ActivityTrendChart
+                      data={selectedTimeSeries}
+                      granularityLabel={granularityLabel}
+                    />
+                    <ToolErrorRateChart
+                      data={selectedTimeSeries}
+                      granularityLabel={granularityLabel}
+                    />
+                  </div>
                 </TabsContent>
               </CardContent>
             </Card>

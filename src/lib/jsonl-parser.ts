@@ -54,6 +54,7 @@ export async function extractConversationSummary(filePath: string): Promise<{
   totalCacheCreationTokens: number;
   totalCacheReadTokens: number;
   toolUseCount: number;
+  failedToolCallCount: number;
   toolBreakdown: Record<string, number>;
   subagentTypeBreakdown: Record<string, number>;
   timestamp: number;
@@ -69,6 +70,7 @@ export async function extractConversationSummary(filePath: string): Promise<{
   let totalCacheCreationTokens = 0;
   let totalCacheReadTokens = 0;
   let toolUseCount = 0;
+  let failedToolCallCount = 0;
   const toolBreakdown: Record<string, number> = {};
   const subagentTypeBreakdown: Record<string, number> = {};
   let timestamp = 0;
@@ -101,6 +103,19 @@ export async function extractConversationSummary(filePath: string): Promise<{
           );
           if (textBlock && "text" in textBlock) {
             firstMessage = textBlock.text.slice(0, 200);
+          }
+        }
+      }
+
+      const content = event.message.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (
+            typeof block === "object" &&
+            block.type === "tool_result" &&
+            block.is_error
+          ) {
+            failedToolCallCount++;
           }
         }
       }
@@ -153,6 +168,7 @@ export async function extractConversationSummary(filePath: string): Promise<{
     totalCacheCreationTokens,
     totalCacheReadTokens,
     toolUseCount,
+    failedToolCallCount,
     toolBreakdown,
     subagentTypeBreakdown,
     timestamp,
