@@ -369,6 +369,7 @@ def _load_conversation(
         session_id=summary["sessionId"],
         project_path=summary["projectPath"],
         project_name=summary["projectName"],
+        thread_type=summary.get("threadType", "main"),
         first_message=summary["firstMessage"],
         started_at=started_at,
         ended_at=ended_at,

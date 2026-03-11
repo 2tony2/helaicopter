@@ -301,6 +301,7 @@ export async function listRawConversations(
             sessionId,
             projectPath: entry.name,
             projectName: projectDirToDisplayName(entry.name),
+            threadType: "main",
             firstMessage: summary.firstMessage,
             timestamp: summary.timestamp,
             messageCount: summary.messageCount,

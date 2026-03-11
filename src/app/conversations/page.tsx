@@ -8,7 +8,7 @@ export default function ConversationsPage() {
       <div>
         <h1 className="text-2xl font-bold">Conversations</h1>
         <p className="text-muted-foreground mt-1">
-          Browse all Claude Code conversations
+          Browse all conversation threads, including main runs and sub-agents
         </p>
       </div>
       <ConversationList />

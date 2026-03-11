@@ -95,6 +95,7 @@ export interface ConversationSummary {
   sessionId: string;
   projectPath: string;
   projectName: string;
+  threadType: "main" | "subagent";
   firstMessage: string;
   timestamp: number;
   messageCount: number;

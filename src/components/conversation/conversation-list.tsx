@@ -25,6 +25,7 @@ export function ConversationList() {
   const [projectFilter, setProjectFilter] = useState<string>();
   const [days, setDays] = useState<number | undefined>(7);
   const [provider, setProvider] = useState<Provider>("all");
+  const [threadTypeFilter, setThreadTypeFilter] = useState<"all" | "main" | "subagent">("all");
   const { data: conversations, isLoading } = useConversations(projectFilter, days);
   const { data: projects } = useProjects();
 
@@ -32,6 +33,7 @@ export function ConversationList() {
     // Provider filter
     if (provider === "codex" && !c.projectPath.startsWith("codex:")) return false;
     if (provider === "claude" && c.projectPath.startsWith("codex:")) return false;
+    if (threadTypeFilter !== "all" && c.threadType !== threadTypeFilter) return false;
 
     if (!search) return true;
     const q = search.toLowerCase();
@@ -44,32 +46,48 @@ export function ConversationList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 flex-wrap items-center">
-        <Input
-          placeholder="Search conversations..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
-        <select
-          className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          value={projectFilter || ""}
-          onChange={(e) => setProjectFilter(e.target.value || undefined)}
-        >
-          <option value="">All projects</option>
-          {projects?.map((p) => (
-            <option key={p.encodedPath} value={p.encodedPath}>
-              {p.displayName}
-            </option>
-          ))}
-        </select>
-        <DateRangePicker value={days} onChange={setDays} />
-        <ProviderFilter value={provider} onChange={setProvider} />
-        {conversations && (
-          <span className="text-sm text-muted-foreground">
-            {conversations.length} conversations
-          </span>
-        )}
+      <div className="flex gap-3 flex-wrap items-start">
+        <div className="flex gap-3 flex-wrap items-center">
+          <Input
+            placeholder="Search conversations..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-sm"
+          />
+          <select
+            className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            value={projectFilter || ""}
+            onChange={(e) => setProjectFilter(e.target.value || undefined)}
+          >
+            <option value="">All projects</option>
+            {projects?.map((p) => (
+              <option key={p.encodedPath} value={p.encodedPath}>
+                {p.displayName}
+              </option>
+            ))}
+          </select>
+          <DateRangePicker value={days} onChange={setDays} />
+          <ProviderFilter value={provider} onChange={setProvider} />
+          {conversations && (
+            <span className="text-sm text-muted-foreground">
+              {filtered?.length ?? conversations.length} conversations
+            </span>
+          )}
+        </div>
+        <div className="ml-auto">
+          <select
+            className="flex h-9 min-w-[180px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            value={threadTypeFilter}
+            onChange={(e) =>
+              setThreadTypeFilter(e.target.value as "all" | "main" | "subagent")
+            }
+            aria-label="Filter by thread type"
+          >
+            <option value="all">All conversations</option>
+            <option value="main">Main threads</option>
+            <option value="subagent">Sub-agents</option>
+          </select>
+        </div>
       </div>
 
       {isLoading ? (
@@ -101,6 +119,9 @@ export function ConversationList() {
                             {conv.gitBranch}
                           </Badge>
                         )}
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {conv.threadType === "subagent" ? "sub-agent" : "main"}
+                        </Badge>
                         {conv.model && (
                           <Badge className={`text-xs border-0 ${getModelBadgeClasses(conv.model)}`}>
                             {formatModelName(conv.model)}

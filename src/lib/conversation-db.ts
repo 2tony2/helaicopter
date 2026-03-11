@@ -25,6 +25,7 @@ type ConversationRow = {
   session_id: string;
   project_path: string;
   project_name: string;
+  thread_type: "main" | "subagent";
   first_message: string;
   started_at: string;
   ended_at: string;
@@ -145,6 +146,13 @@ function placeholders(values: readonly string[]): string {
   return values.map(() => "?").join(", ");
 }
 
+function hasConversationThreadTypeColumn(db: Database.Database): boolean {
+  const columns = db
+    .prepare("PRAGMA table_info(conversations)")
+    .all() as Array<{ name: string }>;
+  return columns.some((column) => column.name === "thread_type");
+}
+
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
   try {
@@ -159,6 +167,9 @@ function queryHistoricalConversationRows(
   projectFilter?: string,
   days?: number
 ): ConversationRow[] {
+  const threadTypeSelect = hasConversationThreadTypeColumn(db)
+    ? "thread_type"
+    : "'main' AS thread_type";
   const clauses = ["datetime(started_at) < datetime(?)"];
   const params: unknown[] = [startOfTodayIso()];
 
@@ -181,6 +192,7 @@ function queryHistoricalConversationRows(
           session_id,
           project_path,
           project_name,
+          ${threadTypeSelect},
           first_message,
           started_at,
           ended_at,
@@ -286,6 +298,7 @@ export function listHistoricalConversationSummaries(
       sessionId: row.session_id,
       projectPath: row.project_path,
       projectName: row.project_name,
+      threadType: row.thread_type,
       firstMessage: row.first_message,
       timestamp: parseTimestamp(row.started_at),
       messageCount: row.message_count,

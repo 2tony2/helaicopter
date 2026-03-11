@@ -91,6 +91,7 @@ class ConversationRecord(OltpBase):
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
     project_path: Mapped[str] = mapped_column(Text, nullable=False)
     project_name: Mapped[str] = mapped_column(Text, nullable=False)
+    thread_type: Mapped[str] = mapped_column(Text, nullable=False, default="main")
     first_message: Mapped[str] = mapped_column(Text, nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
