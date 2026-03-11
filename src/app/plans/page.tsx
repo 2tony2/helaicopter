@@ -27,7 +27,7 @@ export default function PlansPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {plans?.map((plan) => (
-            <Link key={plan.slug} href={`/plans/${plan.slug}`}>
+            <Link key={plan.id} href={`/plans/${plan.id}`}>
               <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">

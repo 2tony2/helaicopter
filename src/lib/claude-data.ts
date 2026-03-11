@@ -6,7 +6,11 @@ import {
   HISTORY_FILE,
   TASKS_DIR,
 } from "./constants";
-import { extractConversationSummary, parseJsonlFile } from "./jsonl-parser";
+import {
+  extractConversationSummary,
+  parseJsonlFile,
+  streamJsonl,
+} from "./jsonl-parser";
 import { processConversation } from "./conversation-processor";
 import { projectDirToDisplayName } from "./path-encoding";
 import { summaryCache, conversationCache } from "./cache";
@@ -29,6 +33,180 @@ import {
   getCodexConversation,
   getCodexHistory,
 } from "./codex-data";
+
+type PlanSource =
+  | { kind: "file"; slug: string }
+  | { kind: "session"; projectPath: string; sessionId: string };
+
+interface SessionPlanRecord {
+  slug: string;
+  title: string;
+  preview: string;
+  content: string;
+  timestamp: number;
+}
+
+function toEpochMs(ts: string | number | undefined): number {
+  if (typeof ts === "number") return ts;
+  if (typeof ts === "string") return new Date(ts).getTime();
+  return 0;
+}
+
+function summarizePlanContent(
+  content: string,
+  fallbackSlug: string
+): Pick<PlanSummary, "slug" | "title" | "preview"> {
+  const lines = content.split("\n").filter((line) => line.trim());
+  const title =
+    lines.find((line) => line.startsWith("# "))?.replace(/^#\s+/, "") ||
+    fallbackSlug;
+  const preview = lines
+    .filter((line) => !line.startsWith("#"))
+    .slice(0, 3)
+    .join(" ")
+    .slice(0, 200);
+
+  return {
+    slug: fallbackSlug,
+    title,
+    preview,
+  };
+}
+
+function encodePlanId(source: PlanSource): string {
+  return Buffer.from(JSON.stringify(source)).toString("base64url");
+}
+
+function decodePlanId(id: string): PlanSource | null {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(id, "base64url").toString("utf-8")
+    ) as PlanSource;
+    if (parsed.kind === "file" && parsed.slug) return parsed;
+    if (
+      parsed.kind === "session" &&
+      parsed.projectPath &&
+      parsed.sessionId
+    ) {
+      return parsed;
+    }
+  } catch {
+    // Fall through to legacy file-based IDs.
+  }
+
+  if (id) {
+    return { kind: "file", slug: id };
+  }
+
+  return null;
+}
+
+async function getSessionPlanRecord(
+  projectPath: string,
+  sessionId: string
+): Promise<SessionPlanRecord | null> {
+  const filePath = join(PROJECTS_DIR, projectPath, `${sessionId}.jsonl`);
+  let latestPlan:
+    | {
+        content: string;
+        slug: string;
+        timestamp: number;
+      }
+    | null = null;
+
+  try {
+    for await (const event of streamJsonl(filePath)) {
+      if (typeof event.planContent !== "string" || !event.planContent.trim()) {
+        continue;
+      }
+
+      latestPlan = {
+        content: event.planContent,
+        slug: event.slug || sessionId,
+        timestamp: toEpochMs(event.timestamp),
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  if (!latestPlan) {
+    return null;
+  }
+
+  return {
+    ...summarizePlanContent(latestPlan.content, latestPlan.slug),
+    content: latestPlan.content,
+    timestamp: latestPlan.timestamp,
+  };
+}
+
+async function listSessionPlans(): Promise<
+  Array<PlanSummary & { timestamp: number }>
+> {
+  const plans: Array<PlanSummary & { timestamp: number }> = [];
+
+  try {
+    const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const projectDir = join(PROJECTS_DIR, entry.name);
+      const files = await readdir(projectDir).catch(() => []);
+
+      for (const file of files) {
+        if (!file.endsWith(".jsonl")) continue;
+
+        const sessionId = file.replace(".jsonl", "");
+        const plan = await getSessionPlanRecord(entry.name, sessionId);
+        if (!plan) continue;
+
+        plans.push({
+          id: encodePlanId({
+            kind: "session",
+            projectPath: entry.name,
+            sessionId,
+          }),
+          slug: plan.slug,
+          title: plan.title,
+          preview: plan.preview,
+          timestamp: plan.timestamp,
+        });
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  return plans;
+}
+
+async function listFilePlans(): Promise<Array<PlanSummary & { timestamp: number }>> {
+  try {
+    const files = await readdir(PLANS_DIR);
+    const plans: Array<PlanSummary & { timestamp: number }> = [];
+
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const slug = file.replace(".md", "");
+      const filePath = join(PLANS_DIR, file);
+      const content = await readFile(filePath, "utf-8");
+      const metadata = summarizePlanContent(content, slug);
+      const fileStat = await stat(filePath).catch(() => null);
+
+      plans.push({
+        id: encodePlanId({ kind: "file", slug }),
+        ...metadata,
+        timestamp: fileStat?.mtimeMs ?? 0,
+      });
+    }
+
+    return plans;
+  } catch {
+    return [];
+  }
+}
 
 export async function listProjects(): Promise<ProjectInfo[]> {
   try {
@@ -385,37 +563,46 @@ export async function getSubagentConversation(
 }
 
 export async function listPlans(): Promise<PlanSummary[]> {
-  try {
-    const files = await readdir(PLANS_DIR);
-    const plans: PlanSummary[] = [];
+  const [sessionPlans, filePlans] = await Promise.all([
+    listSessionPlans(),
+    listFilePlans(),
+  ]);
 
-    for (const file of files) {
-      if (!file.endsWith(".md")) continue;
-      const slug = file.replace(".md", "");
-      const content = await readFile(join(PLANS_DIR, file), "utf-8");
-      const lines = content.split("\n").filter((l) => l.trim());
-      const title =
-        lines.find((l) => l.startsWith("# "))?.replace(/^#\s+/, "") ||
-        slug;
-      const preview = lines
-        .filter((l) => !l.startsWith("#"))
-        .slice(0, 3)
-        .join(" ")
-        .slice(0, 200);
-
-      plans.push({ slug, title, preview });
-    }
-
-    return plans.sort((a, b) => a.title.localeCompare(b.title));
-  } catch {
-    return [];
-  }
+  return [...sessionPlans, ...filePlans]
+    .sort((a, b) => b.timestamp - a.timestamp || a.title.localeCompare(b.title))
+    .map((plan) => ({
+      id: plan.id,
+      slug: plan.slug,
+      title: plan.title,
+      preview: plan.preview,
+    }));
 }
 
-export async function getPlan(slug: string): Promise<PlanDetail | null> {
+export async function getPlan(id: string): Promise<PlanDetail | null> {
+  const source = decodePlanId(id);
+  if (!source) return null;
+
+  if (source.kind === "session") {
+    const plan = await getSessionPlanRecord(source.projectPath, source.sessionId);
+    if (!plan) return null;
+
+    return {
+      id,
+      slug: plan.slug,
+      title: plan.title,
+      content: plan.content,
+    };
+  }
+
   try {
-    const content = await readFile(join(PLANS_DIR, `${slug}.md`), "utf-8");
-    return { slug, content };
+    const content = await readFile(join(PLANS_DIR, `${source.slug}.md`), "utf-8");
+    const metadata = summarizePlanContent(content, source.slug);
+    return {
+      id,
+      slug: metadata.slug,
+      title: metadata.title,
+      content,
+    };
   } catch {
     return null;
   }

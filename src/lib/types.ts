@@ -228,13 +228,16 @@ export interface HistoryEntry {
 
 // Plan
 export interface PlanSummary {
+  id: string;
   slug: string;
   title: string;
   preview: string;
 }
 
 export interface PlanDetail {
+  id: string;
   slug: string;
+  title: string;
   content: string;
 }
 

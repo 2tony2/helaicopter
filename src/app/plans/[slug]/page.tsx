@@ -12,8 +12,8 @@ export default function PlanDetailPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const { slug } = use(params);
-  const { data: plan, isLoading } = usePlan(slug);
+  const { slug: planId } = use(params);
+  const { data: plan, isLoading } = usePlan(planId);
 
   return (
     <div className="space-y-6">
@@ -22,7 +22,7 @@ export default function PlanDetailPage({
           Plans
         </Link>
         <ChevronRight className="h-3.5 w-3.5" />
-        <span className="text-foreground">{slug}</span>
+        <span className="text-foreground">{plan?.title ?? plan?.slug ?? "Plan"}</span>
       </nav>
 
       {isLoading ? (
