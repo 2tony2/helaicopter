@@ -182,6 +182,8 @@ export interface ConversationPlan {
   timestamp: number;
   sessionId: string;
   projectPath: string;
+  model?: string;
+  sourcePath?: string;
   explanation?: string;
   steps?: ConversationPlanStep[];
 }
@@ -256,6 +258,8 @@ export interface PlanSummary {
   preview: string;
   provider: PlanProvider;
   timestamp: number;
+  model?: string;
+  sourcePath?: string;
   sessionId?: string;
   projectPath?: string;
 }
@@ -267,6 +271,8 @@ export interface PlanDetail {
   content: string;
   provider: PlanProvider;
   timestamp: number;
+  model?: string;
+  sourcePath?: string;
   sessionId?: string;
   projectPath?: string;
 }

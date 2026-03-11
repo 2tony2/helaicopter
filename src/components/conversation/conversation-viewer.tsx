@@ -16,10 +16,14 @@ import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { SubagentInfo, TokenUsage } from "@/lib/types";
 import { ContextTab } from "./context-tab";
-import { PlanViewer } from "@/components/plans/plan-viewer";
+import { PlanPanel } from "@/components/plans/plan-panel";
 
 function providerLabel(provider: "claude" | "codex"): string {
   return provider === "claude" ? "Claude" : "Codex";
+}
+
+function providerDotClass(provider: "claude" | "codex"): string {
+  return provider === "claude" ? "bg-emerald-500" : "bg-sky-500";
 }
 
 function formatTokens(n: number): string {
@@ -310,13 +314,30 @@ export function ConversationViewer({
                       <CardContent className="p-4 space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <div className="font-medium text-sm">{plan.title}</div>
-                          <Badge variant="secondary" className="text-[10px]">
+                          <Badge variant="secondary" className="text-[10px] gap-1.5">
+                            <span
+                              className={`h-2 w-2 rounded-full ${providerDotClass(plan.provider)}`}
+                            />
                             {providerLabel(plan.provider)}
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-3">
                           {plan.preview}
                         </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {plan.model ? (
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] ${getModelBadgeClasses(plan.model)}`}
+                            >
+                              {formatModelName(plan.model)}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px]">
+                              unknown model
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                           <span>{format(plan.timestamp, "MMM d, yyyy h:mm a")}</span>
                           <Link
@@ -333,27 +354,19 @@ export function ConversationViewer({
                 </div>
 
                 <Card>
-                  <CardContent className="p-4 space-y-4">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div>
-                        <div className="font-medium">{selectedPlan.title}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {format(selectedPlan.timestamp, "MMM d, yyyy h:mm a")}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">
-                          {providerLabel(selectedPlan.provider)}
-                        </Badge>
+                  <CardContent className="p-4">
+                    <PlanPanel
+                      plan={selectedPlan}
+                      viewerClassName="h-[520px]"
+                      extraActions={
                         <Link
                           href={`/plans/${selectedPlan.id}`}
                           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                         >
                           Open dedicated page
                         </Link>
-                      </div>
-                    </div>
-                    <PlanViewer content={selectedPlan.content} />
+                      }
+                    />
                   </CardContent>
                 </Card>
               </>

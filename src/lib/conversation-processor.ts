@@ -26,8 +26,13 @@ export function extractClaudePlans(
   projectPath: string
 ): ConversationPlan[] {
   const plans: ConversationPlan[] = [];
+  let latestModel: string | undefined;
 
   for (const event of events) {
+    if (event.type === "assistant" && typeof event.message?.model === "string") {
+      latestModel = event.message.model;
+    }
+
     if (typeof event.planContent !== "string" || !event.planContent.trim()) {
       continue;
     }
@@ -48,6 +53,7 @@ export function extractClaudePlans(
       timestamp: toEpochMs(event.timestamp),
       sessionId,
       projectPath,
+      model: latestModel,
       content: event.planContent,
       ...metadata,
     });

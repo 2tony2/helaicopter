@@ -68,6 +68,8 @@ async function listClaudeSessionPlans(): Promise<PlanSummary[]> {
             preview: plan.preview,
             provider: plan.provider,
             timestamp: plan.timestamp,
+            model: plan.model,
+            sourcePath: join(projectDir, file),
             sessionId: plan.sessionId,
             projectPath: plan.projectPath,
           }))
@@ -103,6 +105,12 @@ async function getClaudeSessionPlan(id: string): Promise<PlanDetail | null> {
       content: plan.content,
       provider: plan.provider,
       timestamp: plan.timestamp,
+      model: plan.model,
+      sourcePath: join(
+        PROJECTS_DIR,
+        source.projectPath,
+        `${source.sessionId}.jsonl`
+      ),
       sessionId: plan.sessionId,
       projectPath: plan.projectPath,
     };
@@ -129,6 +137,7 @@ async function listFilePlans(): Promise<PlanSummary[]> {
         ...metadata,
         provider: "claude",
         timestamp: fileStat?.mtimeMs ?? 0,
+        sourcePath: filePath,
       });
     }
 
@@ -448,6 +457,11 @@ export async function getConversation(
   try {
     const events = await parseJsonlFile(filePath);
     const processed = processConversation(events, sessionId, projectPath);
+    processed.plans = processed.plans.map((plan) => ({
+      ...plan,
+      sourcePath: filePath,
+      model: plan.model ?? processed.model,
+    }));
     processed.subagents = await discoverSubagents(
       projectPath,
       sessionId,
@@ -528,6 +542,7 @@ export async function getPlan(id: string): Promise<PlanDetail | null> {
       content,
       provider: "claude",
       timestamp: fileStat?.mtimeMs ?? 0,
+      sourcePath: filePath,
     };
   } catch {
     return null;

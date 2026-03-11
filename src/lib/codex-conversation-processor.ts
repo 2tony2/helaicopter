@@ -35,8 +35,17 @@ export function extractCodexPlans(
   projectPath: string
 ): ConversationPlan[] {
   const plans: ConversationPlan[] = [];
+  let latestModel: string | undefined;
 
   for (const line of lines) {
+    if (line.type === "turn_context") {
+      const payload = line.payload as Record<string, unknown>;
+      if (typeof payload.model === "string" && payload.model.trim()) {
+        latestModel = payload.model;
+      }
+      continue;
+    }
+
     if (line.type !== "response_item") continue;
     const payload = line.payload as Record<string, unknown>;
     if (payload.type !== "function_call" || payload.name !== "update_plan") {
@@ -60,6 +69,7 @@ export function extractCodexPlans(
       timestamp: new Date(line.timestamp).getTime(),
       sessionId,
       projectPath,
+      model: latestModel,
       ...plan,
     });
   }

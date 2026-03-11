@@ -376,16 +376,17 @@ export async function getCodexConversation(
     }
 
     const processed: CodexConversationCache = {
-      ...processCodexConversation(
-      lines,
-      sessionId,
-      projectPath
-      ),
+      ...processCodexConversation(lines, sessionId, projectPath),
       _codexCacheVersion: 3,
     };
     if (thread?.git_branch) {
       processed.gitBranch = thread.git_branch;
     }
+    processed.plans = processed.plans.map((plan) => ({
+      ...plan,
+      sourcePath: match.filePath,
+      model: plan.model ?? processed.model,
+    }));
     processed.subagents = await discoverCodexSubagents(
       lines,
       sessionId,
@@ -425,6 +426,8 @@ export async function listCodexPlans(): Promise<PlanSummary[]> {
           preview: plan.preview,
           provider: plan.provider,
           timestamp: plan.timestamp,
+          model: plan.model,
+          sourcePath: filePath,
           sessionId: plan.sessionId,
           projectPath: plan.projectPath,
         }))
@@ -469,6 +472,8 @@ export async function getCodexPlan(id: string): Promise<PlanDetail | null> {
       content: plan.content,
       provider: plan.provider,
       timestamp: plan.timestamp,
+      model: plan.model,
+      sourcePath: match.filePath,
       sessionId: plan.sessionId,
       projectPath: plan.projectPath,
     };

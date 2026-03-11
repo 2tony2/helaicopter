@@ -7,9 +7,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { FileText } from "lucide-react";
+import { formatModelName, getModelBadgeClasses } from "@/lib/utils";
 
 function providerLabel(provider: "claude" | "codex"): string {
   return provider === "claude" ? "Claude" : "Codex";
+}
+
+function providerDotClass(provider: "claude" | "codex"): string {
+  return provider === "claude" ? "bg-emerald-500" : "bg-sky-500";
 }
 
 export default function PlansPage() {
@@ -41,13 +46,30 @@ export default function PlansPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-sm">{plan.title}</p>
-                        <Badge variant="secondary" className="text-[10px] shrink-0">
+                        <Badge variant="secondary" className="text-[10px] shrink-0 gap-1.5">
+                          <span
+                            className={`h-2 w-2 rounded-full ${providerDotClass(plan.provider)}`}
+                          />
                           {providerLabel(plan.provider)}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                         {plan.preview}
                       </p>
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {plan.model ? (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${getModelBadgeClasses(plan.model)}`}
+                          >
+                            {formatModelName(plan.model)}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">
+                            unknown model
+                          </Badge>
+                        )}
+                      </div>
                       <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                         <p className="font-mono truncate">{plan.slug}</p>
                         <span className="shrink-0">
