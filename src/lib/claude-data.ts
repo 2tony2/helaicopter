@@ -461,10 +461,12 @@ async function discoverSubagents(
 
   // Merge disk files with extracted metadata
   const allAgentIds = new Set([...existingFiles, ...agentMap.keys()]);
-  // Filter to only valid 7-char hex agent IDs
   const subagents: SubagentInfo[] = [];
   for (const agentId of allAgentIds) {
-    if (!/^[a-f0-9]{7}$/i.test(agentId)) continue;
+    const isKnownFile = existingFiles.has(agentId);
+    const isLikelyAgentId =
+      isKnownFile || /^[a-z][a-z0-9_-]{5,}$/i.test(agentId);
+    if (!isLikelyAgentId) continue;
     const meta = agentMap.get(agentId);
     subagents.push({
       agentId,
@@ -549,6 +551,11 @@ export async function getSubagentConversation(
   try {
     const events = await parseJsonlFile(filePath);
     const processed = processConversation(events, agentId, projectPath);
+    processed.subagents = await discoverSubagents(
+      projectPath,
+      agentId,
+      events
+    );
     await conversationCache.set(filePath, processed);
     return processed;
   } catch {

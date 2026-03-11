@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
-import { Bot, ExternalLink, ChevronLeft, Database, Gauge, Download, Brain, FileText, AlertTriangle } from "lucide-react";
+import { Bot, Database, Gauge, Download, Brain, FileText, AlertTriangle } from "lucide-react";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { DisplayToolCallBlock, ProcessedMessage, SubagentInfo, TokenUsage } from "@/lib/types";
@@ -97,140 +97,136 @@ function FailedToolCallsTab({
   );
 }
 
-function SubagentCard({
-  agent,
-  onSelect,
-}: {
-  agent: SubagentInfo;
-  onSelect: (agentId: string) => void;
-}) {
-  return (
-    <Card
-      className={`cursor-pointer transition-colors ${
-        agent.hasFile
-          ? "hover:bg-accent/50"
-          : "opacity-60 cursor-default"
-      }`}
-      onClick={() => agent.hasFile && onSelect(agent.agentId)}
-    >
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <Bot className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              {agent.nickname && (
-                <span className="text-sm font-medium">{agent.nickname}</span>
-              )}
-              <span className="font-mono text-sm font-medium">
-                {agent.agentId}
-              </span>
-              {agent.subagentType && (
-                <Badge variant="secondary" className="text-xs">
-                  {agent.subagentType}
-                </Badge>
-              )}
-              {!agent.hasFile && (
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                  no file
-                </Badge>
-              )}
-            </div>
-            {agent.description && (
-              <p className="text-sm text-muted-foreground mt-1 truncate">
-                {agent.description}
-              </p>
-            )}
-          </div>
-          {agent.hasFile && (
-            <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SubagentViewer({
+function SubagentTranscriptCard({
   projectPath,
   sessionId,
-  agentId,
-  nickname,
-  subagentType,
-  onBack,
+  agent,
+  depth = 0,
+  ancestry = [],
 }: {
   projectPath: string;
   sessionId: string;
-  agentId: string;
-  nickname?: string;
-  subagentType?: string;
-  onBack: () => void;
+  agent: SubagentInfo;
+  depth?: number;
+  ancestry?: string[];
 }) {
-  const { data: conversation, isLoading } = useSubagentConversation(
+  const {
+    data: conversation,
+    isLoading,
+    error,
+  } = useSubagentConversation(
     projectPath,
     sessionId,
-    agentId
+    agent.agentId
   );
   const provider = providerFromProjectPath(projectPath);
+  const nestedSubagents = (conversation?.subagents ?? []).filter(
+    (child) => child.agentId !== agent.agentId && !ancestry.includes(child.agentId)
+  );
 
   return (
-    <div className="space-y-4">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        Back to sub-agents list
-      </button>
-
-      <div className="flex items-center gap-2">
-        <Bot className="h-5 w-5" />
-        {nickname && <span className="font-medium">{nickname}</span>}
-        <span className="font-mono font-medium">{agentId}</span>
-        {subagentType && (
-          <Badge variant="secondary" className="text-xs">
-            {subagentType}
-          </Badge>
-        )}
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
-        </div>
-      ) : conversation ? (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            {conversation.model && (
-              <Badge className={`text-xs border-0 ${getModelBadgeClasses(conversation.model)}`}>
-                {formatModelName(conversation.model)}
-              </Badge>
-            )}
-            <TokenUsageBadge
-              usage={conversation.totalUsage}
-              model={conversation.model}
-              provider={provider}
-            />
-            <Badge variant="outline" className="text-xs font-mono gap-1">
-              <Database className="h-3 w-3" />
-              {formatTokens(totalContext(conversation.totalUsage))} context
-            </Badge>
-            <span className="text-sm text-muted-foreground">
-              {conversation.messages.length} messages
-            </span>
+    <div
+      className={depth > 0 ? "border-l border-border/60 pl-4" : undefined}
+      style={depth > 0 ? { marginLeft: `${depth * 12}px` } : undefined}
+    >
+      <Card className={!agent.hasFile ? "opacity-70" : undefined}>
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-start gap-3">
+            <Bot className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {agent.nickname && <span className="text-sm font-medium">{agent.nickname}</span>}
+                <span className="font-mono text-sm font-medium">{agent.agentId}</span>
+                {agent.subagentType && (
+                  <Badge variant="secondary" className="text-xs">
+                    {agent.subagentType}
+                  </Badge>
+                )}
+                <Badge variant="outline" className="text-xs">
+                  sub-agent
+                </Badge>
+                {!agent.hasFile && (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                    no file
+                  </Badge>
+                )}
+              </div>
+              {agent.description && (
+                <p className="text-sm text-muted-foreground">{agent.description}</p>
+              )}
+            </div>
           </div>
-          <div className="space-y-4">
-            {conversation.messages.map((message) => (
-              <MessageCard key={message.id} message={message} provider={provider} />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <p className="text-muted-foreground text-sm">
-          Could not load sub-agent conversation.
-        </p>
-      )}
+
+          {!agent.hasFile ? (
+            <p className="text-sm text-muted-foreground">
+              Full sub-agent transcript is not available for this entry.
+            </p>
+          ) : isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+          ) : error || !conversation ? (
+            <p className="text-sm text-muted-foreground">
+              Could not load sub-agent conversation.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                {conversation.model && (
+                  <Badge className={`text-xs border-0 ${getModelBadgeClasses(conversation.model)}`}>
+                    {formatModelName(conversation.model)}
+                  </Badge>
+                )}
+                {conversation.totalReasoningTokens && conversation.totalReasoningTokens > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs font-mono gap-1 text-amber-600 dark:text-amber-400"
+                  >
+                    <Brain className="h-3 w-3" />
+                    {formatTokens(conversation.totalReasoningTokens)} reasoning
+                  </Badge>
+                )}
+                <TokenUsageBadge
+                  usage={conversation.totalUsage}
+                  model={conversation.model}
+                  provider={provider}
+                />
+                <Badge variant="outline" className="text-xs font-mono gap-1">
+                  <Database className="h-3 w-3" />
+                  {formatTokens(totalContext(conversation.totalUsage))} context
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {conversation.messages.length} messages
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {conversation.messages.map((message) => (
+                  <MessageCard key={message.id} message={message} provider={provider} />
+                ))}
+              </div>
+
+              {nestedSubagents.length > 0 && (
+                <div className="space-y-4">
+                  <div className="text-sm font-medium">Nested sub-agents</div>
+                  {nestedSubagents.map((child) => (
+                    <SubagentTranscriptCard
+                      key={`${agent.agentId}:${child.agentId}`}
+                      projectPath={projectPath}
+                      sessionId={sessionId}
+                      agent={child}
+                      depth={depth + 1}
+                      ancestry={[...ancestry, agent.agentId]}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -248,7 +244,6 @@ export function ConversationViewer({
     sessionId
   );
   const { data: tasks } = useTasks(sessionId);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [showEvaluationToast, setShowEvaluationToast] = useState(false);
   const plans = conversation?.plans || [];
@@ -291,7 +286,6 @@ export function ConversationViewer({
         : []
     )
   );
-  const selectedSubagent = subagents.find((agent) => agent.agentId === selectedAgent);
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
   const conversationEvaluations = evaluations ?? [];
   const provider = providerFromProjectPath(projectPath);
@@ -517,22 +511,14 @@ export function ConversationViewer({
 
         <TabsContent value="subagents">
           <div className="mt-4">
-            {selectedAgent ? (
-              <SubagentViewer
-                projectPath={projectPath}
-                sessionId={sessionId}
-                agentId={selectedAgent}
-                nickname={selectedSubagent?.nickname}
-                subagentType={selectedSubagent?.subagentType}
-                onBack={() => setSelectedAgent(null)}
-              />
-            ) : subagents.length > 0 ? (
-              <div className="space-y-2">
+            {subagents.length > 0 ? (
+              <div className="space-y-4">
                 {subagents.map((agent) => (
-                  <SubagentCard
+                  <SubagentTranscriptCard
                     key={agent.agentId}
+                    projectPath={projectPath}
+                    sessionId={sessionId}
                     agent={agent}
-                    onSelect={setSelectedAgent}
                   />
                 ))}
               </div>
