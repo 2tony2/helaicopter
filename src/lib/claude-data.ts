@@ -1,0 +1,731 @@
+import { readdir, readFile, stat } from "fs/promises";
+import { join } from "path";
+import {
+  PROJECTS_DIR,
+  PLANS_DIR,
+  HISTORY_FILE,
+  TASKS_DIR,
+} from "./constants";
+import { extractConversationSummary, parseJsonlFile } from "./jsonl-parser";
+import { processConversation } from "./conversation-processor";
+import { projectDirToDisplayName } from "./path-encoding";
+import { summaryCache, conversationCache } from "./cache";
+import type {
+  ProjectInfo,
+  ConversationSummary,
+  ProcessedConversation,
+  PlanSummary,
+  PlanDetail,
+  HistoryEntry,
+  AnalyticsData,
+  AnalyticsCostBreakdown,
+  DailyUsage,
+  SubagentInfo,
+  ProviderBreakdown,
+} from "./types";
+import { calculateCost } from "./pricing";
+import {
+  listCodexConversations,
+  getCodexConversation,
+  getCodexHistory,
+} from "./codex-data";
+
+export async function listProjects(): Promise<ProjectInfo[]> {
+  try {
+    const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+    const projects: ProjectInfo[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const projectDir = join(PROJECTS_DIR, entry.name);
+      const files = await readdir(projectDir).catch(() => []);
+      const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
+
+      let lastActivity = 0;
+      for (const f of jsonlFiles) {
+        try {
+          const s = await stat(join(projectDir, f));
+          if (s.mtimeMs > lastActivity) lastActivity = s.mtimeMs;
+        } catch {
+          // skip
+        }
+      }
+
+      if (jsonlFiles.length > 0) {
+        projects.push({
+          encodedPath: entry.name,
+          displayName: projectDirToDisplayName(entry.name),
+          fullPath: projectDir,
+          sessionCount: jsonlFiles.length,
+          lastActivity,
+        });
+      }
+    }
+
+    // Add Codex projects by aggregating Codex conversations
+    try {
+      const codexConvs = await listCodexConversations();
+      const codexProjectMap = new Map<
+        string,
+        { displayName: string; count: number; lastActivity: number }
+      >();
+      for (const conv of codexConvs) {
+        const existing = codexProjectMap.get(conv.projectPath) || {
+          displayName: conv.projectName,
+          count: 0,
+          lastActivity: 0,
+        };
+        existing.count++;
+        if (conv.timestamp > existing.lastActivity)
+          existing.lastActivity = conv.timestamp;
+        codexProjectMap.set(conv.projectPath, existing);
+      }
+      for (const [encodedPath, info] of codexProjectMap) {
+        projects.push({
+          encodedPath,
+          displayName: info.displayName,
+          fullPath: encodedPath,
+          sessionCount: info.count,
+          lastActivity: info.lastActivity,
+        });
+      }
+    } catch {
+      // Codex data not available
+    }
+
+    return projects.sort((a, b) => b.lastActivity - a.lastActivity);
+  } catch {
+    return [];
+  }
+}
+
+export async function listConversations(
+  projectFilter?: string,
+  days?: number
+): Promise<ConversationSummary[]> {
+  const conversations: ConversationSummary[] = [];
+  // Use file mtime to skip files older than the cutoff — avoids expensive parsing
+  const cutoffMs = days
+    ? Date.now() - days * 24 * 60 * 60 * 1000
+    : 0;
+
+  try {
+    const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (projectFilter && entry.name !== projectFilter) continue;
+
+      const projectDir = join(PROJECTS_DIR, entry.name);
+      const files = await readdir(projectDir).catch(() => []);
+
+      for (const file of files) {
+        if (!file.endsWith(".jsonl")) continue;
+
+        const filePath = join(projectDir, file);
+
+        // Fast mtime check — skip files not modified within the window
+        if (cutoffMs) {
+          try {
+            const s = await stat(filePath);
+            if (s.mtimeMs < cutoffMs) continue;
+          } catch {
+            continue;
+          }
+        }
+
+        const sessionId = file.replace(".jsonl", "");
+
+        // Check cache first
+        const cached = await summaryCache.get(filePath);
+        if (cached) {
+          const c = cached as ConversationSummary;
+          // Even cached entries must pass the timestamp cutoff
+          if (cutoffMs && c.timestamp && c.timestamp < cutoffMs) continue;
+          conversations.push(c);
+          continue;
+        }
+
+        try {
+          const summary = await extractConversationSummary(filePath);
+
+          // Fast readdir counts for subagents and tasks
+          const subagentDir = join(projectDir, sessionId, "subagents");
+          let subagentCount = 0;
+          try {
+            const subs = await readdir(subagentDir);
+            subagentCount = subs.filter(
+              (f) => f.startsWith("agent-") && f.endsWith(".jsonl")
+            ).length;
+          } catch { /* no subagents dir */ }
+
+          const taskDir = join(TASKS_DIR, sessionId);
+          let taskCount = 0;
+          try {
+            const tasks = await readdir(taskDir);
+            taskCount = tasks.length;
+          } catch { /* no tasks dir */ }
+
+          const conv: ConversationSummary = {
+            sessionId,
+            projectPath: entry.name,
+            projectName: projectDirToDisplayName(entry.name),
+            firstMessage: summary.firstMessage,
+            timestamp: summary.timestamp,
+            messageCount: summary.messageCount,
+            model: summary.model,
+            totalInputTokens: summary.totalInputTokens,
+            totalOutputTokens: summary.totalOutputTokens,
+            totalCacheCreationTokens: summary.totalCacheCreationTokens,
+            totalCacheReadTokens: summary.totalCacheReadTokens,
+            toolUseCount: summary.toolUseCount,
+            toolBreakdown: summary.toolBreakdown,
+            subagentCount,
+            subagentTypeBreakdown: summary.subagentTypeBreakdown,
+            taskCount,
+            gitBranch: summary.gitBranch,
+            speed: summary.speed,
+          };
+
+          await summaryCache.set(filePath, conv);
+          // Apply timestamp cutoff after parsing
+          if (cutoffMs && conv.timestamp && conv.timestamp < cutoffMs) continue;
+          conversations.push(conv);
+        } catch {
+          // Skip files that can't be parsed
+        }
+      }
+    }
+  } catch {
+    // Return empty if projects dir doesn't exist
+  }
+
+  // Merge Codex conversations (skip if filtering to a specific Claude project)
+  if (!projectFilter || projectFilter.startsWith("codex:")) {
+    try {
+      const codexConvs = await listCodexConversations(days);
+      // If filtering by a codex project, apply the filter
+      if (projectFilter) {
+        conversations.push(
+          ...codexConvs.filter((c) => c.projectPath === projectFilter)
+        );
+      } else {
+        conversations.push(...codexConvs);
+      }
+    } catch {
+      // Codex data not available — that's fine
+    }
+  }
+
+  return conversations.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+/**
+ * Discover subagent files for a session and extract references from parent events.
+ */
+async function discoverSubagents(
+  projectPath: string,
+  sessionId: string,
+  events: import("./types").RawEvent[]
+): Promise<SubagentInfo[]> {
+  const subagentsDir = join(
+    PROJECTS_DIR,
+    projectPath,
+    sessionId,
+    "subagents"
+  );
+
+  // Find subagent files on disk
+  const existingFiles = new Set<string>();
+  try {
+    const files = await readdir(subagentsDir);
+    for (const f of files) {
+      if (f.startsWith("agent-") && f.endsWith(".jsonl")) {
+        existingFiles.add(f.replace("agent-", "").replace(".jsonl", ""));
+      }
+    }
+  } catch {
+    // No subagents directory
+  }
+
+  // Extract subagent references from parent conversation events
+  const agentMap = new Map<
+    string,
+    { description?: string; subagentType?: string }
+  >();
+
+  for (const event of events) {
+    // Look for Task tool_use blocks to get description/type
+    if (event.type === "assistant" && event.message?.content) {
+      const content = event.message.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (
+            typeof block === "object" &&
+            block.type === "tool_use" &&
+            block.name === "Task"
+          ) {
+            const input = block.input as Record<string, unknown>;
+            // Store temporarily keyed by tool_use id
+            agentMap.set(block.id, {
+              description: input.description as string | undefined,
+              subagentType: input.subagent_type as string | undefined,
+            });
+          }
+        }
+      }
+    }
+
+    // Look for tool results that contain agentId
+    if (event.type === "user" && event.toolUseResult) {
+      const result = event.toolUseResult;
+      if (result && typeof result === "object" && "agentId" in result) {
+        const agentId = (result as { agentId: string }).agentId;
+        // Find the matching tool_use by tool_use_id from the tool_result content
+        const content = event.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (typeof block === "object" && block.type === "tool_result") {
+              const meta = agentMap.get(block.tool_use_id);
+              if (meta) {
+                agentMap.set(agentId, meta);
+                agentMap.delete(block.tool_use_id);
+              } else {
+                agentMap.set(agentId, {
+                  description: (result as { description?: string }).description,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Merge disk files with extracted metadata
+  const allAgentIds = new Set([...existingFiles, ...agentMap.keys()]);
+  // Filter to only valid 7-char hex agent IDs
+  const subagents: SubagentInfo[] = [];
+  for (const agentId of allAgentIds) {
+    if (!/^[a-f0-9]{7}$/i.test(agentId)) continue;
+    const meta = agentMap.get(agentId);
+    subagents.push({
+      agentId,
+      description: meta?.description,
+      subagentType: meta?.subagentType,
+      hasFile: existingFiles.has(agentId),
+      projectPath,
+      sessionId,
+    });
+  }
+
+  return subagents;
+}
+
+export async function getConversation(
+  projectPath: string,
+  sessionId: string
+): Promise<ProcessedConversation | null> {
+  // Route Codex conversations to the Codex processor
+  if (projectPath.startsWith("codex:")) {
+    return getCodexConversation(sessionId);
+  }
+
+  const filePath = join(PROJECTS_DIR, projectPath, `${sessionId}.jsonl`);
+
+  const cached = await conversationCache.get(filePath);
+  if (cached) return cached as ProcessedConversation;
+
+  try {
+    const events = await parseJsonlFile(filePath);
+    const processed = processConversation(events, sessionId, projectPath);
+    processed.subagents = await discoverSubagents(
+      projectPath,
+      sessionId,
+      events
+    );
+    await conversationCache.set(filePath, processed);
+    return processed;
+  } catch {
+    return null;
+  }
+}
+
+export async function getSubagentConversation(
+  projectPath: string,
+  sessionId: string,
+  agentId: string
+): Promise<ProcessedConversation | null> {
+  if (projectPath.startsWith("codex:")) {
+    const conversation = await getCodexConversation(agentId);
+    if (!conversation) return null;
+    return conversation;
+  }
+
+  const filePath = join(
+    PROJECTS_DIR,
+    projectPath,
+    sessionId,
+    "subagents",
+    `agent-${agentId}.jsonl`
+  );
+
+  const cached = await conversationCache.get(filePath);
+  if (cached) return cached as ProcessedConversation;
+
+  try {
+    const events = await parseJsonlFile(filePath);
+    const processed = processConversation(events, agentId, projectPath);
+    await conversationCache.set(filePath, processed);
+    return processed;
+  } catch {
+    return null;
+  }
+}
+
+export async function listPlans(): Promise<PlanSummary[]> {
+  try {
+    const files = await readdir(PLANS_DIR);
+    const plans: PlanSummary[] = [];
+
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const slug = file.replace(".md", "");
+      const content = await readFile(join(PLANS_DIR, file), "utf-8");
+      const lines = content.split("\n").filter((l) => l.trim());
+      const title =
+        lines.find((l) => l.startsWith("# "))?.replace(/^#\s+/, "") ||
+        slug;
+      const preview = lines
+        .filter((l) => !l.startsWith("#"))
+        .slice(0, 3)
+        .join(" ")
+        .slice(0, 200);
+
+      plans.push({ slug, title, preview });
+    }
+
+    return plans.sort((a, b) => a.title.localeCompare(b.title));
+  } catch {
+    return [];
+  }
+}
+
+export async function getPlan(slug: string): Promise<PlanDetail | null> {
+  try {
+    const content = await readFile(join(PLANS_DIR, `${slug}.md`), "utf-8");
+    return { slug, content };
+  } catch {
+    return null;
+  }
+}
+
+export async function getHistory(limit = 100): Promise<HistoryEntry[]> {
+  const entries: HistoryEntry[] = [];
+
+  // Claude history
+  try {
+    const content = await readFile(HISTORY_FILE, "utf-8");
+    const lines = content.split("\n").filter((l) => l.trim());
+    for (const line of lines) {
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // No Claude history
+  }
+
+  // Codex history
+  try {
+    const codexEntries = await getCodexHistory(limit);
+    entries.push(...codexEntries);
+  } catch {
+    // No Codex history
+  }
+
+  return entries
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, limit);
+}
+
+export async function getTasksForSession(
+  sessionId: string
+): Promise<unknown[]> {
+  const taskDir = join(TASKS_DIR, sessionId);
+  try {
+    const entries = await readdir(taskDir, { withFileTypes: true });
+    const tasks: unknown[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      try {
+        const content = await readFile(join(taskDir, entry.name), "utf-8");
+        tasks.push(JSON.parse(content));
+      } catch {
+        continue;
+      }
+    }
+
+    return tasks;
+  } catch {
+    return [];
+  }
+}
+
+export async function getAnalytics(days?: number, provider?: string): Promise<AnalyticsData> {
+  let conversations = await listConversations(undefined, days);
+
+  if (provider === "claude") {
+    conversations = conversations.filter((c) => !c.projectPath.startsWith("codex:"));
+  } else if (provider === "codex") {
+    conversations = conversations.filter((c) => c.projectPath.startsWith("codex:"));
+  }
+
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalCacheCreationTokens = 0;
+  let totalCacheReadTokens = 0;
+  let totalToolCalls = 0;
+  const modelBreakdown: Record<string, number> = {};
+  const toolBreakdown: Record<string, number> = {};
+  const subagentTypeBreakdown: Record<string, number> = {};
+  const modelBreakdownByProvider: Record<string, ProviderBreakdown> = {};
+  const toolBreakdownByProvider: Record<string, ProviderBreakdown> = {};
+  const subagentTypeBreakdownByProvider: Record<string, ProviderBreakdown> = {};
+  const dailyMap = new Map<string, DailyUsage>();
+  const costBreakdownByProvider: Record<string, AnalyticsCostBreakdown> = {};
+  const costBreakdownByModel: Record<string, AnalyticsCostBreakdown> = {};
+
+  function emptyCostBreakdown(): AnalyticsCostBreakdown {
+    return {
+      inputCost: 0,
+      outputCost: 0,
+      cacheWriteCost: 0,
+      cacheReadCost: 0,
+      longContextPremium: 0,
+      longContextConversations: 0,
+      totalCost: 0,
+    };
+  }
+
+  function addCostBreakdown(
+    target: AnalyticsCostBreakdown,
+    source: AnalyticsCostBreakdown
+  ) {
+    target.inputCost += source.inputCost;
+    target.outputCost += source.outputCost;
+    target.cacheWriteCost += source.cacheWriteCost;
+    target.cacheReadCost += source.cacheReadCost;
+    target.longContextPremium += source.longContextPremium;
+    target.longContextConversations += source.longContextConversations;
+    target.totalCost += source.totalCost;
+  }
+
+  function getProviderKey(conv: ConversationSummary): keyof ProviderBreakdown {
+    return conv.projectPath.startsWith("codex:") ? "codex" : "claude";
+  }
+
+  function incrementProviderBreakdown(
+    map: Record<string, ProviderBreakdown>,
+    key: string,
+    providerKey: keyof ProviderBreakdown,
+    count: number
+  ) {
+    const existing = map[key] || { claude: 0, codex: 0 };
+    existing[providerKey] += count;
+    map[key] = existing;
+  }
+
+  for (const conv of conversations) {
+    const providerKey = getProviderKey(conv);
+    totalInputTokens += conv.totalInputTokens;
+    totalOutputTokens += conv.totalOutputTokens;
+    totalCacheCreationTokens += conv.totalCacheCreationTokens;
+    totalCacheReadTokens += conv.totalCacheReadTokens;
+    totalToolCalls += conv.toolUseCount;
+
+    if (conv.model) {
+      modelBreakdown[conv.model] = (modelBreakdown[conv.model] || 0) + 1;
+      incrementProviderBreakdown(modelBreakdownByProvider, conv.model, providerKey, 1);
+    }
+
+    // Aggregate tool breakdown
+    if (conv.toolBreakdown) {
+      for (const [toolName, count] of Object.entries(conv.toolBreakdown)) {
+        toolBreakdown[toolName] = (toolBreakdown[toolName] || 0) + count;
+        incrementProviderBreakdown(toolBreakdownByProvider, toolName, providerKey, count);
+      }
+    }
+
+    // Aggregate sub-agent type breakdown
+    if (conv.subagentTypeBreakdown) {
+      for (const [agentType, count] of Object.entries(conv.subagentTypeBreakdown)) {
+        subagentTypeBreakdown[agentType] = (subagentTypeBreakdown[agentType] || 0) + count;
+        incrementProviderBreakdown(
+          subagentTypeBreakdownByProvider,
+          agentType,
+          providerKey,
+          count
+        );
+      }
+    }
+
+    // Daily aggregation
+    if (conv.timestamp) {
+      const date = new Date(conv.timestamp).toISOString().split("T")[0];
+      const existing = dailyMap.get(date) || {
+        date,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        conversations: 0,
+        subagents: 0,
+        claudeInputTokens: 0,
+        claudeOutputTokens: 0,
+        claudeCacheWriteTokens: 0,
+        claudeCacheReadTokens: 0,
+        codexInputTokens: 0,
+        codexOutputTokens: 0,
+        codexCacheWriteTokens: 0,
+        codexCacheReadTokens: 0,
+        claudeConversations: 0,
+        codexConversations: 0,
+        claudeSubagents: 0,
+        codexSubagents: 0,
+      };
+      existing.inputTokens += conv.totalInputTokens;
+      existing.outputTokens += conv.totalOutputTokens;
+      existing.cacheWriteTokens += conv.totalCacheCreationTokens;
+      existing.cacheReadTokens += conv.totalCacheReadTokens;
+      existing.conversations += 1;
+      existing.subagents += conv.subagentCount;
+      if (providerKey === "claude") {
+        existing.claudeInputTokens += conv.totalInputTokens;
+        existing.claudeOutputTokens += conv.totalOutputTokens;
+        existing.claudeCacheWriteTokens += conv.totalCacheCreationTokens;
+        existing.claudeCacheReadTokens += conv.totalCacheReadTokens;
+        existing.claudeConversations += 1;
+        existing.claudeSubagents += conv.subagentCount;
+      } else {
+        existing.codexInputTokens += conv.totalInputTokens;
+        existing.codexOutputTokens += conv.totalOutputTokens;
+        existing.codexCacheWriteTokens += conv.totalCacheCreationTokens;
+        existing.codexCacheReadTokens += conv.totalCacheReadTokens;
+        existing.codexConversations += 1;
+        existing.codexSubagents += conv.subagentCount;
+      }
+      dailyMap.set(date, existing);
+    }
+  }
+
+  // Estimate cost per-conversation with full breakdown
+  let totalInputCost = 0;
+  let totalOutputCost = 0;
+  let totalCacheWriteCost = 0;
+  let totalCacheReadCost = 0;
+  let longContextPremium = 0;
+  let longContextConversations = 0;
+
+  for (const conv of conversations) {
+    const usage = {
+      inputTokens: conv.totalInputTokens,
+      outputTokens: conv.totalOutputTokens,
+      cacheWriteTokens: conv.totalCacheCreationTokens,
+      cacheReadTokens: conv.totalCacheReadTokens,
+    };
+    const baseCost = calculateCost(usage, conv.model);
+    totalInputCost += baseCost.inputCost;
+    totalOutputCost += baseCost.outputCost;
+    totalCacheWriteCost += baseCost.cacheWriteCost;
+    totalCacheReadCost += baseCost.cacheReadCost;
+    const providerKey = getProviderKey(conv);
+    const providerCostBreakdown =
+      costBreakdownByProvider[providerKey] || emptyCostBreakdown();
+    const modelKey = conv.model || "unknown";
+    const modelCostBreakdown =
+      costBreakdownByModel[modelKey] || emptyCostBreakdown();
+
+    // Detect long context (>200K active input tokens per conversation, excludes cache)
+    const activeInputForConv = conv.totalInputTokens;
+    let convLongContextPremium = 0;
+    let convLongContextConversations = 0;
+    if (activeInputForConv > 200_000) {
+      const model = conv.model || "";
+      const isEligible =
+        model.includes("opus-4-6") || model.includes("opus-4-5") ||
+        model.includes("sonnet-4-6") || model.includes("sonnet-4-5") || model.includes("sonnet-4");
+      if (isEligible) {
+        // Premium is the difference: input 2x (so +1x extra), output 1.5x (so +0.5x extra), cache 2x (so +1x extra)
+        const premium =
+          baseCost.inputCost * 1 +
+          baseCost.outputCost * 0.5 +
+          baseCost.cacheWriteCost * 1 +
+          baseCost.cacheReadCost * 1;
+        longContextPremium += premium;
+        longContextConversations++;
+        convLongContextPremium = premium;
+        convLongContextConversations = 1;
+      }
+    }
+
+    const convCostBreakdown: AnalyticsCostBreakdown = {
+      inputCost: baseCost.inputCost,
+      outputCost: baseCost.outputCost,
+      cacheWriteCost: baseCost.cacheWriteCost,
+      cacheReadCost: baseCost.cacheReadCost,
+      longContextPremium: convLongContextPremium,
+      longContextConversations: convLongContextConversations,
+      totalCost:
+        baseCost.inputCost +
+        baseCost.outputCost +
+        baseCost.cacheWriteCost +
+        baseCost.cacheReadCost +
+        convLongContextPremium,
+    };
+
+    addCostBreakdown(providerCostBreakdown, convCostBreakdown);
+    addCostBreakdown(modelCostBreakdown, convCostBreakdown);
+    costBreakdownByProvider[providerKey] = providerCostBreakdown;
+    costBreakdownByModel[modelKey] = modelCostBreakdown;
+  }
+
+  const estimatedCost =
+    totalInputCost + totalOutputCost + totalCacheWriteCost + totalCacheReadCost + longContextPremium;
+
+  const costBreakdown = {
+    inputCost: totalInputCost,
+    outputCost: totalOutputCost,
+    cacheWriteCost: totalCacheWriteCost,
+    cacheReadCost: totalCacheReadCost,
+    longContextPremium,
+    longContextConversations,
+    totalCost: estimatedCost,
+  };
+
+  return {
+    totalConversations: conversations.length,
+    totalInputTokens,
+    totalOutputTokens,
+    totalCacheCreationTokens,
+    totalCacheReadTokens,
+    totalToolCalls,
+    modelBreakdown,
+    toolBreakdown,
+    subagentTypeBreakdown,
+    modelBreakdownByProvider,
+    toolBreakdownByProvider,
+    subagentTypeBreakdownByProvider,
+    dailyUsage: Array.from(dailyMap.values()).sort((a, b) =>
+      a.date.localeCompare(b.date)
+    ),
+    estimatedCost,
+    costBreakdown,
+    costBreakdownByProvider,
+    costBreakdownByModel,
+  };
+}
