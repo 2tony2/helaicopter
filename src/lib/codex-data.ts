@@ -1,6 +1,6 @@
 import { readdir, stat } from "fs/promises";
 import { join } from "path";
-import { CODEX_DIR, CODEX_SESSIONS_DIR, CODEX_HISTORY_FILE, CODEX_DB_PATH } from "./constants";
+import { CODEX_SESSIONS_DIR, CODEX_HISTORY_FILE, CODEX_DB_PATH } from "./constants";
 import {
   extractCodexSummary,
   parseCodexJsonlFile,
@@ -9,14 +9,20 @@ import {
   summarizeSpawnAgentMessage,
   getSpawnAgentType,
 } from "./codex-jsonl-parser";
-import { processCodexConversation } from "./codex-conversation-processor";
+import {
+  extractCodexPlans,
+  processCodexConversation,
+} from "./codex-conversation-processor";
 import { summaryCache, conversationCache } from "./cache";
 import type {
   ConversationSummary,
   ProcessedConversation,
   HistoryEntry,
+  PlanDetail,
+  PlanSummary,
 } from "./types";
 import Database from "better-sqlite3";
+import { decodePlanId } from "./plan-utils";
 
 /** Thread metadata from Codex SQLite database */
 interface CodexThread {
@@ -39,14 +45,14 @@ interface CodexThread {
 }
 
 interface CodexConversationSummaryCache extends ConversationSummary {
-  _codexCacheVersion: 2;
+  _codexCacheVersion: 3;
   _codexParentThreadId?: string;
   _codexAgentRole?: string;
   _codexAgentNickname?: string;
 }
 
 interface CodexConversationCache extends ProcessedConversation {
-  _codexCacheVersion: 2;
+  _codexCacheVersion: 3;
 }
 
 function parseThreadSource(source: string | null): { parentThreadId?: string } {
@@ -248,7 +254,7 @@ export async function listCodexConversations(
   for (const { filePath, sessionId } of sessionFiles) {
     // Check cache first
     const cached = await summaryCache.get(filePath);
-    if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 2) {
+    if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 3) {
       const c = cached as CodexConversationSummaryCache;
       if (cutoffMs && c.timestamp && c.timestamp < cutoffMs) continue;
       conversations.push(c);
@@ -285,7 +291,7 @@ export async function listCodexConversations(
         gitBranch: thread?.git_branch || undefined,
         reasoningEffort: summary.reasoningEffort,
         totalReasoningTokens: summary.totalReasoningTokens > 0 ? summary.totalReasoningTokens : undefined,
-        _codexCacheVersion: 2,
+        _codexCacheVersion: 3,
         _codexParentThreadId: parentThreadId || summary.parentThreadId,
         _codexAgentRole: thread?.agent_role || summary.agentRole,
         _codexAgentNickname: thread?.agent_nickname || summary.agentNickname,
@@ -346,7 +352,7 @@ export async function getCodexConversation(
   if (!match) return null;
 
   const cached = await conversationCache.get(match.filePath);
-  if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 2) {
+  if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 3) {
     return cached as ProcessedConversation;
   }
 
@@ -375,7 +381,7 @@ export async function getCodexConversation(
       sessionId,
       projectPath
       ),
-      _codexCacheVersion: 2,
+      _codexCacheVersion: 3,
     };
     if (thread?.git_branch) {
       processed.gitBranch = thread.git_branch;
@@ -389,6 +395,83 @@ export async function getCodexConversation(
 
     await conversationCache.set(match.filePath, processed);
     return processed;
+  } catch {
+    return null;
+  }
+}
+
+export async function listCodexPlans(): Promise<PlanSummary[]> {
+  const sessionFiles = await findSessionFiles(CODEX_SESSIONS_DIR, 0);
+  const plans: PlanSummary[] = [];
+
+  for (const { filePath, sessionId } of sessionFiles) {
+    try {
+      const lines = await parseCodexJsonlFile(filePath);
+
+      let projectPath = "codex:unknown";
+      const metaLine = lines.find((line) => line.type === "session_meta");
+      if (metaLine) {
+        const payload = metaLine.payload as Record<string, unknown>;
+        if (typeof payload.cwd === "string" && payload.cwd.trim()) {
+          projectPath = `codex:${cwdToProjectPath(payload.cwd)}`;
+        }
+      }
+
+      plans.push(
+        ...extractCodexPlans(lines, sessionId, projectPath).map((plan) => ({
+          id: plan.id,
+          slug: plan.slug,
+          title: plan.title,
+          preview: plan.preview,
+          provider: plan.provider,
+          timestamp: plan.timestamp,
+          sessionId: plan.sessionId,
+          projectPath: plan.projectPath,
+        }))
+      );
+    } catch {
+      // Skip unparseable files.
+    }
+  }
+
+  return plans.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export async function getCodexPlan(id: string): Promise<PlanDetail | null> {
+  const source = decodePlanId(id);
+  if (!source || source.kind !== "codex-session") return null;
+
+  const sessionFiles = await findSessionFiles(CODEX_SESSIONS_DIR, 0);
+  const match = sessionFiles.find((file) => file.sessionId === source.sessionId);
+  if (!match) return null;
+
+  try {
+    const lines = await parseCodexJsonlFile(match.filePath);
+
+    let projectPath = "codex:unknown";
+    const metaLine = lines.find((line) => line.type === "session_meta");
+    if (metaLine) {
+      const payload = metaLine.payload as Record<string, unknown>;
+      if (typeof payload.cwd === "string" && payload.cwd.trim()) {
+        projectPath = `codex:${cwdToProjectPath(payload.cwd)}`;
+      }
+    }
+
+    const plan = extractCodexPlans(lines, source.sessionId, projectPath).find(
+      (entry) => entry.id === id
+    );
+    if (!plan) return null;
+
+    return {
+      id: plan.id,
+      slug: plan.slug,
+      title: plan.title,
+      content: plan.content,
+      provider: plan.provider,
+      timestamp: plan.timestamp,
+      sessionId: plan.sessionId,
+      projectPath: plan.projectPath,
+    };
   } catch {
     return null;
   }

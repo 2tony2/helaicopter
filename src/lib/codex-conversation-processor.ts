@@ -9,10 +9,15 @@ import type {
   ContextBucket,
   ContextStep,
   ContextAnalytics,
+  ConversationPlan,
 } from "./types";
 import type { CodexRawLine } from "./codex-types";
-import { codexToolDisplayName } from "./codex-jsonl-parser";
+import {
+  codexToolDisplayName,
+  parseCodexToolArguments,
+} from "./codex-jsonl-parser";
 import { TOOL_RESULT_MAX_LENGTH } from "./constants";
+import { encodePlanId, summarizeCodexPlan } from "./plan-utils";
 
 function usageTotal(u: TokenUsage | undefined) {
   if (!u) return 0;
@@ -22,6 +27,44 @@ function usageTotal(u: TokenUsage | undefined) {
     (u.cache_creation_input_tokens || 0) +
     (u.cache_read_input_tokens || 0)
   );
+}
+
+export function extractCodexPlans(
+  lines: CodexRawLine[],
+  sessionId: string,
+  projectPath: string
+): ConversationPlan[] {
+  const plans: ConversationPlan[] = [];
+
+  for (const line of lines) {
+    if (line.type !== "response_item") continue;
+    const payload = line.payload as Record<string, unknown>;
+    if (payload.type !== "function_call" || payload.name !== "update_plan") {
+      continue;
+    }
+
+    const callId = typeof payload.call_id === "string" ? payload.call_id : "";
+    if (!callId) continue;
+
+    const args = parseCodexToolArguments(payload.arguments);
+    const plan = summarizeCodexPlan(args, callId);
+    if (!plan.explanation && plan.steps.length === 0) continue;
+
+    plans.push({
+      id: encodePlanId({
+        kind: "codex-session",
+        sessionId,
+        callId,
+      }),
+      provider: "codex",
+      timestamp: new Date(line.timestamp).getTime(),
+      sessionId,
+      projectPath,
+      ...plan,
+    });
+  }
+
+  return plans.sort((a, b) => b.timestamp - a.timestamp);
 }
 
 /**
@@ -39,6 +82,7 @@ export function processCodexConversation(
   sessionId: string,
   projectPath: string
 ): ProcessedConversation {
+  const plans = extractCodexPlans(lines, sessionId, projectPath);
   const messages: ProcessedMessage[] = [];
   const pendingToolCalls = new Map<string, DisplayToolCallBlock>();
   let totalUsage: TokenUsage = {
@@ -509,6 +553,7 @@ export function processCodexConversation(
     sessionId,
     projectPath,
     messages,
+    plans,
     totalUsage,
     model,
     gitBranch,

@@ -165,10 +165,32 @@ export interface ContextWindowStats {
   cumulativeTokens: number;
 }
 
+export type PlanProvider = "claude" | "codex";
+
+export interface ConversationPlanStep {
+  step: string;
+  status: string;
+}
+
+export interface ConversationPlan {
+  id: string;
+  slug: string;
+  title: string;
+  preview: string;
+  content: string;
+  provider: PlanProvider;
+  timestamp: number;
+  sessionId: string;
+  projectPath: string;
+  explanation?: string;
+  steps?: ConversationPlanStep[];
+}
+
 export interface ProcessedConversation {
   sessionId: string;
   projectPath: string;
   messages: ProcessedMessage[];
+  plans: ConversationPlan[];
   totalUsage: TokenUsage;
   model?: string;
   gitBranch?: string;
@@ -232,6 +254,10 @@ export interface PlanSummary {
   slug: string;
   title: string;
   preview: string;
+  provider: PlanProvider;
+  timestamp: number;
+  sessionId?: string;
+  projectPath?: string;
 }
 
 export interface PlanDetail {
@@ -239,6 +265,10 @@ export interface PlanDetail {
   slug: string;
   title: string;
   content: string;
+  provider: PlanProvider;
+  timestamp: number;
+  sessionId?: string;
+  projectPath?: string;
 }
 
 // Project info

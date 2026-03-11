@@ -27,7 +27,7 @@ const claudeSources = [
     label: "Conversation JSONL",
     path: `${PROJECTS_DIR}/<encoded-project>/<session-id>.jsonl`,
     detail:
-      "Primary Claude Code source. Each line is a raw event with nested message content, tool blocks, and assistant-side token usage.",
+      "Primary Claude Code source. Each line is a raw event with nested message content, tool blocks, assistant-side token usage, and optional `planContent` snapshots on plan-bearing events.",
   },
   {
     label: "Subagent JSONL",
@@ -54,7 +54,7 @@ const codexSources = [
     label: "Session JSONL",
     path: `${CODEX_SESSIONS_DIR}/YYYY/MM/DD/rollout-<timestamp>-<session-id>.jsonl`,
     detail:
-      "Primary Codex source. Messages, reasoning, tool calls, search calls, and token counters arrive as separate line items.",
+      "Primary Codex source. Messages, reasoning, tool calls, search calls, token counters, and `update_plan` function calls arrive as separate line items.",
   },
   {
     label: "SQLite thread metadata",
@@ -79,7 +79,7 @@ const frameworkRows = [
   {
     title: "Summary extractors",
     detail:
-      "List views use streaming JSONL readers. Claude summaries read assistant usage and Task tool blocks. Codex summaries read session_meta, response_item, turn_context, and the final cumulative token_count event.",
+      "List views use streaming JSONL readers. Claude summaries read assistant usage and Task tool blocks. Plan discovery scans Claude `planContent` events and Codex `update_plan` calls. Codex summaries read session_meta, response_item, turn_context, and the final cumulative token_count event.",
   },
   {
     title: "Enrichment",
@@ -107,7 +107,12 @@ const usageRows = [
   {
     area: "Conversation viewer",
     detail:
-      "Uses normalized ProcessedConversation messages so Claude and Codex render through the same UI for text, thinking, tool calls, tool results, and token badges.",
+      "Uses normalized ProcessedConversation messages so Claude and Codex render through the same UI for text, thinking, tool calls, tool results, token badges, and per-conversation plans.",
+  },
+  {
+    area: "Plans library",
+    detail:
+      "The global plans tab merges legacy markdown files, Claude `planContent` snapshots, and Codex `update_plan` snapshots into one provider-aware list with links back to the source conversation.",
   },
   {
     area: "Context analytics",
@@ -224,7 +229,8 @@ export default function SchemaPage() {
             <CardDescription>
               Claude keeps most parsing state inside a single event stream with
               nested message content blocks and task metadata on adjacent user
-              events.
+              events. Plans, when present, are stored as `planContent` on raw
+              events in the same JSONL.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -236,6 +242,7 @@ export default function SchemaPage() {
   cwd?: string;
   gitBranch?: string;
   agentId?: string;
+  planContent?: string;
   toolUseResult?: {
     agentId?: string;
     description?: string;
@@ -274,8 +281,8 @@ export default function SchemaPage() {
             <CardTitle className="text-base">Codex raw schema</CardTitle>
             <CardDescription>
               Codex splits session metadata, assistant output, tool activity,
-              and token accounting across separate line types that must be
-              joined during parsing.
+              plan snapshots, and token accounting across separate line types
+              that must be joined during parsing.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -337,7 +344,8 @@ export default function SchemaPage() {
               calls until the next cumulative `token_count` event arrives. That
               delta becomes one normalized assistant step. Developer messages
               and duplicate `agent_message` and `agent_reasoning` events are
-              skipped.
+              skipped, while `update_plan` function calls are normalized into
+              structured plan snapshots.
             </p>
           </CardContent>
         </Card>
@@ -379,6 +387,7 @@ type ProcessedConversation = {
   sessionId: string;
   projectPath: string;
   messages: ProcessedMessage[];
+  plans: ConversationPlan[];
   totalUsage: TokenUsage;
   model?: string;
   gitBranch?: string;
@@ -400,8 +409,8 @@ type ProcessedConversation = {
 };`}</CodeBlock>
           <p className="text-sm text-muted-foreground">
             This normalization is what lets the conversation list, analytics
-            views, subagent tabs, and conversation viewer work across Claude and
-            Codex with the same rendering components.
+            views, plans tab, subagent tabs, and conversation viewer work
+            across Claude and Codex with the same rendering components.
           </p>
         </CardContent>
       </Card>

@@ -11,11 +11,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
-import { Bot, ExternalLink, ChevronLeft, Database, Gauge, Download, Brain } from "lucide-react";
+import { Bot, ExternalLink, ChevronLeft, Database, Gauge, Download, Brain, FileText } from "lucide-react";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { SubagentInfo, TokenUsage } from "@/lib/types";
 import { ContextTab } from "./context-tab";
+import { PlanViewer } from "@/components/plans/plan-viewer";
+
+function providerLabel(provider: "claude" | "codex"): string {
+  return provider === "claude" ? "Claude" : "Codex";
+}
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -175,6 +180,8 @@ export function ConversationViewer({
   const { data: conversation, isLoading, error } = useConversation(projectPath, sessionId);
   const { data: tasks } = useTasks(sessionId);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const plans = conversation?.plans || [];
 
   if (isLoading) {
     return (
@@ -196,6 +203,7 @@ export function ConversationViewer({
 
   const subagents = conversation.subagents || [];
   const selectedSubagent = subagents.find((agent) => agent.agentId === selectedAgent);
+  const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
 
   return (
     <div>
@@ -243,6 +251,12 @@ export function ConversationViewer({
             {subagents.length} sub-agents
           </span>
         )}
+        {plans.length > 0 && (
+          <span className="text-sm text-muted-foreground flex items-center gap-1">
+            <FileText className="h-3.5 w-3.5" />
+            {plans.length} plans
+          </span>
+        )}
         {tasks && tasks.length > 0 && (
           <span className="text-sm text-muted-foreground">
             {tasks.length} tasks
@@ -258,6 +272,9 @@ export function ConversationViewer({
       <Tabs defaultValue="messages">
         <TabsList>
           <TabsTrigger value="messages">Messages</TabsTrigger>
+          <TabsTrigger value="plans">
+            Plans {plans.length > 0 ? `(${plans.length})` : ""}
+          </TabsTrigger>
           <TabsTrigger value="context">Context</TabsTrigger>
           <TabsTrigger value="subagents">
             Sub-agents{" "}
@@ -274,6 +291,77 @@ export function ConversationViewer({
             {conversation.messages.map((message) => (
               <MessageCard key={message.id} message={message} />
             ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="plans">
+          <div className="mt-4 space-y-4">
+            {plans.length > 0 && selectedPlan ? (
+              <>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {plans.map((plan) => (
+                    <Card
+                      key={plan.id}
+                      className={`cursor-pointer transition-colors ${
+                        selectedPlan.id === plan.id ? "border-primary" : "hover:bg-accent/50"
+                      }`}
+                      onClick={() => setSelectedPlanId(plan.id)}
+                    >
+                      <CardContent className="p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-medium text-sm">{plan.title}</div>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {providerLabel(plan.provider)}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-3">
+                          {plan.preview}
+                        </p>
+                        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>{format(plan.timestamp, "MMM d, yyyy h:mm a")}</span>
+                          <Link
+                            href={`/plans/${plan.id}`}
+                            className="hover:text-foreground transition-colors"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            Open
+                          </Link>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <Card>
+                  <CardContent className="p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="font-medium">{selectedPlan.title}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {format(selectedPlan.timestamp, "MMM d, yyyy h:mm a")}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">
+                          {providerLabel(selectedPlan.provider)}
+                        </Badge>
+                        <Link
+                          href={`/plans/${selectedPlan.id}`}
+                          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Open dedicated page
+                        </Link>
+                      </div>
+                    </div>
+                    <PlanViewer content={selectedPlan.content} />
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                No plans were captured for this conversation.
+              </p>
+            )}
           </div>
         </TabsContent>
 

@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { format } from "date-fns";
 import { usePlans } from "@/hooks/use-plans";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { FileText } from "lucide-react";
+
+function providerLabel(provider: "claude" | "codex"): string {
+  return provider === "claude" ? "Claude" : "Codex";
+}
 
 export default function PlansPage() {
   const { data: plans, isLoading } = usePlans();
@@ -32,14 +38,22 @@ export default function PlansPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <FileText className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                    <div>
-                      <p className="font-medium text-sm">{plan.title}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-medium text-sm">{plan.title}</p>
+                        <Badge variant="secondary" className="text-[10px] shrink-0">
+                          {providerLabel(plan.provider)}
+                        </Badge>
+                      </div>
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                         {plan.preview}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-2 font-mono">
-                        {plan.slug}
-                      </p>
+                      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <p className="font-mono truncate">{plan.slug}</p>
+                        <span className="shrink-0">
+                          {format(plan.timestamp, "MMM d")}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </CardContent>

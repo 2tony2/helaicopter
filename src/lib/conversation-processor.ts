@@ -11,13 +11,49 @@ import type {
   ContextBucket,
   ContextStep,
   ContextAnalytics,
+  ConversationPlan,
 } from "./types";
 import { TOOL_RESULT_MAX_LENGTH } from "./constants";
+import {
+  encodePlanId,
+  summarizePlanContent,
+  toEpochMs,
+} from "./plan-utils";
 
-function toEpochMs(ts: unknown): number {
-  if (typeof ts === "number") return ts;
-  if (typeof ts === "string") return new Date(ts).getTime();
-  return 0;
+export function extractClaudePlans(
+  events: RawEvent[],
+  sessionId: string,
+  projectPath: string
+): ConversationPlan[] {
+  const plans: ConversationPlan[] = [];
+
+  for (const event of events) {
+    if (typeof event.planContent !== "string" || !event.planContent.trim()) {
+      continue;
+    }
+
+    const metadata = summarizePlanContent(
+      event.planContent,
+      event.slug || sessionId
+    );
+
+    plans.push({
+      id: encodePlanId({
+        kind: "claude-session",
+        projectPath,
+        sessionId,
+        eventId: event.uuid,
+      }),
+      provider: "claude",
+      timestamp: toEpochMs(event.timestamp),
+      sessionId,
+      projectPath,
+      content: event.planContent,
+      ...metadata,
+    });
+  }
+
+  return plans.sort((a, b) => b.timestamp - a.timestamp);
 }
 
 function usageTotal(u: TokenUsage | undefined) {
@@ -44,9 +80,10 @@ export function processConversation(
   sessionId: string,
   projectPath: string
 ): ProcessedConversation {
+  const plans = extractClaudePlans(events, sessionId, projectPath);
   const messages: ProcessedMessage[] = [];
   const pendingToolCalls = new Map<string, DisplayToolCallBlock>();
-  let totalUsage: TokenUsage = {
+  const totalUsage: TokenUsage = {
     input_tokens: 0,
     output_tokens: 0,
     cache_creation_input_tokens: 0,
@@ -329,6 +366,7 @@ export function processConversation(
     sessionId,
     projectPath,
     messages,
+    plans,
     totalUsage,
     model,
     gitBranch,
