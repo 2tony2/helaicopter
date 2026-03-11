@@ -25,6 +25,9 @@ import type {
   HistoryEntry,
   AnalyticsData,
   AnalyticsCostBreakdown,
+  AnalyticsRates,
+  AnalyticsTimeSeries,
+  AnalyticsTimeSeriesPoint,
   DailyUsage,
   SubagentInfo,
   ProviderBreakdown,
@@ -48,6 +51,169 @@ import {
   listHistoricalConversationSummaries,
 } from "./conversation-db";
 import { isTimestampToday, startOfTodayMs } from "./time-windows";
+
+const TIME_SERIES_KEYS = ["hourly", "daily", "weekly", "monthly"] as const;
+type TimeSeriesKey = (typeof TIME_SERIES_KEYS)[number];
+
+function startOfUtcHour(timestamp: number): Date {
+  const date = new Date(timestamp);
+  date.setUTCMinutes(0, 0, 0);
+  return date;
+}
+
+function startOfUtcDay(timestamp: number): Date {
+  const date = new Date(timestamp);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
+
+function startOfUtcWeek(timestamp: number): Date {
+  const date = startOfUtcDay(timestamp);
+  const day = date.getUTCDay();
+  const delta = (day + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - delta);
+  return date;
+}
+
+function startOfUtcMonth(timestamp: number): Date {
+  const date = new Date(timestamp);
+  date.setUTCDate(1);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
+
+function getBucketStart(timestamp: number, key: TimeSeriesKey): Date {
+  switch (key) {
+    case "hourly":
+      return startOfUtcHour(timestamp);
+    case "daily":
+      return startOfUtcDay(timestamp);
+    case "weekly":
+      return startOfUtcWeek(timestamp);
+    case "monthly":
+      return startOfUtcMonth(timestamp);
+  }
+}
+
+function getNextBucketStart(start: Date, key: TimeSeriesKey): Date {
+  const next = new Date(start);
+  switch (key) {
+    case "hourly":
+      next.setUTCHours(next.getUTCHours() + 1);
+      break;
+    case "daily":
+      next.setUTCDate(next.getUTCDate() + 1);
+      break;
+    case "weekly":
+      next.setUTCDate(next.getUTCDate() + 7);
+      break;
+    case "monthly":
+      next.setUTCMonth(next.getUTCMonth() + 1, 1);
+      break;
+  }
+  return next;
+}
+
+function formatBucketLabel(start: Date, key: TimeSeriesKey): string {
+  if (key === "hourly") {
+    return start.toISOString().slice(5, 13).replace("T", " ") + ":00";
+  }
+  if (key === "daily") {
+    return start.toISOString().slice(0, 10);
+  }
+  if (key === "weekly") {
+    return `Week of ${start.toISOString().slice(0, 10)}`;
+  }
+  return start.toISOString().slice(0, 7);
+}
+
+function createEmptyTimeSeriesPoint(
+  start: Date,
+  key: TimeSeriesKey
+): AnalyticsTimeSeriesPoint {
+  const end = getNextBucketStart(start, key);
+  return {
+    key: start.toISOString(),
+    label: formatBucketLabel(start, key),
+    start: start.toISOString(),
+    end: end.toISOString(),
+    estimatedCost: 0,
+    claudeEstimatedCost: 0,
+    codexEstimatedCost: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+    conversations: 0,
+    toolCalls: 0,
+    subagents: 0,
+    claudeInputTokens: 0,
+    claudeOutputTokens: 0,
+    claudeCacheWriteTokens: 0,
+    claudeCacheReadTokens: 0,
+    claudeReasoningTokens: 0,
+    claudeTotalTokens: 0,
+    claudeConversations: 0,
+    claudeToolCalls: 0,
+    claudeSubagents: 0,
+    codexInputTokens: 0,
+    codexOutputTokens: 0,
+    codexCacheWriteTokens: 0,
+    codexCacheReadTokens: 0,
+    codexReasoningTokens: 0,
+    codexTotalTokens: 0,
+    codexConversations: 0,
+    codexToolCalls: 0,
+    codexSubagents: 0,
+  };
+}
+
+function materializeTimeSeries(
+  map: Map<string, AnalyticsTimeSeriesPoint>,
+  key: TimeSeriesKey
+): AnalyticsTimeSeriesPoint[] {
+  const entries = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const first = new Date(entries[0][0]);
+  const last = new Date(entries[entries.length - 1][0]);
+  const results: AnalyticsTimeSeriesPoint[] = [];
+  const byKey = new Map(entries);
+
+  for (let cursor = first; cursor <= last; cursor = getNextBucketStart(cursor, key)) {
+    const bucketKey = cursor.toISOString();
+    results.push(byKey.get(bucketKey) || createEmptyTimeSeriesPoint(cursor, key));
+  }
+
+  return results;
+}
+
+function buildRateValue(total: number, hours: number, days: number): AnalyticsRates["spend"] {
+  return {
+    perHour: total / hours,
+    perDay: total / days,
+    perWeek: (total / days) * 7,
+    perMonth: (total / days) * 30,
+  };
+}
+
+function hasLongContextPremium(model?: string): boolean {
+  if (!model) {
+    return false;
+  }
+
+  return (
+    model.includes("opus-4-6") ||
+    model.includes("opus-4-5") ||
+    model.includes("sonnet-4-6") ||
+    model.includes("sonnet-4-5") ||
+    model.includes("sonnet-4")
+  );
+}
 
 async function listClaudeSessionPlans(): Promise<PlanSummary[]> {
   const plans: PlanSummary[] = [];
@@ -685,6 +851,7 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
   let totalOutputTokens = 0;
   let totalCacheCreationTokens = 0;
   let totalCacheReadTokens = 0;
+  let totalReasoningTokens = 0;
   let totalToolCalls = 0;
   const modelBreakdown: Record<string, number> = {};
   const toolBreakdown: Record<string, number> = {};
@@ -695,6 +862,18 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
   const dailyMap = new Map<string, DailyUsage>();
   const costBreakdownByProvider: Record<string, AnalyticsCostBreakdown> = {};
   const costBreakdownByModel: Record<string, AnalyticsCostBreakdown> = {};
+  const timeSeriesMaps: Record<TimeSeriesKey, Map<string, AnalyticsTimeSeriesPoint>> = {
+    hourly: new Map(),
+    daily: new Map(),
+    weekly: new Map(),
+    monthly: new Map(),
+  };
+  let totalInputCost = 0;
+  let totalOutputCost = 0;
+  let totalCacheWriteCost = 0;
+  let totalCacheReadCost = 0;
+  let longContextPremium = 0;
+  let longContextConversations = 0;
 
   function emptyCostBreakdown(): AnalyticsCostBreakdown {
     return {
@@ -738,11 +917,67 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
 
   for (const conv of conversations) {
     const providerKey = getProviderKey(conv);
+    const reasoningTokens = conv.totalReasoningTokens || 0;
+    const usage = {
+      inputTokens: conv.totalInputTokens,
+      outputTokens: conv.totalOutputTokens,
+      cacheWriteTokens: conv.totalCacheCreationTokens,
+      cacheReadTokens: conv.totalCacheReadTokens,
+    };
+    const baseCost = calculateCost(usage, conv.model);
+    let convLongContextPremium = 0;
+    let convLongContextConversations = 0;
+    if (conv.totalInputTokens > 200_000 && hasLongContextPremium(conv.model)) {
+      convLongContextPremium =
+        baseCost.inputCost +
+        baseCost.outputCost * 0.5 +
+        baseCost.cacheWriteCost +
+        baseCost.cacheReadCost;
+      convLongContextConversations = 1;
+    }
+    const convCostBreakdown: AnalyticsCostBreakdown = {
+      inputCost: baseCost.inputCost,
+      outputCost: baseCost.outputCost,
+      cacheWriteCost: baseCost.cacheWriteCost,
+      cacheReadCost: baseCost.cacheReadCost,
+      longContextPremium: convLongContextPremium,
+      longContextConversations: convLongContextConversations,
+      totalCost:
+        baseCost.inputCost +
+        baseCost.outputCost +
+        baseCost.cacheWriteCost +
+        baseCost.cacheReadCost +
+        convLongContextPremium,
+    };
+    const totalTokensForConv =
+      conv.totalInputTokens +
+      conv.totalOutputTokens +
+      conv.totalCacheCreationTokens +
+      conv.totalCacheReadTokens +
+      reasoningTokens;
+
     totalInputTokens += conv.totalInputTokens;
     totalOutputTokens += conv.totalOutputTokens;
     totalCacheCreationTokens += conv.totalCacheCreationTokens;
     totalCacheReadTokens += conv.totalCacheReadTokens;
+    totalReasoningTokens += reasoningTokens;
     totalToolCalls += conv.toolUseCount;
+    totalInputCost += baseCost.inputCost;
+    totalOutputCost += baseCost.outputCost;
+    totalCacheWriteCost += baseCost.cacheWriteCost;
+    totalCacheReadCost += baseCost.cacheReadCost;
+    longContextPremium += convLongContextPremium;
+    longContextConversations += convLongContextConversations;
+
+    const providerCostBreakdown =
+      costBreakdownByProvider[providerKey] || emptyCostBreakdown();
+    const modelKey = conv.model || "unknown";
+    const modelCostBreakdown =
+      costBreakdownByModel[modelKey] || emptyCostBreakdown();
+    addCostBreakdown(providerCostBreakdown, convCostBreakdown);
+    addCostBreakdown(modelCostBreakdown, convCostBreakdown);
+    costBreakdownByProvider[providerKey] = providerCostBreakdown;
+    costBreakdownByModel[modelKey] = modelCostBreakdown;
 
     if (conv.model) {
       modelBreakdown[conv.model] = (modelBreakdown[conv.model] || 0) + 1;
@@ -816,78 +1051,52 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
         existing.codexSubagents += conv.subagentCount;
       }
       dailyMap.set(date, existing);
-    }
-  }
 
-  // Estimate cost per-conversation with full breakdown
-  let totalInputCost = 0;
-  let totalOutputCost = 0;
-  let totalCacheWriteCost = 0;
-  let totalCacheReadCost = 0;
-  let longContextPremium = 0;
-  let longContextConversations = 0;
+      for (const timeSeriesKey of TIME_SERIES_KEYS) {
+        const bucketStart = getBucketStart(conv.timestamp, timeSeriesKey);
+        const bucketId = bucketStart.toISOString();
+        const existingBucket =
+          timeSeriesMaps[timeSeriesKey].get(bucketId) ||
+          createEmptyTimeSeriesPoint(bucketStart, timeSeriesKey);
 
-  for (const conv of conversations) {
-    const usage = {
-      inputTokens: conv.totalInputTokens,
-      outputTokens: conv.totalOutputTokens,
-      cacheWriteTokens: conv.totalCacheCreationTokens,
-      cacheReadTokens: conv.totalCacheReadTokens,
-    };
-    const baseCost = calculateCost(usage, conv.model);
-    totalInputCost += baseCost.inputCost;
-    totalOutputCost += baseCost.outputCost;
-    totalCacheWriteCost += baseCost.cacheWriteCost;
-    totalCacheReadCost += baseCost.cacheReadCost;
-    const providerKey = getProviderKey(conv);
-    const providerCostBreakdown =
-      costBreakdownByProvider[providerKey] || emptyCostBreakdown();
-    const modelKey = conv.model || "unknown";
-    const modelCostBreakdown =
-      costBreakdownByModel[modelKey] || emptyCostBreakdown();
+        existingBucket.estimatedCost += convCostBreakdown.totalCost;
+        existingBucket.inputTokens += conv.totalInputTokens;
+        existingBucket.outputTokens += conv.totalOutputTokens;
+        existingBucket.cacheWriteTokens += conv.totalCacheCreationTokens;
+        existingBucket.cacheReadTokens += conv.totalCacheReadTokens;
+        existingBucket.reasoningTokens += reasoningTokens;
+        existingBucket.totalTokens += totalTokensForConv;
+        existingBucket.conversations += 1;
+        existingBucket.toolCalls += conv.toolUseCount;
+        existingBucket.subagents += conv.subagentCount;
 
-    // Detect long context (>200K active input tokens per conversation, excludes cache)
-    const activeInputForConv = conv.totalInputTokens;
-    let convLongContextPremium = 0;
-    let convLongContextConversations = 0;
-    if (activeInputForConv > 200_000) {
-      const model = conv.model || "";
-      const isEligible =
-        model.includes("opus-4-6") || model.includes("opus-4-5") ||
-        model.includes("sonnet-4-6") || model.includes("sonnet-4-5") || model.includes("sonnet-4");
-      if (isEligible) {
-        // Premium is the difference: input 2x (so +1x extra), output 1.5x (so +0.5x extra), cache 2x (so +1x extra)
-        const premium =
-          baseCost.inputCost * 1 +
-          baseCost.outputCost * 0.5 +
-          baseCost.cacheWriteCost * 1 +
-          baseCost.cacheReadCost * 1;
-        longContextPremium += premium;
-        longContextConversations++;
-        convLongContextPremium = premium;
-        convLongContextConversations = 1;
+        if (providerKey === "claude") {
+          existingBucket.claudeEstimatedCost += convCostBreakdown.totalCost;
+          existingBucket.claudeInputTokens += conv.totalInputTokens;
+          existingBucket.claudeOutputTokens += conv.totalOutputTokens;
+          existingBucket.claudeCacheWriteTokens += conv.totalCacheCreationTokens;
+          existingBucket.claudeCacheReadTokens += conv.totalCacheReadTokens;
+          existingBucket.claudeReasoningTokens += reasoningTokens;
+          existingBucket.claudeTotalTokens += totalTokensForConv;
+          existingBucket.claudeConversations += 1;
+          existingBucket.claudeToolCalls += conv.toolUseCount;
+          existingBucket.claudeSubagents += conv.subagentCount;
+        } else {
+          existingBucket.codexEstimatedCost += convCostBreakdown.totalCost;
+          existingBucket.codexInputTokens += conv.totalInputTokens;
+          existingBucket.codexOutputTokens += conv.totalOutputTokens;
+          existingBucket.codexCacheWriteTokens += conv.totalCacheCreationTokens;
+          existingBucket.codexCacheReadTokens += conv.totalCacheReadTokens;
+          existingBucket.codexReasoningTokens += reasoningTokens;
+          existingBucket.codexTotalTokens += totalTokensForConv;
+          existingBucket.codexConversations += 1;
+          existingBucket.codexToolCalls += conv.toolUseCount;
+          existingBucket.codexSubagents += conv.subagentCount;
+        }
+
+        timeSeriesMaps[timeSeriesKey].set(bucketId, existingBucket);
       }
     }
-
-    const convCostBreakdown: AnalyticsCostBreakdown = {
-      inputCost: baseCost.inputCost,
-      outputCost: baseCost.outputCost,
-      cacheWriteCost: baseCost.cacheWriteCost,
-      cacheReadCost: baseCost.cacheReadCost,
-      longContextPremium: convLongContextPremium,
-      longContextConversations: convLongContextConversations,
-      totalCost:
-        baseCost.inputCost +
-        baseCost.outputCost +
-        baseCost.cacheWriteCost +
-        baseCost.cacheReadCost +
-        convLongContextPremium,
-    };
-
-    addCostBreakdown(providerCostBreakdown, convCostBreakdown);
-    addCostBreakdown(modelCostBreakdown, convCostBreakdown);
-    costBreakdownByProvider[providerKey] = providerCostBreakdown;
-    costBreakdownByModel[modelKey] = modelCostBreakdown;
   }
 
   const estimatedCost =
@@ -903,12 +1112,69 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
     totalCost: estimatedCost,
   };
 
+  const windowEnd = Date.now();
+  const earliestTimestamp =
+    conversations.length > 0
+      ? Math.min(...conversations.map((conv) => conv.timestamp || windowEnd))
+      : windowEnd;
+  const windowStart = days
+    ? windowEnd - days * 24 * 60 * 60 * 1000
+    : earliestTimestamp;
+  const durationMs = Math.max(windowEnd - windowStart, 60 * 60 * 1000);
+  const durationHours = Math.max(durationMs / (60 * 60 * 1000), 1);
+  const durationDays = Math.max(durationMs / (24 * 60 * 60 * 1000), 1 / 24);
+  const totalTokens =
+    totalInputTokens +
+    totalOutputTokens +
+    totalCacheCreationTokens +
+    totalCacheReadTokens +
+    totalReasoningTokens;
+  const rates: AnalyticsRates = {
+    spend: buildRateValue(estimatedCost, durationHours, durationDays),
+    totalTokens: buildRateValue(totalTokens, durationHours, durationDays),
+    inputTokens: buildRateValue(totalInputTokens, durationHours, durationDays),
+    outputTokens: buildRateValue(totalOutputTokens, durationHours, durationDays),
+    cacheWriteTokens: buildRateValue(
+      totalCacheCreationTokens,
+      durationHours,
+      durationDays
+    ),
+    cacheReadTokens: buildRateValue(
+      totalCacheReadTokens,
+      durationHours,
+      durationDays
+    ),
+    reasoningTokens: buildRateValue(
+      totalReasoningTokens,
+      durationHours,
+      durationDays
+    ),
+    conversations: buildRateValue(
+      conversations.length,
+      durationHours,
+      durationDays
+    ),
+    toolCalls: buildRateValue(totalToolCalls, durationHours, durationDays),
+    subagents: buildRateValue(
+      conversations.reduce((sum, conv) => sum + conv.subagentCount, 0),
+      durationHours,
+      durationDays
+    ),
+  };
+  const timeSeries: AnalyticsTimeSeries = {
+    hourly: materializeTimeSeries(timeSeriesMaps.hourly, "hourly"),
+    daily: materializeTimeSeries(timeSeriesMaps.daily, "daily"),
+    weekly: materializeTimeSeries(timeSeriesMaps.weekly, "weekly"),
+    monthly: materializeTimeSeries(timeSeriesMaps.monthly, "monthly"),
+  };
+
   return {
     totalConversations: conversations.length,
     totalInputTokens,
     totalOutputTokens,
     totalCacheCreationTokens,
     totalCacheReadTokens,
+    totalReasoningTokens,
     totalToolCalls,
     modelBreakdown,
     toolBreakdown,
@@ -919,6 +1185,8 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
     dailyUsage: Array.from(dailyMap.values()).sort((a, b) =>
       a.date.localeCompare(b.date)
     ),
+    rates,
+    timeSeries,
     estimatedCost,
     costBreakdown,
     costBreakdownByProvider,

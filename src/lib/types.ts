@@ -307,6 +307,70 @@ export interface ProviderBreakdown {
   codex: number;
 }
 
+export interface AnalyticsRateValue {
+  perHour: number;
+  perDay: number;
+  perWeek: number;
+  perMonth: number;
+}
+
+export interface AnalyticsRates {
+  spend: AnalyticsRateValue;
+  totalTokens: AnalyticsRateValue;
+  inputTokens: AnalyticsRateValue;
+  outputTokens: AnalyticsRateValue;
+  cacheWriteTokens: AnalyticsRateValue;
+  cacheReadTokens: AnalyticsRateValue;
+  reasoningTokens: AnalyticsRateValue;
+  conversations: AnalyticsRateValue;
+  toolCalls: AnalyticsRateValue;
+  subagents: AnalyticsRateValue;
+}
+
+export interface AnalyticsTimeSeriesPoint {
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+  estimatedCost: number;
+  claudeEstimatedCost: number;
+  codexEstimatedCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  conversations: number;
+  toolCalls: number;
+  subagents: number;
+  claudeInputTokens: number;
+  claudeOutputTokens: number;
+  claudeCacheWriteTokens: number;
+  claudeCacheReadTokens: number;
+  claudeReasoningTokens: number;
+  claudeTotalTokens: number;
+  claudeConversations: number;
+  claudeToolCalls: number;
+  claudeSubagents: number;
+  codexInputTokens: number;
+  codexOutputTokens: number;
+  codexCacheWriteTokens: number;
+  codexCacheReadTokens: number;
+  codexReasoningTokens: number;
+  codexTotalTokens: number;
+  codexConversations: number;
+  codexToolCalls: number;
+  codexSubagents: number;
+}
+
+export interface AnalyticsTimeSeries {
+  hourly: AnalyticsTimeSeriesPoint[];
+  daily: AnalyticsTimeSeriesPoint[];
+  weekly: AnalyticsTimeSeriesPoint[];
+  monthly: AnalyticsTimeSeriesPoint[];
+}
+
 export type SupportedProvider = "claude" | "codex";
 
 export interface ProviderSubscriptionSetting {
@@ -327,6 +391,7 @@ export interface AnalyticsData {
   totalOutputTokens: number;
   totalCacheCreationTokens: number;
   totalCacheReadTokens: number;
+  totalReasoningTokens: number;
   totalToolCalls: number;
   modelBreakdown: Record<string, number>;
   toolBreakdown: Record<string, number>;
@@ -335,6 +400,8 @@ export interface AnalyticsData {
   toolBreakdownByProvider: Record<string, ProviderBreakdown>;
   subagentTypeBreakdownByProvider: Record<string, ProviderBreakdown>;
   dailyUsage: DailyUsage[];
+  rates: AnalyticsRates;
+  timeSeries: AnalyticsTimeSeries;
   estimatedCost: number;
   costBreakdown: AnalyticsCostBreakdown;
   costBreakdownByProvider: AnalyticsCostBreakdownMap;

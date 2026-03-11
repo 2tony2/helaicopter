@@ -10,9 +10,23 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  AreaChart,
+  Area,
+  Legend,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { DailyUsage, ProviderBreakdown } from "@/lib/types";
+import { formatCost } from "@/lib/pricing";
+import type {
+  DailyUsage,
+  ProviderBreakdown,
+  AnalyticsTimeSeriesPoint,
+} from "@/lib/types";
+
+function formatTokenAxis(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+  return String(value);
+}
 
 function providerBreakdownToChartData(data: Record<string, ProviderBreakdown>) {
   return Object.entries(data)
@@ -273,6 +287,210 @@ export function ModelBreakdownChart({
             <Bar dataKey="claude" fill="#2563eb" name="Claude" stackId="a" radius={[0, 0, 0, 0]} />
             <Bar dataKey="codex" fill="#93c5fd" name="Codex" stackId="a" radius={[0, 4, 4, 0]} />
           </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function SpendTrendChart({
+  data,
+  granularityLabel,
+}: {
+  data: AnalyticsTimeSeriesPoint[];
+  granularityLabel: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Spend Trend by {granularityLabel}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={320}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="label" className="text-xs" minTickGap={24} />
+            <YAxis
+              className="text-xs"
+              tickFormatter={(value) => formatCost(value)}
+            />
+            <Tooltip
+              formatter={(value) =>
+                typeof value === "number" ? formatCost(value) : String(value)
+              }
+              labelStyle={{ color: "var(--foreground)" }}
+              contentStyle={{
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+              }}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="estimatedCost"
+              stroke="#64748b"
+              strokeWidth={2.5}
+              dot={false}
+              name="Total spend"
+            />
+            <Line
+              type="monotone"
+              dataKey="claudeEstimatedCost"
+              stroke="#2563eb"
+              strokeWidth={2}
+              dot={false}
+              name="Claude spend"
+            />
+            <Line
+              type="monotone"
+              dataKey="codexEstimatedCost"
+              stroke="#059669"
+              strokeWidth={2}
+              dot={false}
+              name="Codex spend"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function TokenMixChart({
+  data,
+  granularityLabel,
+}: {
+  data: AnalyticsTimeSeriesPoint[];
+  granularityLabel: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Token Mix by {granularityLabel}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={320}>
+          <AreaChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="label" className="text-xs" minTickGap={24} />
+            <YAxis className="text-xs" tickFormatter={formatTokenAxis} />
+            <Tooltip
+              formatter={(value) =>
+                typeof value === "number" ? value.toLocaleString() : String(value)
+              }
+              labelStyle={{ color: "var(--foreground)" }}
+              contentStyle={{
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+              }}
+            />
+            <Legend />
+            <Area
+              type="monotone"
+              dataKey="inputTokens"
+              stackId="tokens"
+              stroke="#2563eb"
+              fill="#2563eb"
+              fillOpacity={0.6}
+              name="Input"
+            />
+            <Area
+              type="monotone"
+              dataKey="outputTokens"
+              stackId="tokens"
+              stroke="#059669"
+              fill="#059669"
+              fillOpacity={0.55}
+              name="Output"
+            />
+            <Area
+              type="monotone"
+              dataKey="cacheWriteTokens"
+              stackId="tokens"
+              stroke="#d97706"
+              fill="#d97706"
+              fillOpacity={0.5}
+              name="Cache write"
+            />
+            <Area
+              type="monotone"
+              dataKey="cacheReadTokens"
+              stackId="tokens"
+              stroke="#7c3aed"
+              fill="#7c3aed"
+              fillOpacity={0.45}
+              name="Cache read"
+            />
+            <Area
+              type="monotone"
+              dataKey="reasoningTokens"
+              stackId="tokens"
+              stroke="#dc2626"
+              fill="#dc2626"
+              fillOpacity={0.4}
+              name="Reasoning"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ActivityTrendChart({
+  data,
+  granularityLabel,
+}: {
+  data: AnalyticsTimeSeriesPoint[];
+  granularityLabel: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Conversation Activity by {granularityLabel}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={320}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="label" className="text-xs" minTickGap={24} />
+            <YAxis className="text-xs" />
+            <Tooltip
+              formatter={(value) =>
+                typeof value === "number" ? value.toLocaleString() : String(value)
+              }
+              labelStyle={{ color: "var(--foreground)" }}
+              contentStyle={{
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+              }}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="conversations"
+              stroke="#2563eb"
+              strokeWidth={2}
+              dot={false}
+              name="Conversations"
+            />
+            <Line
+              type="monotone"
+              dataKey="toolCalls"
+              stroke="#d97706"
+              strokeWidth={2}
+              dot={false}
+              name="Tool calls"
+            />
+            <Line
+              type="monotone"
+              dataKey="subagents"
+              stroke="#7c3aed"
+              strokeWidth={2}
+              dot={false}
+              name="Sub-agents"
+            />
+          </LineChart>
         </ResponsiveContainer>
       </CardContent>
     </Card>

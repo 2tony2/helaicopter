@@ -9,14 +9,23 @@ import {
   ModelBreakdownChart,
   ToolUsageChart,
   SubagentTypeChart,
+  SpendTrendChart,
+  TokenMixChart,
+  ActivityTrendChart,
 } from "@/components/analytics/charts";
 import { CostBreakdownCard } from "@/components/analytics/cost-breakdown-card";
+import {
+  SpendRateCard,
+  TokenRateCard,
+  ActivityRateCard,
+} from "@/components/analytics/rate-summary-cards";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ProviderFilter, type Provider } from "@/components/ui/provider-filter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   MessageSquare,
   Wrench,
@@ -36,6 +45,7 @@ function formatTokens(n: number): string {
 export default function AnalyticsPage() {
   const [days, setDays] = useState<number | undefined>(7);
   const [provider, setProvider] = useState<Provider>("all");
+  const [granularity, setGranularity] = useState<"hourly" | "daily" | "weekly" | "monthly">("daily");
   const [showSubscriptionPercent, setShowSubscriptionPercent] = useState(false);
   const { data: analytics, isLoading } = useAnalytics(days, provider);
   const {
@@ -93,6 +103,15 @@ export default function AnalyticsPage() {
     activeSubscriptionBudget > 0
       ? (filteredProviderCost / activeSubscriptionBudget) * 100
       : 0;
+  const granularityLabel =
+    granularity === "hourly"
+      ? "Hour"
+      : granularity === "daily"
+        ? "Day"
+        : granularity === "weekly"
+          ? "Week"
+          : "Month";
+  const selectedTimeSeries = analytics?.timeSeries[granularity] ?? [];
 
   return (
     <div className="space-y-8">
@@ -111,8 +130,8 @@ export default function AnalyticsPage() {
 
       {isLoading ? (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-            {Array.from({ length: 5 }).map((_, i) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-28" />
             ))}
           </div>
@@ -126,7 +145,7 @@ export default function AnalyticsPage() {
       ) : analytics ? (
         <>
           {/* Top-level stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
             <StatsCard
               title="Conversations"
               value={analytics.totalConversations}
@@ -149,6 +168,12 @@ export default function AnalyticsPage() {
               icon={<DatabaseZap className="h-4 w-4" />}
             />
             <StatsCard
+              title="Reasoning Tokens"
+              value={formatTokens(analytics.totalReasoningTokens)}
+              description="Codex reasoning token volume"
+              icon={<Database className="h-4 w-4" />}
+            />
+            <StatsCard
               title="Tool Calls"
               value={analytics.totalToolCalls.toLocaleString()}
               icon={<Wrench className="h-4 w-4" />}
@@ -167,6 +192,12 @@ export default function AnalyticsPage() {
               }
               icon={<CreditCard className="h-4 w-4" />}
             />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <SpendRateCard rates={analytics.rates} />
+            <TokenRateCard rates={analytics.rates} />
+            <ActivityRateCard rates={analytics.rates} />
           </div>
 
           <Card>
@@ -274,6 +305,43 @@ export default function AnalyticsPage() {
             }
             showSubscriptionPercent={showSubscriptionPercent}
           />
+
+          <Tabs value={granularity} onValueChange={(value) => setGranularity(value as typeof granularity)}>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-sm">Time Bucket Analytics</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Compare spend, token mix, and conversation activity by hour, day, week, or month.
+                  </p>
+                </div>
+                <TabsList>
+                  <TabsTrigger value="hourly">Hour</TabsTrigger>
+                  <TabsTrigger value="daily">Day</TabsTrigger>
+                  <TabsTrigger value="weekly">Week</TabsTrigger>
+                  <TabsTrigger value="monthly">Month</TabsTrigger>
+                </TabsList>
+              </CardHeader>
+              <CardContent>
+                <TabsContent value={granularity} className="mt-0 space-y-6">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <SpendTrendChart
+                      data={selectedTimeSeries}
+                      granularityLabel={granularityLabel}
+                    />
+                    <TokenMixChart
+                      data={selectedTimeSeries}
+                      granularityLabel={granularityLabel}
+                    />
+                  </div>
+                  <ActivityTrendChart
+                    data={selectedTimeSeries}
+                    granularityLabel={granularityLabel}
+                  />
+                </TabsContent>
+              </CardContent>
+            </Card>
+          </Tabs>
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
