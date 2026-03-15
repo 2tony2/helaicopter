@@ -50,7 +50,7 @@ import {
   getHistoricalTasksForSession,
   listHistoricalConversationSummaries,
 } from "./conversation-db";
-import { isTimestampToday, startOfTodayMs } from "./time-windows";
+import { startOfTodayMs } from "./time-windows";
 
 const TIME_SERIES_KEYS = ["hourly", "daily", "weekly", "monthly"] as const;
 type TimeSeriesKey = (typeof TIME_SERIES_KEYS)[number];

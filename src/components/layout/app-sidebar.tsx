@@ -9,12 +9,14 @@ import {
   DollarSign,
   Database,
   Sparkles,
+  Bug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Analytics", icon: BarChart3 },
   { href: "/conversations", label: "Conversations", icon: MessageSquare },
+  { href: "/debugging", label: "Debugging", icon: Bug },
   { href: "/plans", label: "Plans", icon: FileText },
   { href: "/prompts", label: "Prompts", icon: Sparkles },
   { href: "/databases", label: "Databases", icon: Database },
