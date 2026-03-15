@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --import tsx --test src/lib/debugging.test.ts",
     "db:refresh": "uv run python -m helaicopter_db.refresh --trigger cli",
     "db:migrate:oltp": "uv run alembic -x target=oltp upgrade head",
     "db:migrate:olap": "uv run alembic -x target=olap upgrade head",
