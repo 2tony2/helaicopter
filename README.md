@@ -79,6 +79,12 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 - Per-model token rates (input, output, cached input) for GPT-5.4, GPT-5.2, GPT-5.1, GPT-5, GPT-5-mini, o3, o4-mini
 - Sources: [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing/) and [Codex Pricing](https://developers.openai.com/codex/pricing/)
 
+## Runtime Architecture
+
+- **SQLite** stores app-local metadata, refresh bookkeeping, evaluations, and historical detail tables.
+- **ClickHouse** is the primary analytics and event store for warehouse-style reads.
+- **DuckDB** is no longer on the primary serving path. If present, it is only a legacy/local inspection artifact surfaced on the Databases page.
+
 ## How It Works
 
 ### Data Sources
@@ -209,6 +215,7 @@ npm run lint     # ESLint
 npm run go:live-ingestion              # Run the Go live ingestion service
 npm run db:bootstrap:clickhouse        # Apply the tracked ClickHouse schema to a running server
 npm run db:bootstrap:clickhouse:local  # Start/reuse a local ClickHouse container and initialize the schema
+npm run db:backfill:clickhouse         # Load the historical export window into ClickHouse
 ```
 
 ## ClickHouse Bootstrap
@@ -239,6 +246,13 @@ HELAICOPTER_CLICKHOUSE_SECURE=0
 
 The detailed schema layout, partitions, and sort keys are documented in [`docs/clickhouse-schema.md`](docs/clickhouse-schema.md).
 
+ClickHouse-backed analytics and conversation-summary reads are enabled by default. To force a temporary fallback to the legacy parser/SQLite path, set:
+
+```bash
+HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=0
+HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=0
+```
+
 ## Go Live Ingestion
 
 The live ingestion service lives in [`go/live-ingestion`](/Users/tony/Code/helaicopter/go/live-ingestion). It watches Claude and Codex session files, normalizes newly appended JSONL lines into ClickHouse, and exposes a persisted SSE fanout stream.
@@ -253,6 +267,13 @@ When the Next.js app is running, the UI consumes live updates through its same-o
 That proxy forwards to the Go ingester's `/events` endpoint, emits analytics invalidation plus conversation update events for the browser, and keeps the existing polling path as a fallback.
 
 Detailed setup, environment variables, checkpoint behavior, and the event id / dedupe contract are documented in [`docs/go-live-ingestion.md`](/Users/tony/Code/helaicopter/docs/go-live-ingestion.md).
+
+## Troubleshooting
+
+- If the Databases page shows ClickHouse as unreachable, start or bootstrap it with `npm run db:bootstrap:clickhouse:local`.
+- If historical analytics look empty, run `npm run db:backfill:clickhouse` to repopulate the ClickHouse tables.
+- If live data is stale, start `npm run go:live-ingestion` and set `HELAICOPTER_ENABLE_LIVE_INGESTION=1` for the app process.
+- If you need to compare against the legacy read path during rollout validation, set `HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=0` and `HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=0`.
 
 ## License
 

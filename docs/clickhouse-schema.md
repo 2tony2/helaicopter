@@ -7,7 +7,9 @@ This schema is the first tracked ClickHouse footprint for the kappa migration. I
 - aggregate-backed views for latest conversation state
 - aggregate-backed views for daily, tool, and subagent rollups
 
-It does not replace the current SQLite or DuckDB runtime paths yet.
+ClickHouse is now the primary analytics warehouse for the app. SQLite remains the
+local metadata/control-plane store, and DuckDB is only retained as a legacy
+artifact for local inspection while the old refresh path is still present.
 
 ## Local Bootstrap
 
@@ -72,7 +74,22 @@ To include the ClickHouse backfill inside the normal refresh job and status book
 HELAICOPTER_ENABLE_CLICKHOUSE_BACKFILL=1 npm run db:refresh
 ```
 
-When that flag is enabled, the SQLite and DuckDB rebuild still runs first, and the database dashboard/status payload adds a `clickhouseBackfill` section showing the ClickHouse outcome and row counts.
+When that flag is enabled, the refresh job records ClickHouse backfill progress in
+the database dashboard/status payload under `clickhouseBackfill`. If the legacy
+DuckDB snapshot is still being generated in your local environment, it is exposed
+separately as a non-primary artifact.
+
+## Operational Notes
+
+- ClickHouse-backed analytics and conversation summary reads are enabled by default.
+- Set `HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=0` and `HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=0` only when you intentionally need to force the legacy fallback path.
+- Set `HELAICOPTER_ENABLE_LIVE_INGESTION=1` when the Go ingestion service is running and ClickHouse should be treated as the live source for new events.
+
+## Troubleshooting
+
+- If the Databases page reports ClickHouse as unreachable, rerun `npm run db:bootstrap:clickhouse:local` or verify the configured host, port, user, password, and database env vars.
+- If table counts are present but analytics are empty, rerun `npm run db:backfill:clickhouse`.
+- If historical refresh succeeds but live updates lag, verify the Go ingestion service is running and that `HELAICOPTER_ENABLE_LIVE_INGESTION=1` is set for the app process.
 
 ## Layout
 

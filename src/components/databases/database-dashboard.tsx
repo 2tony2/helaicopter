@@ -13,10 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { OlapWasmPreview } from "@/components/databases/olap-wasm-preview";
+import { LegacyDuckDbPreview } from "@/components/databases/olap-wasm-preview";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
+  DatabaseAvailability,
   DatabaseArtifactStatus,
   DatabaseColumnSchema,
   DatabaseStatus,
@@ -26,6 +27,14 @@ function formatTime(value?: string | null): string {
   if (!value) return "Not refreshed yet";
   const date = new Date(value);
   return `${date.toLocaleString()} (${formatDistanceToNowStrict(date, { addSuffix: true })})`;
+}
+
+function availabilityVariant(
+  availability: DatabaseAvailability
+): "secondary" | "outline" | "destructive" {
+  if (availability === "ready") return "secondary";
+  if (availability === "missing") return "outline";
+  return "destructive";
 }
 
 function ColumnChip({ column }: Readonly<{ column: DatabaseColumnSchema }>) {
@@ -62,16 +71,42 @@ function DatabaseExplorer({
 }: Readonly<{
   database: DatabaseArtifactStatus;
 }>) {
+  const hasSchemaDocs = Boolean(database.docsUrl);
+  const location = database.target ?? database.path;
+
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]">
+    <div className={`grid gap-6 ${hasSchemaDocs ? "xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]" : ""}`}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Table Explorer</CardTitle>
+          <div className="flex items-center gap-3 flex-wrap">
+            <CardTitle className="text-base">Table Explorer</CardTitle>
+            <Badge variant={availabilityVariant(database.availability)}>
+              {database.availability}
+            </Badge>
+          </div>
           <CardDescription>
-            SQLAlchemy-inspected schema for {database.engine}.
+            Live schema introspection for {database.engine}.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 max-h-[720px] overflow-y-auto pr-2">
+          {database.note && (
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+              {database.note}
+            </div>
+          )}
+          {location && (
+            <div className="font-mono text-xs text-muted-foreground break-all">{location}</div>
+          )}
+          {database.error && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              {database.error}
+            </div>
+          )}
+          {database.tables.length === 0 && !database.error && (
+            <div className="rounded-lg border bg-muted/20 p-6 text-sm text-muted-foreground">
+              No tables available.
+            </div>
+          )}
           {database.tables.map((table) => (
             <div key={table.name} className="rounded-xl border p-4">
               <div className="flex items-center justify-between gap-3">
@@ -93,35 +128,39 @@ function DatabaseExplorer({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">SchemaSpy</CardTitle>
-          <CardDescription>
-            Live HTML docs generated from the current database artifact.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="font-mono text-xs text-muted-foreground break-all">
-              {database.publicPath}
-            </div>
-            <a
-              href={database.docsUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm underline underline-offset-4"
-            >
-              Open full docs
-            </a>
-          </div>
-          <iframe
-            key={database.docsUrl}
-            src={database.docsUrl}
-            title={`${database.label} schema`}
-            className="h-[680px] w-full rounded-xl border bg-background"
-          />
-        </CardContent>
-      </Card>
+      {hasSchemaDocs && database.docsUrl && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">SchemaSpy</CardTitle>
+            <CardDescription>
+              Live HTML docs generated from the current database artifact.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {database.publicPath && (
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="font-mono text-xs text-muted-foreground break-all">
+                  {database.publicPath}
+                </div>
+                <a
+                  href={database.docsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm underline underline-offset-4"
+                >
+                  Open full docs
+                </a>
+              </div>
+            )}
+            <iframe
+              key={database.docsUrl}
+              src={database.docsUrl}
+              title={`${database.label} schema`}
+              className="h-[680px] w-full rounded-xl border bg-background"
+            />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -164,18 +203,18 @@ export function DatabaseDashboard() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-3">
           <Badge variant="secondary" className="text-sm">
-            SQLAlchemy + Alembic + SchemaSpy
+            SQLite + ClickHouse Runtime
           </Badge>
           <div>
             <h1 className="text-2xl font-bold">Databases</h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
-              Historical parser output now lands in a normalized SQLite OLTP store
-              and a DuckDB OLAP warehouse. The historical databases refresh every
-              6 hours, while today&apos;s conversations stay live from the raw parser path.
+              Helaicopter uses SQLite for app-local metadata and ClickHouse for
+              analytics plus event storage. Historical refreshes maintain the
+              exported snapshot, while live ingestion keeps the analytics store current.
             </p>
             <p className="text-sm text-muted-foreground">
               {data.scopeLabel ?? "Historical conversations before today from the last 365 days"}.
-              Today is intentionally excluded from the warehouse refresh so the UI can stay realtime.
+              DuckDB remains optional legacy inspection tooling when the artifact is present.
             </p>
           </div>
         </div>
@@ -186,11 +225,11 @@ export function DatabaseDashboard() {
             disabled={isRefreshing}
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            Refresh Historical Data
+            Refresh Historical Snapshot
           </Button>
           <Button onClick={() => refresh(true)} disabled={isRefreshing}>
             <Database className="h-4 w-4" />
-            Recalculate Historical Data
+            Rebuild Historical Snapshot
           </Button>
         </div>
       </div>
@@ -217,29 +256,46 @@ export function DatabaseDashboard() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">OLTP</CardTitle>
+            <CardTitle className="text-base">SQLite</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <div>{data.databases.oltp.engine}</div>
-            <div>{data.databases.oltp.tableCount} tables</div>
+            <Badge variant={availabilityVariant(data.databases.sqlite.availability)}>
+              {data.databases.sqlite.availability}
+            </Badge>
+            <div>{data.databases.sqlite.engine}</div>
+            <div>{data.databases.sqlite.tableCount} tables</div>
             <div>{data.sourceConversationCount?.toLocaleString() ?? 0} conversations loaded</div>
-            <div className="font-mono text-xs break-all">{data.databases.oltp.path}</div>
+            <div className="font-mono text-xs break-all">{data.databases.sqlite.path}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">OLAP</CardTitle>
+            <CardTitle className="text-base">ClickHouse</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <div>{data.databases.olap.engine}</div>
-            <div>{data.databases.olap.tableCount} tables</div>
-            <div>Window: last {data.windowDays ?? 365} days max</div>
-            <div className="font-mono text-xs break-all">{data.databases.olap.path}</div>
+            <Badge variant={availabilityVariant(data.databases.clickhouse.availability)}>
+              {data.databases.clickhouse.availability}
+            </Badge>
+            <div>{data.databases.clickhouse.engine}</div>
+            <div>{data.databases.clickhouse.tableCount} tables</div>
+            <div>Analytics backend: {data.runtime.analyticsReadBackend}</div>
+            <div className="font-mono text-xs break-all">{data.databases.clickhouse.target}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Runtime</CardTitle>
+            <CardTitle className="text-base">Serving Path</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <div>Analytics: {data.runtime.analyticsReadBackend}</div>
+            <div>Conversation summaries: {data.runtime.conversationSummaryReadBackend}</div>
+            <div>Live ingestion: {data.runtime.liveIngestionEnabled ? "enabled" : "disabled"}</div>
+            <div>Window: last {data.windowDays ?? 365} days max</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Refresh Window</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <div>Started: {formatTime(data.startedAt)}</div>
@@ -305,18 +361,22 @@ export function DatabaseDashboard() {
         </Card>
       )}
 
-      <Tabs defaultValue="oltp" className="space-y-4">
+      <Tabs defaultValue="sqlite" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="oltp">SQLite OLTP</TabsTrigger>
-          <TabsTrigger value="olap">DuckDB OLAP</TabsTrigger>
+          <TabsTrigger value="sqlite">SQLite</TabsTrigger>
+          <TabsTrigger value="clickhouse">ClickHouse</TabsTrigger>
+          <TabsTrigger value="legacyDuckdb">Legacy DuckDB</TabsTrigger>
         </TabsList>
-        <TabsContent value="oltp">
-          <DatabaseExplorer database={data.databases.oltp} />
+        <TabsContent value="sqlite">
+          <DatabaseExplorer database={data.databases.sqlite} />
         </TabsContent>
-        <TabsContent value="olap">
+        <TabsContent value="clickhouse">
+          <DatabaseExplorer database={data.databases.clickhouse} />
+        </TabsContent>
+        <TabsContent value="legacyDuckdb">
           <div className="space-y-6">
-            <OlapWasmPreview database={data.databases.olap} />
-            <DatabaseExplorer database={data.databases.olap} />
+            <LegacyDuckDbPreview database={data.databases.legacyDuckdb} />
+            <DatabaseExplorer database={data.databases.legacyDuckdb} />
           </div>
         </TabsContent>
       </Tabs>
