@@ -1,5 +1,6 @@
 import { getConversationSummaryReadBackend } from "@/lib/backend-flags";
 import { listLegacyConversations } from "@/lib/claude-data";
+import { queryClickHouseConversationSummaries } from "@/lib/clickhouse-conversation-summaries";
 import type { ConversationSummary } from "@/lib/types";
 
 export interface ConversationSummaryQueryBackend {
@@ -20,12 +21,15 @@ const legacyConversationSummaryQueryBackend: ConversationSummaryQueryBackend = {
 const clickHouseConversationSummaryQueryBackend: ConversationSummaryQueryBackend =
   {
     name: "clickhouse",
-    listConversations(projectFilter, days) {
-      // Ticket 07 replaces this fallback with ClickHouse latest-state reads.
-      return legacyConversationSummaryQueryBackend.listConversations(
-        projectFilter,
-        days
-      );
+    async listConversations(projectFilter, days) {
+      try {
+        return await queryClickHouseConversationSummaries(projectFilter, days);
+      } catch {
+        return legacyConversationSummaryQueryBackend.listConversations(
+          projectFilter,
+          days
+        );
+      }
     },
   };
 
