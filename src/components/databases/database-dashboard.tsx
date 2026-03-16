@@ -195,7 +195,7 @@ export function DatabaseDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Refresh Status</CardTitle>
@@ -250,6 +250,31 @@ export function DatabaseDashboard() {
             </div>
           </CardContent>
         </Card>
+        {data.clickhouseBackfill && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">ClickHouse Backfill</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <Badge
+                variant={data.clickhouseBackfill.status === "failed" ? "destructive" : "secondary"}
+              >
+                {data.clickhouseBackfill.status}
+              </Badge>
+              <div>
+                Events:{" "}
+                {(data.clickhouseBackfill.rowsLoaded?.conversationEvents ?? 0).toLocaleString()} conv
+                {" / "}
+                {(data.clickhouseBackfill.rowsLoaded?.messageEvents ?? 0).toLocaleString()} msg
+              </div>
+              <div>
+                Tools: {(data.clickhouseBackfill.rowsLoaded?.toolEvents ?? 0).toLocaleString()}
+                {" / "}Usage: {(data.clickhouseBackfill.rowsLoaded?.usageEvents ?? 0).toLocaleString()}
+              </div>
+              <div className="font-mono text-xs break-all">{data.clickhouseBackfill.target}</div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {data.error && (
@@ -262,6 +287,20 @@ export function DatabaseDashboard() {
           </CardHeader>
           <CardContent className="font-mono text-sm text-muted-foreground">
             {data.error}
+          </CardContent>
+        </Card>
+      )}
+
+      {data.clickhouseBackfill?.error && (
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <TriangleAlert className="h-4 w-4" />
+              ClickHouse Backfill Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="font-mono text-sm text-muted-foreground">
+            {data.clickhouseBackfill.error}
           </CardContent>
         </Card>
       )}

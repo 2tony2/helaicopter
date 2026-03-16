@@ -56,6 +56,24 @@ HELAICOPTER_CLICKHOUSE_SEND_RECEIVE_TIMEOUT_SECONDS=30
 
 The bootstrap loader lives in [python/helaicopter_db/clickhouse_bootstrap.py](/Users/tony/Code/helaicopter/python/helaicopter_db/clickhouse_bootstrap.py), the local helper script lives in [scripts/bootstrap-clickhouse-local.sh](/Users/tony/Code/helaicopter/scripts/bootstrap-clickhouse-local.sh), and the ordered DDL files live in [sql/clickhouse](/Users/tony/Code/helaicopter/sql/clickhouse).
 
+## Historical Backfill
+
+Load the existing historical export window into ClickHouse with:
+
+```bash
+npm run db:backfill:clickhouse
+```
+
+That command reuses [scripts/export-parsed-data.ts](/Users/tony/Code/helaicopter/scripts/export-parsed-data.ts) through [python/helaicopter_db/clickhouse_backfill.py](/Users/tony/Code/helaicopter/python/helaicopter_db/clickhouse_backfill.py) and rebuilds the tracked ClickHouse warehouse tables for the historical scope before replaying rows. The rebuild is intentional: the current aggregate materialized views are append-only, so deterministic table replacement is the idempotent backfill mechanism until live ingestion lands.
+
+To include the ClickHouse backfill inside the normal refresh job and status bookkeeping, enable:
+
+```bash
+HELAICOPTER_ENABLE_CLICKHOUSE_BACKFILL=1 npm run db:refresh
+```
+
+When that flag is enabled, the SQLite and DuckDB rebuild still runs first, and the database dashboard/status payload adds a `clickhouseBackfill` section showing the ClickHouse outcome and row counts.
+
 ## Layout
 
 ### Append-Only Event Tables

@@ -5,19 +5,23 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from .clickhouse_backfill import (
+    disabled_backfill_status,
+    run_clickhouse_backfill,
+    running_backfill_status,
+)
 from .db import create_olap_engine, create_oltp_engine
+from .export_pipeline import ExportMeta, iter_export_rows, read_export_meta
 from .models import (
     ContextBucketRecord,
     ContextStepRecord,
@@ -39,7 +43,15 @@ from .models import (
     RefreshRun,
 )
 from .schemaspy import generate_schema_docs
-from .settings import LOCK_FILE, OLAP_ARTIFACT, OLTP_ARTIFACT, REPO_ROOT, ensure_runtime_dirs
+from .settings import (
+    CLICKHOUSE_BACKFILL_ENABLED,
+    CLICKHOUSE_SETTINGS,
+    LOCK_FILE,
+    OLAP_ARTIFACT,
+    OLTP_ARTIFACT,
+    REPO_ROOT,
+    ensure_runtime_dirs,
+)
 from .status import build_status_payload, load_status, write_status
 from .utils import (
     conversation_id,
@@ -63,25 +75,6 @@ class RefreshCounters:
     plans: int = 0
 
 
-@dataclass
-class ExportMeta:
-    conversation_count: int
-    input_key: str
-    scope_label: str
-    window_days: int
-    window_start: str | None
-    window_end: str | None
-
-
-def _tsx_binary() -> Path:
-    binary = REPO_ROOT / "node_modules" / ".bin" / "tsx"
-    if sys.platform.startswith("win"):
-        binary = binary.with_suffix(".cmd")
-    if not binary.exists():
-        raise RuntimeError("Missing node_modules/.bin/tsx. Run `npm install` first.")
-    return binary
-
-
 def _run_migrations(target: str) -> None:
     subprocess.run(
         [
@@ -99,54 +92,6 @@ def _run_migrations(target: str) -> None:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-    )
-
-
-def _iter_export_rows() -> Iterable[dict[str, Any]]:
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_handle:
-        process = subprocess.Popen(
-            [str(_tsx_binary()), "scripts/export-parsed-data.ts"],
-            cwd=REPO_ROOT,
-            stdout=subprocess.PIPE,
-            stderr=stderr_handle,
-            text=True,
-        )
-
-        assert process.stdout is not None
-        try:
-            for line in process.stdout:
-                if not line.strip():
-                    continue
-                record = json.loads(line)
-                if record.get("type") == "conversation":
-                    yield record
-        finally:
-            return_code = process.wait()
-            stderr_handle.seek(0)
-            stderr = stderr_handle.read()
-            if return_code != 0:
-                raise RuntimeError(stderr.strip() or "The TypeScript export pipeline failed.")
-
-
-def _read_export_meta() -> ExportMeta:
-    process = subprocess.run(
-        [str(_tsx_binary()), "scripts/export-parsed-data.ts", "--meta-only"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    lines = [line.strip() for line in process.stdout.splitlines() if line.strip()]
-    if not lines:
-        raise RuntimeError("The export metadata pipeline did not return any output.")
-    payload = json.loads(lines[-1])
-    return ExportMeta(
-        conversation_count=int(payload["conversationCount"]),
-        input_key=str(payload["inputKey"]),
-        scope_label=str(payload["scopeLabel"]),
-        window_days=int(payload["windowDays"]),
-        window_start=payload.get("windowStart"),
-        window_end=payload.get("windowEnd"),
     )
 
 
@@ -237,6 +182,7 @@ def _should_skip(force: bool, stale_after_seconds: int, export_meta: ExportMeta)
             window_start=latest_completed.window_start.isoformat() if latest_completed.window_start else export_meta.window_start,
             window_end=latest_completed.window_end.isoformat() if latest_completed.window_end else export_meta.window_end,
             source_conversation_count=latest_completed.source_conversation_count or export_meta.conversation_count,
+            clickhouse_backfill=_clickhouse_status_from_refresh_run(latest_completed),
         )
     return None
 
@@ -262,6 +208,29 @@ def _load_latest_completed_refresh() -> RefreshRun | None:
         return None
     finally:
         engine.dispose()
+
+
+def _clickhouse_status_from_refresh_run(refresh_run: RefreshRun) -> dict[str, Any]:
+    status = refresh_run.clickhouse_backfill_status or "disabled"
+    return {
+        "enabled": status != "disabled",
+        "status": status,
+        "target": CLICKHOUSE_SETTINGS.redacted_url,
+        "mode": "full_rebuild",
+        "startedAt": None,
+        "finishedAt": None,
+        "durationMs": None,
+        "error": refresh_run.clickhouse_backfill_error_message,
+        "idempotencyKey": refresh_run.idempotency_key,
+        "sourceConversationCount": refresh_run.source_conversation_count,
+        "scopeLabel": refresh_run.scope_label,
+        "rowsLoaded": {
+            "conversationEvents": refresh_run.clickhouse_conversation_events_loaded,
+            "messageEvents": refresh_run.clickhouse_message_events_loaded,
+            "toolEvents": refresh_run.clickhouse_tool_events_loaded,
+            "usageEvents": refresh_run.clickhouse_usage_events_loaded,
+        },
+    }
 
 
 def _reset_oltp_data(session: Session) -> None:
@@ -292,6 +261,14 @@ def _text_preview(blocks: list[dict[str, Any]]) -> str:
         elif block_type == "thinking" and block.get("thinking"):
             text_parts.append(str(block["thinking"]))
     return "\n\n".join(text_parts)[:4000]
+
+
+def _tool_result_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return to_json(value)
 
 
 def _load_conversation(
@@ -428,7 +405,7 @@ def _load_conversation(
                     tool_use_id=block.get("toolUseId"),
                     tool_name=tool_name,
                     tool_input_json=to_json(block.get("input")) if block.get("input") is not None else None,
-                    tool_result_text=block.get("result"),
+                    tool_result_text=_tool_result_text(block.get("result")),
                     is_error=bool(block.get("isError", False)),
                 )
             )
@@ -609,7 +586,7 @@ def _load_conversation(
 
 
 def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str, Any]:
-    export_meta = _read_export_meta()
+    export_meta = read_export_meta()
     skip = _should_skip(force, stale_after_seconds, export_meta)
     if skip is not None:
         return skip
@@ -618,6 +595,11 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
     started_at = utc_now()
     previous_status = load_status() or {}
     last_successful_refresh_at = previous_status.get("lastSuccessfulRefreshAt")
+    clickhouse_backfill = (
+        running_backfill_status(export_meta, started_at=started_at)
+        if CLICKHOUSE_BACKFILL_ENABLED
+        else disabled_backfill_status()
+    )
 
     _reset_olap_artifact()
 
@@ -635,6 +617,7 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
         "windowStart": export_meta.window_start,
         "windowEnd": export_meta.window_end,
         "sourceConversationCount": export_meta.conversation_count,
+        "clickhouseBackfill": clickhouse_backfill,
     }
     write_status(running_status)
 
@@ -668,14 +651,21 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
                 messages_loaded=0,
                 tool_calls_loaded=0,
                 plans_loaded=0,
+                clickhouse_backfill_status="running" if CLICKHOUSE_BACKFILL_ENABLED else "disabled",
+                clickhouse_backfill_error_message=None,
+                clickhouse_conversation_events_loaded=0,
+                clickhouse_message_events_loaded=0,
+                clickhouse_tool_events_loaded=0,
+                clickhouse_usage_events_loaded=0,
             )
             oltp_session.add(run_record)
+            run_id = run_record.run_id
 
             daily_usage: dict[str, dict[str, Any]] = {}
             tool_usage: dict[str, dict[str, Any]] = {}
             subagent_usage: dict[str, dict[str, Any]] = {}
 
-            for envelope in _iter_export_rows():
+            for envelope in iter_export_rows():
                 _load_conversation(
                     oltp_session,
                     olap_session,
@@ -730,11 +720,11 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
                     )
                 )
 
-            finished_at = utc_now()
-            duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+            warehouse_finished_at = utc_now()
+            warehouse_duration_ms = int((warehouse_finished_at - started_at).total_seconds() * 1000)
             run_record.status = "completed"
-            run_record.finished_at = finished_at
-            run_record.duration_ms = duration_ms
+            run_record.finished_at = warehouse_finished_at
+            run_record.duration_ms = warehouse_duration_ms
             run_record.conversations_loaded = counters.conversations
             run_record.messages_loaded = counters.messages
             run_record.tool_calls_loaded = counters.tool_calls
@@ -745,7 +735,44 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
 
         oltp_engine.dispose()
         olap_engine.dispose()
-        generate_schema_docs()
+
+        try:
+            generate_schema_docs()
+        except Exception as exc:
+            print(f"Schema docs generation failed: {exc}", file=sys.stderr)
+
+        finished_at = warehouse_finished_at
+        duration_ms = warehouse_duration_ms
+
+        if CLICKHOUSE_BACKFILL_ENABLED:
+            clickhouse_backfill_result = run_clickhouse_backfill(export_meta=export_meta)
+            clickhouse_backfill = clickhouse_backfill_result.to_status_payload()
+            if clickhouse_backfill_result.finished_at:
+                finished_at = datetime_from_iso(clickhouse_backfill_result.finished_at)
+                duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+            status_engine = create_oltp_engine()
+            with Session(status_engine) as oltp_session:
+                persisted_run = oltp_session.get(RefreshRun, run_id)
+                if persisted_run is not None:
+                    persisted_run.finished_at = finished_at
+                    persisted_run.duration_ms = duration_ms
+                    persisted_run.clickhouse_backfill_status = clickhouse_backfill_result.status
+                    persisted_run.clickhouse_backfill_error_message = clickhouse_backfill_result.error
+                    persisted_run.clickhouse_conversation_events_loaded = (
+                        clickhouse_backfill_result.rows_loaded["conversationEvents"]
+                    )
+                    persisted_run.clickhouse_message_events_loaded = (
+                        clickhouse_backfill_result.rows_loaded["messageEvents"]
+                    )
+                    persisted_run.clickhouse_tool_events_loaded = (
+                        clickhouse_backfill_result.rows_loaded["toolEvents"]
+                    )
+                    persisted_run.clickhouse_usage_events_loaded = (
+                        clickhouse_backfill_result.rows_loaded["usageEvents"]
+                    )
+                    oltp_session.commit()
+            status_engine.dispose()
+
         last_successful_refresh_at = finished_at.isoformat()
         payload = build_status_payload(
             status="completed",
@@ -761,6 +788,7 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
             window_start=export_meta.window_start,
             window_end=export_meta.window_end,
             source_conversation_count=export_meta.conversation_count,
+            clickhouse_backfill=clickhouse_backfill,
         )
         write_status(payload)
         return payload
@@ -782,6 +810,7 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
             "windowStart": export_meta.window_start,
             "windowEnd": export_meta.window_end,
             "sourceConversationCount": export_meta.conversation_count,
+            "clickhouseBackfill": clickhouse_backfill,
         }
         write_status(payload)
         raise

@@ -110,8 +110,8 @@ def load_clickhouse_settings() -> ClickHouseConnectionSettings:
         database=_validate_clickhouse_identifier(
             os.getenv("HELAICOPTER_CLICKHOUSE_DATABASE", "helaicopter")
         ),
-        user=os.getenv("HELAICOPTER_CLICKHOUSE_USER", "default"),
-        password=os.getenv("HELAICOPTER_CLICKHOUSE_PASSWORD", ""),
+        user=os.getenv("HELAICOPTER_CLICKHOUSE_USER", "helaicopter"),
+        password=os.getenv("HELAICOPTER_CLICKHOUSE_PASSWORD", "helaicopter"),
         secure=_read_bool_env("HELAICOPTER_CLICKHOUSE_SECURE", default=False),
         verify_tls=_read_bool_env("HELAICOPTER_CLICKHOUSE_VERIFY_TLS", default=True),
         connect_timeout_seconds=_read_float_env(
@@ -152,6 +152,10 @@ ARTIFACTS = {
     OLAP_ARTIFACT.key: OLAP_ARTIFACT,
 }
 CLICKHOUSE_SETTINGS = load_clickhouse_settings()
+CLICKHOUSE_BACKFILL_ENABLED = _read_bool_env(
+    "HELAICOPTER_ENABLE_CLICKHOUSE_BACKFILL",
+    default=False,
+)
 
 
 def ensure_runtime_dirs() -> None:
