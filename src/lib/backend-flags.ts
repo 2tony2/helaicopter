@@ -7,10 +7,10 @@ export interface BackendFeatureFlags {
   liveIngestionEnabled: boolean;
 }
 
-function readBooleanEnv(name: string): boolean {
+function readBooleanEnv(name: string, defaultValue = false): boolean {
   const value = process.env[name];
   if (!value) {
-    return false;
+    return defaultValue;
   }
 
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
@@ -18,10 +18,12 @@ function readBooleanEnv(name: string): boolean {
 
 const backendFeatureFlags: BackendFeatureFlags = {
   useClickHouseAnalyticsReads: readBooleanEnv(
-    "HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS"
+    "HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS",
+    true
   ),
   useClickHouseConversationSummaryReads: readBooleanEnv(
-    "HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES"
+    "HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES",
+    true
   ),
   liveIngestionEnabled: readBooleanEnv("HELAICOPTER_ENABLE_LIVE_INGESTION"),
 };

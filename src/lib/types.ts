@@ -454,13 +454,22 @@ export interface DatabaseTableSchema {
   columns: DatabaseColumnSchema[];
 }
 
+export type DatabaseStatusKey = "sqlite" | "clickhouse" | "legacy_duckdb";
+export type DatabaseRole = "metadata" | "analytics" | "legacy_debug";
+export type DatabaseAvailability = "ready" | "missing" | "unreachable";
+
 export interface DatabaseArtifactStatus {
-  key: "oltp" | "olap";
+  key: DatabaseStatusKey;
   label: string;
   engine: string;
-  path: string;
-  publicPath: string;
-  docsUrl: string;
+  role: DatabaseRole;
+  availability: DatabaseAvailability;
+  note?: string | null;
+  error?: string | null;
+  path?: string | null;
+  target?: string | null;
+  publicPath?: string | null;
+  docsUrl?: string | null;
   tableCount: number;
   tables: DatabaseTableSchema[];
 }
@@ -501,9 +510,15 @@ export interface DatabaseStatus {
   sourceConversationCount?: number;
   clickhouseBackfill?: ClickHouseBackfillStatus | null;
   refreshIntervalMinutes: number;
+  runtime: {
+    analyticsReadBackend: "legacy" | "clickhouse";
+    conversationSummaryReadBackend: "legacy" | "clickhouse";
+    liveIngestionEnabled: boolean;
+  };
   databases: {
-    oltp: DatabaseArtifactStatus;
-    olap: DatabaseArtifactStatus;
+    sqlite: DatabaseArtifactStatus;
+    clickhouse: DatabaseArtifactStatus;
+    legacyDuckdb: DatabaseArtifactStatus;
   };
 }
 

@@ -2,11 +2,11 @@
 
 ## Current state in this repo
 
-- Historical conversations are batch-exported from raw JSONL into:
-  - SQLite OLTP for normalized detail records
-  - DuckDB OLAP for aggregate facts and dimensions
-- Today's conversations stay on the live parser path and are merged with historical data at read time.
-- The main analytics API still computes aggregates in TypeScript by loading conversation summaries rather than querying the OLAP warehouse directly.
+- SQLite remains the app-local metadata and historical detail store.
+- ClickHouse is the primary analytics warehouse and event store.
+- The analytics and conversation summary APIs now default to ClickHouse-backed reads, with the legacy parser/SQLite path kept as fallback.
+- Live ingestion is the intended source for realtime updates when enabled.
+- DuckDB is no longer part of the primary serving path; if it still exists locally, it is a legacy inspection artifact only.
 
 ## What that means
 
@@ -117,19 +117,18 @@ If you want a local-only deployment, run ClickHouse locally and keep SQLite in-p
 
 ## Migration path for this repo
 
-1. Stop using `getAnalytics()` as an in-memory aggregation path.
-2. Introduce ClickHouse-backed analytics queries behind the existing `/api/analytics` route.
-3. Replace the historical DuckDB refresh job with an idempotent backfill into ClickHouse.
-4. Add a live ingestion process for today's logs so "today" is no longer special.
-5. Keep SQLite detail tables only where the UI still benefits from local point-lookups.
-6. Remove the "historical before today vs live today" split once ClickHouse is trusted.
+1. Keep SQLite focused on metadata, refresh bookkeeping, evaluations, and local point-lookups.
+2. Serve analytics and conversation summaries from ClickHouse by default.
+3. Use idempotent backfill plus live ingestion to keep ClickHouse current.
+4. Keep the legacy parser/SQLite path only as a fallback when ClickHouse is unavailable.
+5. Remove the remaining legacy DuckDB refresh/debug code once it is no longer operationally useful.
 
 ## Rollout flags
 
-- `HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=1` switches `/api/analytics` to the ClickHouse query seam. Until the ClickHouse implementation lands, that backend falls through to the legacy in-process aggregator.
-- `HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=1` switches `/api/conversations` to the ClickHouse summary seam. Until the ClickHouse implementation lands, that backend falls through to the current SQLite-plus-live-parser merge.
+- `HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=0` forces `/api/analytics` back to the legacy parser/SQLite aggregation path.
+- `HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=0` forces `/api/conversations` back to the legacy SQLite-plus-live-parser merge.
 - `HELAICOPTER_ENABLE_LIVE_INGESTION=1` marks runtime as expecting live data to come from ingestion rather than the special-case parser path. With the legacy read backends still selected, it has no effect.
-- With all three flags unset or `0`, runtime behavior stays on the current default path.
+- With the two read flags unset, runtime defaults to ClickHouse-backed reads. Set them to `0` only for rollback or debugging.
 
 ## Cautions
 

@@ -38,14 +38,14 @@ type DuckDbDatabase = {
   terminate: () => Promise<void>;
 };
 
-export function OlapWasmPreview({
+export function LegacyDuckDbPreview({
   database,
 }: Readonly<{
   database: DatabaseArtifactStatus;
 }>) {
   const [selectedTable, setSelectedTable] = useState(database.tables[0]?.name ?? "");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
-  const [status, setStatus] = useState("Loading DuckDB WASM...");
+  const [status, setStatus] = useState("Loading legacy DuckDB preview...");
 
   useEffect(() => {
     setSelectedTable(database.tables[0]?.name ?? "");
@@ -59,13 +59,19 @@ export function OlapWasmPreview({
     let workerUrl: string | null = null;
 
     async function load() {
-      if (!selectedTable) {
+      if (!database.publicPath) {
         setRows([]);
-        setStatus("No OLAP tables available.");
+        setStatus("Legacy DuckDB artifact is not available for browser preview.");
         return;
       }
 
-      setStatus("Loading DuckDB WASM...");
+      if (!selectedTable) {
+        setRows([]);
+        setStatus("No legacy DuckDB tables available.");
+        return;
+      }
+
+      setStatus("Loading legacy DuckDB preview...");
 
       const duckdb = (await import(
         /* webpackIgnore: true */ DUCKDB_WASM_ESM_URL
@@ -108,7 +114,7 @@ export function OlapWasmPreview({
     void load().catch((error) => {
       if (!active) return;
       setRows([]);
-      setStatus(error instanceof Error ? error.message : "DuckDB WASM failed to load.");
+      setStatus(error instanceof Error ? error.message : "Legacy DuckDB preview failed to load.");
     });
 
     return () => {
@@ -127,9 +133,10 @@ export function OlapWasmPreview({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">DuckDB WASM Preview</CardTitle>
+        <CardTitle className="text-base">DuckDB Artifact Preview</CardTitle>
         <CardDescription>
-          Browser-side query preview powered by DuckDB WASM against the OLAP artifact.
+          Browser-side inspection of the legacy DuckDB export artifact. This is
+          not the primary analytics backend.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
