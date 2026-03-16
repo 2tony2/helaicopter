@@ -295,7 +295,11 @@ gh auth status >/dev/null 2>&1 || fail "GitHub CLI is not authenticated."
 BASE_BRANCH="$(detect_base_branch)"
 ensure_clean_tree
 
-mapfile -t ticket_files < <(find "$TICKETS_DIR" -maxdepth 1 -type f -name 'ticket-*.md' | sort)
+ticket_files=()
+while IFS= read -r ticket_file; do
+  ticket_files+=("$ticket_file")
+done < <(find "$TICKETS_DIR" -maxdepth 1 -type f -name 'ticket-*.md' | sort)
+
 [[ "${#ticket_files[@]}" -gt 0 ]] || fail "No ticket prompt files found in $TICKETS_DIR"
 
 for ticket_file in "${ticket_files[@]}"; do
