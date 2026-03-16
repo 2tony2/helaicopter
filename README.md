@@ -249,6 +249,9 @@ Start it with:
 npm run go:live-ingestion
 ```
 
+When the Next.js app is running, the UI consumes live updates through its same-origin proxy at `/api/live-events`.
+That proxy forwards to the Go ingester's `/events` endpoint, emits analytics invalidation plus conversation update events for the browser, and keeps the existing polling path as a fallback.
+
 Detailed setup, environment variables, checkpoint behavior, and the event id / dedupe contract are documented in [`docs/go-live-ingestion.md`](/Users/tony/Code/helaicopter/docs/go-live-ingestion.md).
 
 ## License

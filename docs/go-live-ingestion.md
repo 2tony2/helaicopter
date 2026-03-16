@@ -44,6 +44,10 @@ The default HTTP endpoints are:
 - `GET http://127.0.0.1:4318/stats`
 - `GET http://127.0.0.1:4318/events`
 
+The Next.js UI consumes that stream through its same-origin proxy route at `GET /api/live-events`.
+By default the proxy targets `HELAICOPTER_GO_INGEST_HTTP_ADDR` and appends `/events`.
+Override it explicitly with `HELAICOPTER_GO_INGEST_EVENTS_URL` if the UI should read from a different host.
+
 ## Environment
 
 The service reuses the existing ClickHouse env vars:
@@ -71,6 +75,7 @@ HELAICOPTER_GO_INGEST_START_POSITION=end
 HELAICOPTER_GO_INGEST_BATCH_SIZE=256
 HELAICOPTER_GO_INGEST_FLUSH_INTERVAL_MS=500
 HELAICOPTER_GO_INGEST_RESCAN_INTERVAL_MS=2000
+HELAICOPTER_GO_INGEST_STREAM_REPLAY_CAPACITY=1024
 HELAICOPTER_GO_INGEST_QUEUE_CAPACITY=8192
 HELAICOPTER_GO_INGEST_MAX_RETRY_DELAY_MS=15000
 HELAICOPTER_GO_INGEST_LOG_LEVEL=info
@@ -88,6 +93,8 @@ The service is intentionally append-only and crash-safe, not exactly-once.
   - message row: `...:message:<n>`
   - tool row: `...:tool:<n>`
   - usage row: `...:usage:<n>`
+- The SSE stream now emits `id: <event_id>` for every `envelope` event.
+- On reconnect, `Last-Event-ID` replays the buffered envelopes that were emitted after the last seen id.
 - Checkpoints advance only after ClickHouse acknowledges the batch that contained that line.
 - If the process exits after ClickHouse accepted a batch but before the checkpoint file is fsynced, the same lines can be replayed on restart.
 - Because the ids are deterministic, replayed rows keep the same `event_id` and can be deduplicated downstream with `event_id`.
@@ -97,6 +104,7 @@ Operationally this means:
 - Normal operation should not emit duplicates.
 - Crash boundaries are at-least-once.
 - Consumers that require strict dedupe should treat `event_id` as the idempotency key.
+- Stream replay is best-effort and bounded by `HELAICOPTER_GO_INGEST_STREAM_REPLAY_CAPACITY`.
 
 ## Checkpoints
 

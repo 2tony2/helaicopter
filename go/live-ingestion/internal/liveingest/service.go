@@ -39,7 +39,7 @@ func NewService(cfg Config, logger *slog.Logger) (*Service, error) {
 		logger:      logger,
 		client:      NewClickHouseClient(cfg.ClickHouse),
 		checkpoints: checkpoints,
-		hub:         NewEventHub(),
+		hub:         NewEventHub(cfg.StreamReplayCapacity),
 		queue:       queue,
 		stats: RuntimeStats{
 			StartedAt: time.Now().UTC(),
@@ -402,28 +402,56 @@ func (s *Service) routes() http.Handler {
 			return
 		}
 
-		subscriptionID, stream := s.hub.Subscribe()
+		lastEventID := request.Header.Get("Last-Event-ID")
+		subscriptionID, replay, stream := s.hub.Subscribe(lastEventID)
 		defer s.hub.Unsubscribe(subscriptionID)
+		if _, err := writer.Write([]byte("retry: 3000\n\n")); err != nil {
+			return
+		}
 		flusher.Flush()
+
+		for _, envelope := range replay {
+			if !writeEnvelopeEvent(writer, flusher, envelope) {
+				return
+			}
+		}
+
+		heartbeatTicker := time.NewTicker(15 * time.Second)
+		defer heartbeatTicker.Stop()
 
 		for {
 			select {
 			case <-request.Context().Done():
 				return
+			case <-heartbeatTicker.C:
+				if _, err := writer.Write([]byte(": keepalive\n\n")); err != nil {
+					return
+				}
+				flusher.Flush()
 			case envelope, ok := <-stream:
 				if !ok {
 					return
 				}
-				bytes, err := json.Marshal(envelope)
-				if err != nil {
-					continue
-				}
-				if _, err := writer.Write([]byte("event: envelope\ndata: " + string(bytes) + "\n\n")); err != nil {
+				if !writeEnvelopeEvent(writer, flusher, envelope) {
 					return
 				}
-				flusher.Flush()
 			}
 		}
 	})
 	return mux
+}
+
+func writeEnvelopeEvent(writer http.ResponseWriter, flusher http.Flusher, envelope NormalizedEnvelope) bool {
+	bytes, err := json.Marshal(envelope)
+	if err != nil {
+		return true
+	}
+	if _, err := writer.Write([]byte("id: " + envelope.EventID + "\n")); err != nil {
+		return false
+	}
+	if _, err := writer.Write([]byte("event: envelope\ndata: " + string(bytes) + "\n\n")); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }

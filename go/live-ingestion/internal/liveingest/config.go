@@ -11,18 +11,19 @@ import (
 )
 
 type Config struct {
-	ClaudeRoot     string
-	CodexRoot      string
-	ClickHouse     ClickHouseConfig
-	HTTPAddr       string
-	CheckpointPath string
-	StartPosition  string
-	FlushInterval  time.Duration
-	RescanInterval time.Duration
-	BatchSize      int
-	QueueCapacity  int
-	MaxRetryDelay  time.Duration
-	LogLevel       slog.Level
+	ClaudeRoot           string
+	CodexRoot            string
+	ClickHouse           ClickHouseConfig
+	HTTPAddr             string
+	StreamReplayCapacity int
+	CheckpointPath       string
+	StartPosition        string
+	FlushInterval        time.Duration
+	RescanInterval       time.Duration
+	BatchSize            int
+	QueueCapacity        int
+	MaxRetryDelay        time.Duration
+	LogLevel             slog.Level
 }
 
 type ClickHouseConfig struct {
@@ -67,15 +68,16 @@ func LoadConfig() (Config, error) {
 			ConnectTimeout:     getEnvDuration("HELAICOPTER_CLICKHOUSE_CONNECT_TIMEOUT_SECONDS", 5*time.Second),
 			SendReceiveTimeout: getEnvDuration("HELAICOPTER_CLICKHOUSE_SEND_RECEIVE_TIMEOUT_SECONDS", 30*time.Second),
 		},
-		HTTPAddr:       getEnv("HELAICOPTER_GO_INGEST_HTTP_ADDR", "127.0.0.1:4318"),
-		CheckpointPath: filepath.Clean(getEnv("HELAICOPTER_GO_INGEST_CHECKPOINT_PATH", filepath.Join("var", "live-ingestion", "checkpoints.json"))),
-		StartPosition:  startPosition,
-		FlushInterval:  getEnvDuration("HELAICOPTER_GO_INGEST_FLUSH_INTERVAL_MS", 500*time.Millisecond),
-		RescanInterval: getEnvDuration("HELAICOPTER_GO_INGEST_RESCAN_INTERVAL_MS", 2*time.Second),
-		BatchSize:      getEnvInt("HELAICOPTER_GO_INGEST_BATCH_SIZE", 256),
-		QueueCapacity:  getEnvInt("HELAICOPTER_GO_INGEST_QUEUE_CAPACITY", 8192),
-		MaxRetryDelay:  getEnvDuration("HELAICOPTER_GO_INGEST_MAX_RETRY_DELAY_MS", 15*time.Second),
-		LogLevel:       level,
+		HTTPAddr:             getEnv("HELAICOPTER_GO_INGEST_HTTP_ADDR", "127.0.0.1:4318"),
+		StreamReplayCapacity: getEnvInt("HELAICOPTER_GO_INGEST_STREAM_REPLAY_CAPACITY", 1024),
+		CheckpointPath:       filepath.Clean(getEnv("HELAICOPTER_GO_INGEST_CHECKPOINT_PATH", filepath.Join("var", "live-ingestion", "checkpoints.json"))),
+		StartPosition:        startPosition,
+		FlushInterval:        getEnvDuration("HELAICOPTER_GO_INGEST_FLUSH_INTERVAL_MS", 500*time.Millisecond),
+		RescanInterval:       getEnvDuration("HELAICOPTER_GO_INGEST_RESCAN_INTERVAL_MS", 2*time.Second),
+		BatchSize:            getEnvInt("HELAICOPTER_GO_INGEST_BATCH_SIZE", 256),
+		QueueCapacity:        getEnvInt("HELAICOPTER_GO_INGEST_QUEUE_CAPACITY", 8192),
+		MaxRetryDelay:        getEnvDuration("HELAICOPTER_GO_INGEST_MAX_RETRY_DELAY_MS", 15*time.Second),
+		LogLevel:             level,
 	}
 
 	if cfg.BatchSize <= 0 {
@@ -89,6 +91,9 @@ func LoadConfig() (Config, error) {
 	}
 	if cfg.RescanInterval <= 0 {
 		return Config{}, fmt.Errorf("HELAICOPTER_GO_INGEST_RESCAN_INTERVAL_MS must be > 0")
+	}
+	if cfg.StreamReplayCapacity < 0 {
+		return Config{}, fmt.Errorf("HELAICOPTER_GO_INGEST_STREAM_REPLAY_CAPACITY must be >= 0")
 	}
 
 	return cfg, nil

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { DatabaseAutoRefresh } from "@/components/databases/database-auto-refresh";
+import { LiveUpdateListener } from "@/components/live/live-update-listener";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import "./globals.css";
@@ -32,6 +33,7 @@ export default function RootLayout({
       >
         <TooltipProvider>
           <DatabaseAutoRefresh />
+          <LiveUpdateListener />
           <div className="flex min-h-screen">
             <AppSidebar />
             <main className="flex-1 p-8 overflow-auto">{children}</main>
