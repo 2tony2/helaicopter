@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clearExpensiveReadCaches } from "@/lib/cache";
 import { runDatabaseRefresh } from "@/lib/database-refresh";
 
 export async function POST(request: Request) {
@@ -11,6 +12,7 @@ export async function POST(request: Request) {
     trigger,
     staleAfterSeconds: 21_600,
   });
+  clearExpensiveReadCaches();
 
   return NextResponse.json(status);
 }

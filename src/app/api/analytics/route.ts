@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLegacyAnalytics } from "@/lib/claude-data";
 import { queryAnalytics } from "@/lib/analytics-query-backend";
+import { analyticsResponseCache, TtlCache } from "@/lib/cache";
 import type { AnalyticsData } from "@/lib/types";
 
 const NUMERIC_COMPARISON_FIELDS = [
@@ -14,6 +15,16 @@ const NUMERIC_COMPARISON_FIELDS = [
   "totalFailedToolCalls",
   "estimatedCost",
 ] as const;
+
+interface CachedAnalyticsResponse {
+  body: AnalyticsData | (AnalyticsData & { _debug: unknown });
+  debug: {
+    resolvedBackend: "legacy";
+    requestedBackend: "legacy";
+    liveMergeApplied: boolean;
+    fallbackReason?: string;
+  };
+}
 
 function readBooleanParam(value: string | null): boolean {
   if (!value) {
@@ -90,25 +101,45 @@ export async function GET(request: Request) {
   const provider = searchParams.get("provider") || undefined;
   const includeDebug = readBooleanParam(searchParams.get("debug"));
   const includeComparison = readBooleanParam(searchParams.get("compare"));
-  const { analytics, debug } = await queryAnalytics(days, provider);
-  const legacyAnalytics = includeComparison ? await getLegacyAnalytics(days, provider) : null;
-  const responseBody =
-    includeDebug || includeComparison
-      ? {
-          ...analytics,
-          _debug: {
-            ...debug,
-            comparison: legacyAnalytics
-              ? buildComparisonSummary(analytics, legacyAnalytics)
-              : undefined,
-          },
-        }
-      : analytics;
-  const response = NextResponse.json(responseBody);
-  response.headers.set("x-analytics-backend", debug.resolvedBackend);
-  response.headers.set("x-analytics-requested-backend", debug.requestedBackend);
-  response.headers.set("x-analytics-live-merge", debug.liveMergeApplied ? "1" : "0");
-  if (debug.fallbackReason) {
+  const cacheKey = JSON.stringify({
+    days: days ?? null,
+    provider: provider ?? null,
+    includeDebug,
+    includeComparison,
+  });
+  const cached = await (
+    analyticsResponseCache as TtlCache<CachedAnalyticsResponse>
+  ).getOrLoad(
+    cacheKey,
+    15_000,
+    async () => {
+    const { analytics, debug } = await queryAnalytics(days, provider);
+    const legacyAnalytics = includeComparison ? await getLegacyAnalytics(days, provider) : null;
+    const responseBody =
+      includeDebug || includeComparison
+        ? {
+            ...analytics,
+            _debug: {
+              ...debug,
+              comparison: legacyAnalytics
+                ? buildComparisonSummary(analytics, legacyAnalytics)
+                : undefined,
+            },
+          }
+        : analytics;
+
+    return {
+      body: responseBody,
+      debug,
+    };
+    }
+  );
+  const response = NextResponse.json(cached.body);
+  response.headers.set("x-analytics-backend", cached.debug.resolvedBackend);
+  response.headers.set("x-analytics-requested-backend", cached.debug.requestedBackend);
+  response.headers.set("x-analytics-live-merge", cached.debug.liveMergeApplied ? "1" : "0");
+  response.headers.set("x-analytics-cache", "memory");
+  if (cached.debug.fallbackReason) {
     response.headers.set("x-analytics-fallback", "1");
   }
   return response;

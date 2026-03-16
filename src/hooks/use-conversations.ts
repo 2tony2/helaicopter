@@ -19,13 +19,23 @@ const swrOptions = {
   revalidateOnReconnect: false,
 };
 
-const liveSwrOptions = {
+const conversationSwrOptions = {
   ...swrOptions,
-  refreshInterval: 30_000,
+  refreshInterval: 3_000,
+};
+
+const analyticsSwrOptions = {
+  ...swrOptions,
+  refreshInterval: 15_000,
+};
+
+const projectsSwrOptions = {
+  ...swrOptions,
+  refreshInterval: 15_000,
 };
 
 export function useProjects() {
-  return useSWR<ProjectInfo[]>("/api/projects", fetcher, swrOptions);
+  return useSWR<ProjectInfo[]>("/api/projects", fetcher, projectsSwrOptions);
 }
 
 export function useConversations(project?: string, days?: number) {
@@ -34,7 +44,7 @@ export function useConversations(project?: string, days?: number) {
   if (days) params.set("days", String(days));
   const qs = params.toString();
   const url = `/api/conversations${qs ? `?${qs}` : ""}`;
-  return useSWR<ConversationSummary[]>(url, fetcher, liveSwrOptions);
+  return useSWR<ConversationSummary[]>(url, fetcher, conversationSwrOptions);
 }
 
 export function useConversation(projectPath?: string, sessionId?: string) {
@@ -42,7 +52,7 @@ export function useConversation(projectPath?: string, sessionId?: string) {
     projectPath && sessionId
       ? `/api/conversations/${encodeURIComponent(projectPath)}/${sessionId}`
       : null;
-  return useSWR<ProcessedConversation>(url, fetcher, liveSwrOptions);
+  return useSWR<ProcessedConversation>(url, fetcher, conversationSwrOptions);
 }
 
 export function useAnalytics(days?: number, provider?: string) {
@@ -50,12 +60,16 @@ export function useAnalytics(days?: number, provider?: string) {
   if (days) params.set("days", String(days));
   if (provider && provider !== "all") params.set("provider", provider);
   const qs = params.toString();
-  return useSWR<AnalyticsData>(`/api/analytics${qs ? `?${qs}` : ""}`, fetcher, liveSwrOptions);
+  return useSWR<AnalyticsData>(
+    `/api/analytics${qs ? `?${qs}` : ""}`,
+    fetcher,
+    analyticsSwrOptions
+  );
 }
 
 export function useTasks(sessionId?: string) {
   const url = sessionId ? `/api/tasks/${sessionId}` : null;
-  return useSWR<unknown[]>(url, fetcher, liveSwrOptions);
+  return useSWR<unknown[]>(url, fetcher, conversationSwrOptions);
 }
 
 export function useSubagentConversation(
@@ -67,7 +81,7 @@ export function useSubagentConversation(
     projectPath && sessionId && agentId
       ? `/api/subagents/${encodeURIComponent(projectPath)}/${sessionId}/${agentId}`
       : null;
-  return useSWR<ProcessedConversation>(url, fetcher, liveSwrOptions);
+  return useSWR<ProcessedConversation>(url, fetcher, conversationSwrOptions);
 }
 
 export function useDatabaseStatus() {

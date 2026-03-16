@@ -18,7 +18,7 @@ export async function readDatabaseStatus(): Promise<DatabaseStatus | null> {
     await access(DATABASE_STATUS_PATH);
     const raw = await readFile(DATABASE_STATUS_PATH, "utf-8");
     const status = JSON.parse(raw) as Partial<DatabaseStatus>;
-    if (!status.runtime || !status.databases?.clickhouse || !status.databases?.sqlite) {
+    if (!status.runtime || !status.databases?.sqlite || !status.databases?.legacyDuckdb) {
       return null;
     }
     return status as DatabaseStatus;

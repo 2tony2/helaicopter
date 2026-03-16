@@ -1,12 +1,9 @@
-import { getAnalyticsReadBackend } from "@/lib/backend-flags";
 import { getLegacyAnalytics } from "@/lib/claude-data";
-import { queryClickHouseAnalyticsWithLiveFallback } from "@/lib/clickhouse-analytics";
 import type { AnalyticsData } from "@/lib/types";
-import { getBackendFeatureFlags } from "@/lib/backend-flags";
 
 export interface AnalyticsQueryDebugInfo {
-  requestedBackend: "legacy" | "clickhouse";
-  resolvedBackend: "legacy" | "clickhouse";
+  requestedBackend: "legacy";
+  resolvedBackend: "legacy";
   fallbackReason?: string;
   liveMergeApplied: boolean;
 }
@@ -17,7 +14,7 @@ export interface AnalyticsQueryResult {
 }
 
 export interface AnalyticsQueryBackend {
-  name: "legacy" | "clickhouse";
+  name: "legacy";
   getAnalytics(days?: number, provider?: string): Promise<AnalyticsQueryResult>;
 }
 
@@ -35,41 +32,8 @@ const legacyAnalyticsQueryBackend: AnalyticsQueryBackend = {
   },
 };
 
-const clickHouseAnalyticsQueryBackend: AnalyticsQueryBackend = {
-  name: "clickhouse",
-  async getAnalytics(days, provider) {
-    try {
-      const analytics = await queryClickHouseAnalyticsWithLiveFallback(days, provider, {
-        liveIngestionEnabled: getBackendFeatureFlags().liveIngestionEnabled,
-      });
-      return {
-        analytics: analytics.analytics,
-        debug: {
-          requestedBackend: "clickhouse",
-          resolvedBackend: "clickhouse",
-          liveMergeApplied: !getBackendFeatureFlags().liveIngestionEnabled,
-        },
-      };
-    } catch (error) {
-      const fallback = await legacyAnalyticsQueryBackend.getAnalytics(days, provider);
-      return {
-        analytics: fallback.analytics,
-        debug: {
-          requestedBackend: "clickhouse",
-          resolvedBackend: "legacy",
-          fallbackReason:
-            error instanceof Error ? error.message : "ClickHouse analytics query failed",
-          liveMergeApplied: false,
-        },
-      };
-    }
-  },
-};
-
 export function getAnalyticsQueryBackend(): AnalyticsQueryBackend {
-  return getAnalyticsReadBackend() === "clickhouse"
-    ? clickHouseAnalyticsQueryBackend
-    : legacyAnalyticsQueryBackend;
+  return legacyAnalyticsQueryBackend;
 }
 
 export async function queryAnalytics(

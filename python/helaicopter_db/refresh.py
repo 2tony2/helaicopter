@@ -15,11 +15,6 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .clickhouse_backfill import (
-    disabled_backfill_status,
-    run_clickhouse_backfill,
-    running_backfill_status,
-)
 from .db import create_olap_engine, create_oltp_engine
 from .export_pipeline import ExportMeta, iter_export_rows, read_export_meta
 from .models import (
@@ -44,8 +39,6 @@ from .models import (
 )
 from .schemaspy import generate_schema_docs
 from .settings import (
-    CLICKHOUSE_BACKFILL_ENABLED,
-    CLICKHOUSE_SETTINGS,
     LOCK_FILE,
     OLAP_ARTIFACT,
     OLTP_ARTIFACT,
@@ -182,7 +175,6 @@ def _should_skip(force: bool, stale_after_seconds: int, export_meta: ExportMeta)
             window_start=latest_completed.window_start.isoformat() if latest_completed.window_start else export_meta.window_start,
             window_end=latest_completed.window_end.isoformat() if latest_completed.window_end else export_meta.window_end,
             source_conversation_count=latest_completed.source_conversation_count or export_meta.conversation_count,
-            clickhouse_backfill=_clickhouse_status_from_refresh_run(latest_completed),
         )
     return None
 
@@ -208,29 +200,6 @@ def _load_latest_completed_refresh() -> RefreshRun | None:
         return None
     finally:
         engine.dispose()
-
-
-def _clickhouse_status_from_refresh_run(refresh_run: RefreshRun) -> dict[str, Any]:
-    status = refresh_run.clickhouse_backfill_status or "disabled"
-    return {
-        "enabled": status != "disabled",
-        "status": status,
-        "target": CLICKHOUSE_SETTINGS.redacted_url,
-        "mode": "full_rebuild",
-        "startedAt": None,
-        "finishedAt": None,
-        "durationMs": None,
-        "error": refresh_run.clickhouse_backfill_error_message,
-        "idempotencyKey": refresh_run.idempotency_key,
-        "sourceConversationCount": refresh_run.source_conversation_count,
-        "scopeLabel": refresh_run.scope_label,
-        "rowsLoaded": {
-            "conversationEvents": refresh_run.clickhouse_conversation_events_loaded,
-            "messageEvents": refresh_run.clickhouse_message_events_loaded,
-            "toolEvents": refresh_run.clickhouse_tool_events_loaded,
-            "usageEvents": refresh_run.clickhouse_usage_events_loaded,
-        },
-    }
 
 
 def _reset_oltp_data(session: Session) -> None:
@@ -595,11 +564,6 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
     started_at = utc_now()
     previous_status = load_status() or {}
     last_successful_refresh_at = previous_status.get("lastSuccessfulRefreshAt")
-    clickhouse_backfill = (
-        running_backfill_status(export_meta, started_at=started_at)
-        if CLICKHOUSE_BACKFILL_ENABLED
-        else disabled_backfill_status()
-    )
 
     _reset_olap_artifact()
 
@@ -617,7 +581,6 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
         "windowStart": export_meta.window_start,
         "windowEnd": export_meta.window_end,
         "sourceConversationCount": export_meta.conversation_count,
-        "clickhouseBackfill": clickhouse_backfill,
     }
     write_status(running_status)
 
@@ -651,15 +614,8 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
                 messages_loaded=0,
                 tool_calls_loaded=0,
                 plans_loaded=0,
-                clickhouse_backfill_status="running" if CLICKHOUSE_BACKFILL_ENABLED else "disabled",
-                clickhouse_backfill_error_message=None,
-                clickhouse_conversation_events_loaded=0,
-                clickhouse_message_events_loaded=0,
-                clickhouse_tool_events_loaded=0,
-                clickhouse_usage_events_loaded=0,
             )
             oltp_session.add(run_record)
-            run_id = run_record.run_id
 
             daily_usage: dict[str, dict[str, Any]] = {}
             tool_usage: dict[str, dict[str, Any]] = {}
@@ -744,35 +700,6 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
         finished_at = warehouse_finished_at
         duration_ms = warehouse_duration_ms
 
-        if CLICKHOUSE_BACKFILL_ENABLED:
-            clickhouse_backfill_result = run_clickhouse_backfill(export_meta=export_meta)
-            clickhouse_backfill = clickhouse_backfill_result.to_status_payload()
-            if clickhouse_backfill_result.finished_at:
-                finished_at = datetime_from_iso(clickhouse_backfill_result.finished_at)
-                duration_ms = int((finished_at - started_at).total_seconds() * 1000)
-            status_engine = create_oltp_engine()
-            with Session(status_engine) as oltp_session:
-                persisted_run = oltp_session.get(RefreshRun, run_id)
-                if persisted_run is not None:
-                    persisted_run.finished_at = finished_at
-                    persisted_run.duration_ms = duration_ms
-                    persisted_run.clickhouse_backfill_status = clickhouse_backfill_result.status
-                    persisted_run.clickhouse_backfill_error_message = clickhouse_backfill_result.error
-                    persisted_run.clickhouse_conversation_events_loaded = (
-                        clickhouse_backfill_result.rows_loaded["conversationEvents"]
-                    )
-                    persisted_run.clickhouse_message_events_loaded = (
-                        clickhouse_backfill_result.rows_loaded["messageEvents"]
-                    )
-                    persisted_run.clickhouse_tool_events_loaded = (
-                        clickhouse_backfill_result.rows_loaded["toolEvents"]
-                    )
-                    persisted_run.clickhouse_usage_events_loaded = (
-                        clickhouse_backfill_result.rows_loaded["usageEvents"]
-                    )
-                    oltp_session.commit()
-            status_engine.dispose()
-
         last_successful_refresh_at = finished_at.isoformat()
         payload = build_status_payload(
             status="completed",
@@ -788,7 +715,6 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
             window_start=export_meta.window_start,
             window_end=export_meta.window_end,
             source_conversation_count=export_meta.conversation_count,
-            clickhouse_backfill=clickhouse_backfill,
         )
         write_status(payload)
         return payload
@@ -810,7 +736,6 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
             "windowStart": export_meta.window_start,
             "windowEnd": export_meta.window_end,
             "sourceConversationCount": export_meta.conversation_count,
-            "clickhouseBackfill": clickhouse_backfill,
         }
         write_status(payload)
         raise

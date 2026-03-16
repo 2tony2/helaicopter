@@ -454,8 +454,8 @@ export interface DatabaseTableSchema {
   columns: DatabaseColumnSchema[];
 }
 
-export type DatabaseStatusKey = "sqlite" | "clickhouse" | "legacy_duckdb";
-export type DatabaseRole = "metadata" | "analytics" | "legacy_debug";
+export type DatabaseStatusKey = "sqlite" | "legacy_duckdb";
+export type DatabaseRole = "metadata" | "legacy_debug";
 export type DatabaseAvailability = "ready" | "missing" | "unreachable";
 
 export interface DatabaseArtifactStatus {
@@ -474,26 +474,6 @@ export interface DatabaseArtifactStatus {
   tables: DatabaseTableSchema[];
 }
 
-export interface ClickHouseBackfillStatus {
-  enabled: boolean;
-  status: "disabled" | "running" | "completed" | "failed";
-  target: string;
-  mode: string;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  durationMs?: number | null;
-  error?: string | null;
-  idempotencyKey?: string | null;
-  sourceConversationCount?: number;
-  scopeLabel?: string | null;
-  rowsLoaded: {
-    conversationEvents: number;
-    messageEvents: number;
-    toolEvents: number;
-    usageEvents: number;
-  };
-}
-
 export interface DatabaseStatus {
   status: "idle" | "running" | "completed" | "failed";
   trigger?: string;
@@ -508,16 +488,13 @@ export interface DatabaseStatus {
   windowStart?: string | null;
   windowEnd?: string | null;
   sourceConversationCount?: number;
-  clickhouseBackfill?: ClickHouseBackfillStatus | null;
   refreshIntervalMinutes: number;
   runtime: {
-    analyticsReadBackend: "legacy" | "clickhouse";
-    conversationSummaryReadBackend: "legacy" | "clickhouse";
-    liveIngestionEnabled: boolean;
+    analyticsReadBackend: "legacy";
+    conversationSummaryReadBackend: "legacy";
   };
   databases: {
     sqlite: DatabaseArtifactStatus;
-    clickhouse: DatabaseArtifactStatus;
     legacyDuckdb: DatabaseArtifactStatus;
   };
 }

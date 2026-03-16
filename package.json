@@ -7,14 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "go:live-ingestion": "cd go/live-ingestion && go run ./cmd/helaicopter-live-ingestion",
     "db:refresh": "uv run python -m helaicopter_db.refresh --trigger cli",
     "db:migrate:oltp": "uv run alembic -x target=oltp upgrade head",
     "db:migrate:olap": "uv run alembic -x target=olap upgrade head",
-    "db:export": "tsx scripts/export-parsed-data.ts",
-    "db:bootstrap:clickhouse": "uv run python -m helaicopter_db.clickhouse_bootstrap",
-    "db:backfill:clickhouse": "uv run python -m helaicopter_db.clickhouse_backfill --trigger cli",
-    "db:bootstrap:clickhouse:local": "bash scripts/bootstrap-clickhouse-local.sh"
+    "db:export": "tsx scripts/export-parsed-data.ts"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.33.1-dev20.0",

@@ -203,14 +203,14 @@ export function DatabaseDashboard() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-3">
           <Badge variant="secondary" className="text-sm">
-            SQLite + ClickHouse Runtime
+            SQLite Runtime
           </Badge>
           <div>
             <h1 className="text-2xl font-bold">Databases</h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
-              Helaicopter uses SQLite for app-local metadata and ClickHouse for
-              analytics plus event storage. Historical refreshes maintain the
-              exported snapshot, while live ingestion keeps the analytics store current.
+              Helaicopter uses SQLite for app-local metadata and the legacy
+              DuckDB artifact for optional inspection/debugging. Conversations
+              and analytics in the UI now stay fresh through simple polling.
             </p>
             <p className="text-sm text-muted-foreground">
               {data.scopeLabel ?? "Historical conversations before today from the last 365 days"}.
@@ -234,7 +234,7 @@ export function DatabaseDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Refresh Status</CardTitle>
@@ -270,16 +270,15 @@ export function DatabaseDashboard() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">ClickHouse</CardTitle>
+            <CardTitle className="text-base">Legacy DuckDB</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <Badge variant={availabilityVariant(data.databases.clickhouse.availability)}>
-              {data.databases.clickhouse.availability}
+            <Badge variant={availabilityVariant(data.databases.legacyDuckdb.availability)}>
+              {data.databases.legacyDuckdb.availability}
             </Badge>
-            <div>{data.databases.clickhouse.engine}</div>
-            <div>{data.databases.clickhouse.tableCount} tables</div>
-            <div>Analytics backend: {data.runtime.analyticsReadBackend}</div>
-            <div className="font-mono text-xs break-all">{data.databases.clickhouse.target}</div>
+            <div>{data.databases.legacyDuckdb.engine}</div>
+            <div>{data.databases.legacyDuckdb.tableCount} tables</div>
+            <div className="font-mono text-xs break-all">{data.databases.legacyDuckdb.path}</div>
           </CardContent>
         </Card>
         <Card>
@@ -289,7 +288,7 @@ export function DatabaseDashboard() {
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <div>Analytics: {data.runtime.analyticsReadBackend}</div>
             <div>Conversation summaries: {data.runtime.conversationSummaryReadBackend}</div>
-            <div>Live ingestion: {data.runtime.liveIngestionEnabled ? "enabled" : "disabled"}</div>
+            <div>UI polling: every 3 seconds</div>
             <div>Window: last {data.windowDays ?? 365} days max</div>
           </CardContent>
         </Card>
@@ -306,31 +305,6 @@ export function DatabaseDashboard() {
             </div>
           </CardContent>
         </Card>
-        {data.clickhouseBackfill && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">ClickHouse Backfill</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <Badge
-                variant={data.clickhouseBackfill.status === "failed" ? "destructive" : "secondary"}
-              >
-                {data.clickhouseBackfill.status}
-              </Badge>
-              <div>
-                Events:{" "}
-                {(data.clickhouseBackfill.rowsLoaded?.conversationEvents ?? 0).toLocaleString()} conv
-                {" / "}
-                {(data.clickhouseBackfill.rowsLoaded?.messageEvents ?? 0).toLocaleString()} msg
-              </div>
-              <div>
-                Tools: {(data.clickhouseBackfill.rowsLoaded?.toolEvents ?? 0).toLocaleString()}
-                {" / "}Usage: {(data.clickhouseBackfill.rowsLoaded?.usageEvents ?? 0).toLocaleString()}
-              </div>
-              <div className="font-mono text-xs break-all">{data.clickhouseBackfill.target}</div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {data.error && (
@@ -347,31 +321,13 @@ export function DatabaseDashboard() {
         </Card>
       )}
 
-      {data.clickhouseBackfill?.error && (
-        <Card className="border-destructive/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <TriangleAlert className="h-4 w-4" />
-              ClickHouse Backfill Error
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="font-mono text-sm text-muted-foreground">
-            {data.clickhouseBackfill.error}
-          </CardContent>
-        </Card>
-      )}
-
       <Tabs defaultValue="sqlite" className="space-y-4">
         <TabsList>
           <TabsTrigger value="sqlite">SQLite</TabsTrigger>
-          <TabsTrigger value="clickhouse">ClickHouse</TabsTrigger>
           <TabsTrigger value="legacyDuckdb">Legacy DuckDB</TabsTrigger>
         </TabsList>
         <TabsContent value="sqlite">
           <DatabaseExplorer database={data.databases.sqlite} />
-        </TabsContent>
-        <TabsContent value="clickhouse">
-          <DatabaseExplorer database={data.databases.clickhouse} />
         </TabsContent>
         <TabsContent value="legacyDuckdb">
           <div className="space-y-6">

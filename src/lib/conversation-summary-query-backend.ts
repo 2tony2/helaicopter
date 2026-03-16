@@ -1,10 +1,8 @@
-import { getConversationSummaryReadBackend } from "@/lib/backend-flags";
 import { listLegacyConversations } from "@/lib/claude-data";
-import { queryClickHouseConversationSummaries } from "@/lib/clickhouse-conversation-summaries";
 import type { ConversationSummary } from "@/lib/types";
 
 export interface ConversationSummaryQueryBackend {
-  name: "legacy" | "clickhouse";
+  name: "legacy";
   listConversations(
     projectFilter?: string,
     days?: number
@@ -18,25 +16,8 @@ const legacyConversationSummaryQueryBackend: ConversationSummaryQueryBackend = {
   },
 };
 
-const clickHouseConversationSummaryQueryBackend: ConversationSummaryQueryBackend =
-  {
-    name: "clickhouse",
-    async listConversations(projectFilter, days) {
-      try {
-        return await queryClickHouseConversationSummaries(projectFilter, days);
-      } catch {
-        return legacyConversationSummaryQueryBackend.listConversations(
-          projectFilter,
-          days
-        );
-      }
-    },
-  };
-
 export function getConversationSummaryQueryBackend(): ConversationSummaryQueryBackend {
-  return getConversationSummaryReadBackend() === "clickhouse"
-    ? clickHouseConversationSummaryQueryBackend
-    : legacyConversationSummaryQueryBackend;
+  return legacyConversationSummaryQueryBackend;
 }
 
 export async function queryConversationSummaries(
