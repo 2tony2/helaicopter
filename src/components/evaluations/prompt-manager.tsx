@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useEvaluationPrompts } from "@/hooks/use-conversations";
-import type { EvaluationPrompt } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,40 +21,67 @@ const EMPTY_DRAFT: DraftPrompt = {
   promptText: "",
 };
 
+function draftFromPrompt(prompt: {
+  promptId: string;
+  name: string;
+  description?: string | null;
+  promptText: string;
+}): DraftPrompt {
+  return {
+    name: prompt.name,
+    description: prompt.description ?? "",
+    promptText: prompt.promptText,
+  };
+}
+
 export function PromptManager() {
   const { data, isLoading, mutate } = useEvaluationPrompts();
-  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<DraftPrompt>(EMPTY_DRAFT);
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null | undefined>(
+    undefined
+  );
+  const [draftState, setDraftState] = useState<{
+    sourcePromptId: string | null;
+    value: DraftPrompt;
+  }>({
+    sourcePromptId: null,
+    value: EMPTY_DRAFT,
+  });
   const [error, setError] = useState<string | null>(null);
-  const prompts = data ?? [];
-  const selectedPrompt = prompts.find((prompt) => prompt.promptId === selectedPromptId) ?? null;
-
-  useEffect(() => {
-    if (!prompts.length) {
-      return;
+  const prompts = useMemo(() => data ?? [], [data]);
+  const selectedPrompt = useMemo(() => {
+    if (selectedPromptId === null) {
+      return null;
     }
 
     if (!selectedPromptId) {
-      setSelectedPromptId(prompts[0].promptId);
-      return;
+      return prompts[0] ?? null;
     }
 
-    if (!prompts.some((prompt) => prompt.promptId === selectedPromptId)) {
-      setSelectedPromptId(prompts[0].promptId);
-    }
+    return (
+      prompts.find((prompt) => prompt.promptId === selectedPromptId) ??
+      prompts[0] ??
+      null
+    );
   }, [prompts, selectedPromptId]);
-
-  useEffect(() => {
-    if (!selectedPrompt) {
-      return;
+  const activePromptId = selectedPrompt?.promptId ?? null;
+  const draft = useMemo(() => {
+    if (draftState.sourcePromptId === activePromptId) {
+      return draftState.value;
     }
 
-    setDraft({
-      name: selectedPrompt.name,
-      description: selectedPrompt.description ?? "",
-      promptText: selectedPrompt.promptText,
+    if (selectedPrompt) {
+      return draftFromPrompt(selectedPrompt);
+    }
+
+    return EMPTY_DRAFT;
+  }, [activePromptId, draftState, selectedPrompt]);
+
+  function updateDraft(nextDraft: DraftPrompt) {
+    setDraftState({
+      sourcePromptId: activePromptId,
+      value: nextDraft,
     });
-  }, [selectedPrompt]);
+  }
 
   async function savePrompt() {
     setError(null);
@@ -91,6 +117,10 @@ export function PromptManager() {
 
     await mutate();
     setSelectedPromptId(body.promptId);
+    setDraftState({
+      sourcePromptId: body.promptId,
+      value: payload,
+    });
   }
 
   async function deletePrompt() {
@@ -109,8 +139,11 @@ export function PromptManager() {
     }
 
     await mutate();
-    setSelectedPromptId(null);
-    setDraft(EMPTY_DRAFT);
+    setSelectedPromptId(undefined);
+    setDraftState({
+      sourcePromptId: null,
+      value: EMPTY_DRAFT,
+    });
   }
 
   if (isLoading) {
@@ -127,7 +160,10 @@ export function PromptManager() {
             size="sm"
             onClick={() => {
               setSelectedPromptId(null);
-              setDraft(EMPTY_DRAFT);
+              setDraftState({
+                sourcePromptId: null,
+                value: EMPTY_DRAFT,
+              });
               setError(null);
             }}
           >
@@ -140,11 +176,18 @@ export function PromptManager() {
             <button
               key={prompt.promptId}
               className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                prompt.promptId === selectedPromptId
+                prompt.promptId === activePromptId
                   ? "border-primary bg-accent/60"
                   : "hover:bg-accent/40"
               }`}
-              onClick={() => setSelectedPromptId(prompt.promptId)}
+              onClick={() => {
+                setSelectedPromptId(prompt.promptId);
+                setDraftState({
+                  sourcePromptId: prompt.promptId,
+                  value: draftFromPrompt(prompt),
+                });
+                setError(null);
+              }}
             >
               <div className="flex items-center gap-2">
                 <div className="font-medium text-sm">{prompt.name}</div>
@@ -176,7 +219,7 @@ export function PromptManager() {
             <Input
               value={draft.name}
               onChange={(event) =>
-                setDraft((current) => ({ ...current, name: event.target.value }))
+                updateDraft({ ...draft, name: event.target.value })
               }
               placeholder="Prompt name"
             />
@@ -186,7 +229,7 @@ export function PromptManager() {
             <Input
               value={draft.description}
               onChange={(event) =>
-                setDraft((current) => ({ ...current, description: event.target.value }))
+                updateDraft({ ...draft, description: event.target.value })
               }
               placeholder="Short description"
             />
@@ -197,7 +240,7 @@ export function PromptManager() {
               className="min-h-[360px]"
               value={draft.promptText}
               onChange={(event) =>
-                setDraft((current) => ({ ...current, promptText: event.target.value }))
+                updateDraft({ ...draft, promptText: event.target.value })
               }
               placeholder="Write the evaluation prompt here"
             />

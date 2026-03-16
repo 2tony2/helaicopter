@@ -124,6 +124,13 @@ If you want a local-only deployment, run ClickHouse locally and keep SQLite in-p
 5. Keep SQLite detail tables only where the UI still benefits from local point-lookups.
 6. Remove the "historical before today vs live today" split once ClickHouse is trusted.
 
+## Rollout flags
+
+- `HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=1` switches `/api/analytics` to the ClickHouse query seam. Until the ClickHouse implementation lands, that backend falls through to the legacy in-process aggregator.
+- `HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=1` switches `/api/conversations` to the ClickHouse summary seam. Until the ClickHouse implementation lands, that backend falls through to the current SQLite-plus-live-parser merge.
+- `HELAICOPTER_ENABLE_LIVE_INGESTION=1` marks runtime as expecting live data to come from ingestion rather than the special-case parser path. With the legacy read backends still selected, it has no effect.
+- With all three flags unset or `0`, runtime behavior stays on the current default path.
+
 ## Cautions
 
 - ClickHouse is not a replacement for every transactional need. Keep SQLite for small ACID metadata writes.
