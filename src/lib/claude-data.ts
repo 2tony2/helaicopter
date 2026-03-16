@@ -873,18 +873,23 @@ export async function getTasksForSession(
   return getRawTasksForSession(sessionId);
 }
 
-export async function getLegacyAnalytics(
-  days?: number,
+export function filterAnalyticsConversationsByProvider(
+  conversations: ConversationSummary[],
   provider?: string
-): Promise<AnalyticsData> {
-  let conversations = await listLegacyConversations(undefined, days);
-
+): ConversationSummary[] {
   if (provider === "claude") {
-    conversations = conversations.filter((c) => !c.projectPath.startsWith("codex:"));
+    return conversations.filter((c) => !c.projectPath.startsWith("codex:"));
   } else if (provider === "codex") {
-    conversations = conversations.filter((c) => c.projectPath.startsWith("codex:"));
+    return conversations.filter((c) => c.projectPath.startsWith("codex:"));
   }
 
+  return conversations;
+}
+
+export function buildAnalyticsFromConversations(
+  conversations: ConversationSummary[],
+  days?: number
+): AnalyticsData {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let totalCacheCreationTokens = 0;
@@ -1241,6 +1246,18 @@ export async function getLegacyAnalytics(
     costBreakdownByProvider,
     costBreakdownByModel,
   };
+}
+
+export async function getLegacyAnalytics(
+  days?: number,
+  provider?: string
+): Promise<AnalyticsData> {
+  const conversations = filterAnalyticsConversationsByProvider(
+    await listLegacyConversations(undefined, days),
+    provider
+  );
+
+  return buildAnalyticsFromConversations(conversations, days);
 }
 
 export const getAnalytics = getLegacyAnalytics;
