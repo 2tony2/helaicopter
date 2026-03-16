@@ -12,6 +12,7 @@
     "db:migrate:olap": "uv run alembic -x target=olap upgrade head",
     "db:export": "tsx scripts/export-parsed-data.ts",
     "db:bootstrap:clickhouse": "uv run python -m helaicopter_db.clickhouse_bootstrap",
+    "db:backfill:clickhouse": "uv run python -m helaicopter_db.clickhouse_backfill --trigger cli",
     "db:bootstrap:clickhouse:local": "bash scripts/bootstrap-clickhouse-local.sh"
   },
   "dependencies": {

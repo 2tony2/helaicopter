@@ -30,6 +30,28 @@ class RefreshRun(OltpBase):
     messages_loaded: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tool_calls_loaded: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     plans_loaded: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    clickhouse_backfill_status: Mapped[str | None] = mapped_column(Text)
+    clickhouse_backfill_error_message: Mapped[str | None] = mapped_column(Text)
+    clickhouse_conversation_events_loaded: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    clickhouse_message_events_loaded: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    clickhouse_tool_events_loaded: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    clickhouse_usage_events_loaded: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
 
 
 class EvaluationPromptRecord(OltpBase):

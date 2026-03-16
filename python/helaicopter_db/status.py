@@ -6,7 +6,7 @@ from typing import Any
 import duckdb
 from sqlalchemy import inspect, text
 
-from .db import create_olap_engine, create_oltp_engine
+from .db import create_oltp_engine
 from .settings import OLAP_ARTIFACT, OLTP_ARTIFACT, STATUS_FILE
 
 
@@ -140,15 +140,14 @@ def build_status_payload(
     window_start: str | None,
     window_end: str | None,
     source_conversation_count: int,
+    clickhouse_backfill: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     oltp_engine = create_oltp_engine()
-    olap_engine = create_olap_engine()
     try:
         oltp_tables = _sqlite_table_summaries(oltp_engine)
         olap_tables = _duckdb_table_summaries()
     finally:
         oltp_engine.dispose()
-        olap_engine.dispose()
 
     return {
         "status": status,
@@ -164,6 +163,7 @@ def build_status_payload(
         "windowStart": window_start,
         "windowEnd": window_end,
         "sourceConversationCount": source_conversation_count,
+        "clickhouseBackfill": clickhouse_backfill,
         "refreshIntervalMinutes": 360,
         "databases": {
             "oltp": {

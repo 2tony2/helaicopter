@@ -465,6 +465,26 @@ export interface DatabaseArtifactStatus {
   tables: DatabaseTableSchema[];
 }
 
+export interface ClickHouseBackfillStatus {
+  enabled: boolean;
+  status: "disabled" | "running" | "completed" | "failed";
+  target: string;
+  mode: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  durationMs?: number | null;
+  error?: string | null;
+  idempotencyKey?: string | null;
+  sourceConversationCount?: number;
+  scopeLabel?: string | null;
+  rowsLoaded: {
+    conversationEvents: number;
+    messageEvents: number;
+    toolEvents: number;
+    usageEvents: number;
+  };
+}
+
 export interface DatabaseStatus {
   status: "idle" | "running" | "completed" | "failed";
   trigger?: string;
@@ -479,6 +499,7 @@ export interface DatabaseStatus {
   windowStart?: string | null;
   windowEnd?: string | null;
   sourceConversationCount?: number;
+  clickhouseBackfill?: ClickHouseBackfillStatus | null;
   refreshIntervalMinutes: number;
   databases: {
     oltp: DatabaseArtifactStatus;
