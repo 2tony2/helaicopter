@@ -205,7 +205,37 @@ npm run dev      # Start development server (port 3000)
 npm run build    # Production build
 npm run start    # Start production server
 npm run lint     # ESLint
+npm run db:bootstrap:clickhouse        # Apply the tracked ClickHouse schema to a running server
+npm run db:bootstrap:clickhouse:local  # Start/reuse a local ClickHouse container and initialize the schema
 ```
+
+## ClickHouse Bootstrap
+
+The kappa migration bootstrap assets live under `sql/clickhouse/` and can be applied to a local ClickHouse instance with:
+
+```bash
+npm run db:bootstrap:clickhouse:local
+```
+
+If you already have ClickHouse running, use:
+
+```bash
+npm run db:bootstrap:clickhouse
+```
+
+`npm run db:bootstrap:clickhouse:local` starts or reuses a local `clickhouse/clickhouse-server:25.3` container, connects on `127.0.0.1:8123`, defaults the local user/password to `helaicopter` / `helaicopter`, and creates the `helaicopter` database. Override connection settings with:
+
+```bash
+HELAICOPTER_CLICKHOUSE_HOST=127.0.0.1
+HELAICOPTER_CLICKHOUSE_PORT=8123
+HELAICOPTER_CLICKHOUSE_NATIVE_PORT=9000
+HELAICOPTER_CLICKHOUSE_DATABASE=helaicopter
+HELAICOPTER_CLICKHOUSE_USER=helaicopter
+HELAICOPTER_CLICKHOUSE_PASSWORD=helaicopter
+HELAICOPTER_CLICKHOUSE_SECURE=0
+```
+
+The detailed schema layout, partitions, and sort keys are documented in [`docs/clickhouse-schema.md`](docs/clickhouse-schema.md).
 
 ## License
 
