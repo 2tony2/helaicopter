@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local generated output and vendored schema bundles are not app source.
+    "dev/**",
+    "public/database-schemas/**",
   ]),
 ]);
 

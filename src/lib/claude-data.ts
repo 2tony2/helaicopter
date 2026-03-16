@@ -46,14 +46,14 @@ import {
   summarizePlanContent,
 } from "./plan-utils";
 import {
-  getHistoricalConversation,
-  getHistoricalTasksForSession,
-  listHistoricalConversationSummaries,
-} from "./conversation-db";
-import { isTimestampToday, startOfTodayMs } from "./time-windows";
+  getHistoricalConversationStore,
+} from "./historical-conversation-store";
+import { startOfTodayMs } from "./time-windows";
 
 const TIME_SERIES_KEYS = ["hourly", "daily", "weekly", "monthly"] as const;
 type TimeSeriesKey = (typeof TIME_SERIES_KEYS)[number];
+
+const historicalConversationStore = getHistoricalConversationStore();
 
 function startOfUtcHour(timestamp: number): Date {
   const date = new Date(timestamp);
@@ -555,12 +555,14 @@ export async function listRawConversations(
   return conversations.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-export async function listConversations(
+export async function listLegacyConversations(
   projectFilter?: string,
   days?: number
 ): Promise<ConversationSummary[]> {
   const [historicalConversations, liveConversations] = await Promise.all([
-    Promise.resolve(listHistoricalConversationSummaries(projectFilter, days)),
+    Promise.resolve(
+      historicalConversationStore.listConversationSummaries(projectFilter, days)
+    ),
     listRawConversations(projectFilter, days, { dayScope: "today" }),
   ]);
 
@@ -568,6 +570,8 @@ export async function listConversations(
     (a, b) => b.timestamp - a.timestamp
   );
 }
+
+export const listConversations = listLegacyConversations;
 
 /**
  * Discover subagent files for a session and extract references from parent events.
@@ -710,7 +714,10 @@ export async function getConversation(
   projectPath: string,
   sessionId: string
 ): Promise<ProcessedConversation | null> {
-  const historicalConversation = getHistoricalConversation(projectPath, sessionId);
+  const historicalConversation = historicalConversationStore.getConversation(
+    projectPath,
+    sessionId
+  );
   if (historicalConversation) {
     return historicalConversation;
   }
@@ -856,7 +863,9 @@ export async function getRawTasksForSession(
 export async function getTasksForSession(
   sessionId: string
 ): Promise<unknown[]> {
-  const historicalTasks = getHistoricalTasksForSession(sessionId);
+  const historicalTasks = historicalConversationStore.getTasksForSession(
+    sessionId
+  );
   if (historicalTasks) {
     return historicalTasks;
   }
@@ -864,8 +873,11 @@ export async function getTasksForSession(
   return getRawTasksForSession(sessionId);
 }
 
-export async function getAnalytics(days?: number, provider?: string): Promise<AnalyticsData> {
-  let conversations = await listConversations(undefined, days);
+export async function getLegacyAnalytics(
+  days?: number,
+  provider?: string
+): Promise<AnalyticsData> {
+  let conversations = await listLegacyConversations(undefined, days);
 
   if (provider === "claude") {
     conversations = conversations.filter((c) => !c.projectPath.startsWith("codex:"));
@@ -1230,3 +1242,5 @@ export async function getAnalytics(days?: number, provider?: string): Promise<An
     costBreakdownByModel,
   };
 }
+
+export const getAnalytics = getLegacyAnalytics;
