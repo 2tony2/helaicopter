@@ -21,6 +21,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - **Node.js** 20+ (22+ recommended)
 - **npm** 10+
 - **Claude Code** and/or **Codex** installed (the app reads from `~/.claude/` and `~/.codex/`)
+- **Go** 1.26+ if you want to run the live ingestion service
 
 ## Features
 
@@ -205,6 +206,7 @@ npm run dev      # Start development server (port 3000)
 npm run build    # Production build
 npm run start    # Start production server
 npm run lint     # ESLint
+npm run go:live-ingestion              # Run the Go live ingestion service
 npm run db:bootstrap:clickhouse        # Apply the tracked ClickHouse schema to a running server
 npm run db:bootstrap:clickhouse:local  # Start/reuse a local ClickHouse container and initialize the schema
 ```
@@ -236,6 +238,18 @@ HELAICOPTER_CLICKHOUSE_SECURE=0
 ```
 
 The detailed schema layout, partitions, and sort keys are documented in [`docs/clickhouse-schema.md`](docs/clickhouse-schema.md).
+
+## Go Live Ingestion
+
+The live ingestion service lives in [`go/live-ingestion`](/Users/tony/Code/helaicopter/go/live-ingestion). It watches Claude and Codex session files, normalizes newly appended JSONL lines into ClickHouse, and exposes a persisted SSE fanout stream.
+
+Start it with:
+
+```bash
+npm run go:live-ingestion
+```
+
+Detailed setup, environment variables, checkpoint behavior, and the event id / dedupe contract are documented in [`docs/go-live-ingestion.md`](/Users/tony/Code/helaicopter/docs/go-live-ingestion.md).
 
 ## License
 
