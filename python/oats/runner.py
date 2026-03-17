@@ -85,11 +85,27 @@ def invoke_agent(
     return result
 
 
-def build_planner_prompt(run_title: str, tasks: list[PlannedTask]) -> str:
+def build_planner_prompt(
+    run_title: str,
+    tasks: list[PlannedTask],
+    *,
+    read_only: bool,
+) -> str:
+    mode_lines = (
+        [
+            "Read-only planning run.",
+            "Do not modify files, create branches, or run write operations.",
+            "Summarize the execution order, dependencies, and likely implementation hotspots for these tasks.",
+        ]
+        if read_only
+        else [
+            "Writable planning run.",
+            "You may inspect the repo, propose sequencing, and make changes only if they are necessary to unblock execution.",
+            "Prefer concrete execution guidance over abstract architecture prose.",
+        ]
+    )
     lines = [
-        "Read-only planning run.",
-        "Do not modify files, create branches, or run write operations.",
-        "Summarize the execution order, dependencies, and likely implementation hotspots for these tasks.",
+        *mode_lines,
         f"Run title: {run_title}",
         "",
         "Tasks:",
@@ -120,11 +136,27 @@ def build_planner_prompt(run_title: str, tasks: list[PlannedTask]) -> str:
     return "\n".join(lines)
 
 
-def build_task_prompt(task: PlannedTask, run_title: str) -> str:
+def build_task_prompt(
+    task: PlannedTask,
+    run_title: str,
+    *,
+    read_only: bool,
+) -> str:
     depends_on = ", ".join(task.depends_on) if task.depends_on else "none"
+    mode_lines = (
+        [
+            "Read-only execution rehearsal.",
+            "Do not modify files, create commits, or apply patches.",
+        ]
+        if read_only
+        else [
+            "Writable execution run.",
+            "You may modify files, run validation commands, and create the implementation needed for this task.",
+            "Prefer small, reviewable changes that stay inside the task boundary.",
+        ]
+    )
     lines = [
-        "Read-only execution rehearsal.",
-        "Do not modify files, create commits, or apply patches.",
+        *mode_lines,
         f"Run title: {run_title}",
         f"Task id: {task.id}",
         f"Task title: {task.title}",

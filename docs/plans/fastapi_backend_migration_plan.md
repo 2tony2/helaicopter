@@ -146,7 +146,7 @@ From the planning worktree:
 cd /Users/tony/Code/helaicopter-worktrees/fastapi-migration-plan
 uv run oats plan examples/fastapi_backend_rollout.md
 uv run oats pr-plan examples/fastapi_backend_rollout.md
-uv run oats run examples/fastapi_backend_rollout.md
+uv run oats run examples/fastapi_backend_rollout.md --allow-writes --dangerous-bypass
 ```
 
 ## Expected Outcome

@@ -267,6 +267,11 @@ def run(
         min=1,
         help="Maximum time to wait for each provider call before returning partial session metadata.",
     ),
+    dangerous_bypass: bool = typer.Option(
+        False,
+        "--dangerous-bypass",
+        help="When writes are allowed, invoke Codex/Claude with permission-bypass flags.",
+    ),
 ) -> None:
     """Execute a minimal agent run and persist provider session metadata."""
 
@@ -292,9 +297,14 @@ def run(
             agent_command=config.agent[config.agents.planner],
             role="planner",
             cwd=execution_plan.repo_root,
-            prompt=build_planner_prompt(execution_plan.run_title, execution_plan.tasks),
+            prompt=build_planner_prompt(
+                execution_plan.run_title,
+                execution_plan.tasks,
+                read_only=read_only,
+            ),
             read_only=read_only,
             timeout_seconds=timeout_seconds,
+            dangerous_bypass=dangerous_bypass,
         )
 
         task_records: list[TaskExecutionRecord] = []
@@ -304,9 +314,14 @@ def run(
                 agent_command=config.agent[config.agents.executor],
                 role="executor",
                 cwd=execution_plan.repo_root,
-                prompt=build_task_prompt(task, execution_plan.run_title),
+                prompt=build_task_prompt(
+                    task,
+                    execution_plan.run_title,
+                    read_only=read_only,
+                ),
                 read_only=read_only,
                 timeout_seconds=timeout_seconds,
+                dangerous_bypass=dangerous_bypass,
             )
             task_records.append(
                 TaskExecutionRecord(
