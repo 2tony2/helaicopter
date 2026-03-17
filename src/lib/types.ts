@@ -126,6 +126,56 @@ export interface SubagentInfo {
   sessionId: string;
 }
 
+export interface ConversationDagNode {
+  id: string;
+  sessionId: string;
+  parentSessionId?: string;
+  projectPath: string;
+  label: string;
+  description?: string;
+  nickname?: string;
+  subagentType?: string;
+  threadType: "main" | "subagent";
+  hasTranscript: boolean;
+  model?: string;
+  messageCount: number;
+  totalTokens: number;
+  timestamp: number;
+  depth: number;
+  path: string;
+  isRoot: boolean;
+}
+
+export interface ConversationDagEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface ConversationDagStats {
+  totalNodes: number;
+  totalEdges: number;
+  totalSubagentNodes: number;
+  maxDepth: number;
+  maxBreadth: number;
+  leafCount: number;
+  rootSubagentCount: number;
+  totalMessages: number;
+  totalTokens: number;
+}
+
+export interface ConversationDag {
+  projectPath: string;
+  rootSessionId: string;
+  nodes: ConversationDagNode[];
+  edges: ConversationDagEdge[];
+  stats: ConversationDagStats;
+}
+
+export interface ConversationDagSummary extends ConversationSummary {
+  dag: ConversationDagStats;
+}
+
 /** Per-tool or per-category context breakdown */
 export interface ContextBucket {
   label: string;

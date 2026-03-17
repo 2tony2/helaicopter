@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { DatabaseAutoRefresh } from "@/components/databases/database-auto-refresh";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 const geistSans = Geist({

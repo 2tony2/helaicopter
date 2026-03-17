@@ -677,6 +677,40 @@ async function discoverSubagents(
   return subagents;
 }
 
+async function findSubagentFile(
+  projectPath: string,
+  agentId: string
+): Promise<string | null> {
+  const projectDir = join(PROJECTS_DIR, projectPath);
+  const targetFileName = `agent-${agentId}.jsonl`;
+
+  async function walk(dir: string): Promise<string | null> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name === targetFileName) {
+        return join(dir, entry.name);
+      }
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const fullPath = join(dir, entry.name);
+      const match = await walk(fullPath);
+      if (match) return match;
+    }
+
+    return null;
+  }
+
+  return walk(projectDir);
+}
+
 export async function getRawConversation(
   projectPath: string,
   sessionId: string
@@ -685,13 +719,34 @@ export async function getRawConversation(
     return getCodexConversation(sessionId);
   }
 
-  const filePath = join(PROJECTS_DIR, projectPath, `${sessionId}.jsonl`);
-
-  const cached = await conversationCache.get(filePath);
+  const mainFilePath = join(PROJECTS_DIR, projectPath, `${sessionId}.jsonl`);
+  let filePath = mainFilePath;
+  let cached = await conversationCache.get(filePath);
   if (cached) return cached as ProcessedConversation;
 
+  let events: import("./types").RawEvent[] | null = null;
   try {
-    const events = await parseJsonlFile(filePath);
+    events = await parseJsonlFile(filePath);
+  } catch {
+    const subagentFilePath = await findSubagentFile(projectPath, sessionId);
+    if (!subagentFilePath) {
+      return null;
+    }
+    filePath = subagentFilePath;
+    cached = await conversationCache.get(filePath);
+    if (cached) return cached as ProcessedConversation;
+    try {
+      events = await parseJsonlFile(filePath);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!events) {
+    return null;
+  }
+
+  try {
     const processed = processConversation(events, sessionId, projectPath);
     processed.plans = processed.plans.map((plan) => ({
       ...plan,

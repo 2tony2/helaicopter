@@ -151,10 +151,12 @@ export const summaryCache = new FileCache<unknown>(100);
 export const conversationCache = new FileCache<unknown>(20);
 export const analyticsResponseCache = new TtlCache<unknown>(24);
 export const conversationListResponseCache = new TtlCache<unknown>(24);
+export const conversationDagResponseCache = new TtlCache<unknown>(24);
 export const projectListResponseCache = new TtlCache<unknown>(8);
 
 export function clearExpensiveReadCaches(): void {
   analyticsResponseCache.clear();
   conversationListResponseCache.clear();
+  conversationDagResponseCache.clear();
   projectListResponseCache.clear();
 }

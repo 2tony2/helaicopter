@@ -7,6 +7,8 @@ import type {
   ProjectInfo,
   AnalyticsData,
   ConversationEvaluation,
+  ConversationDag,
+  ConversationDagSummary,
   DatabaseStatus,
   EvaluationPrompt,
   SubscriptionSettings,
@@ -53,6 +55,31 @@ export function useConversation(projectPath?: string, sessionId?: string) {
       ? `/api/conversations/${encodeURIComponent(projectPath)}/${sessionId}`
       : null;
   return useSWR<ProcessedConversation>(url, fetcher, conversationSwrOptions);
+}
+
+export function useConversationDag(projectPath?: string, sessionId?: string) {
+  const url =
+    projectPath && sessionId
+      ? `/api/conversations/${encodeURIComponent(projectPath)}/${sessionId}/dag`
+      : null;
+  return useSWR<ConversationDag>(url, fetcher, conversationSwrOptions);
+}
+
+export function useConversationDagSummaries(
+  project?: string,
+  days?: number,
+  provider?: string
+) {
+  const params = new URLSearchParams();
+  if (project) params.set("project", project);
+  if (days) params.set("days", String(days));
+  if (provider && provider !== "all") params.set("provider", provider);
+  const qs = params.toString();
+  return useSWR<ConversationDagSummary[]>(
+    `/api/conversation-dags${qs ? `?${qs}` : ""}`,
+    fetcher,
+    conversationSwrOptions
+  );
 }
 
 export function useAnalytics(days?: number, provider?: string) {

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   useConversation,
+  useConversationDag,
   useConversationEvaluations,
   useTasks,
   useSubagentConversation,
@@ -25,6 +26,7 @@ import { PlanPanel } from "@/components/plans/plan-panel";
 import { ToolCallBlock } from "./tool-call-block";
 import { EvaluationDialog } from "./evaluation-dialog";
 import { EvaluationsTab } from "./evaluations-tab";
+import { ConversationDagView } from "./conversation-dag-view";
 
 function providerLabel(provider: "claude" | "codex"): string {
   return provider === "claude" ? "Claude" : "Codex";
@@ -239,6 +241,11 @@ export function ConversationViewer({
   sessionId: string;
 }) {
   const { data: conversation, isLoading, error } = useConversation(projectPath, sessionId);
+  const {
+    data: conversationDag,
+    isLoading: isDagLoading,
+    error: dagError,
+  } = useConversationDag(projectPath, sessionId);
   const { data: evaluations, mutate: mutateEvaluations } = useConversationEvaluations(
     projectPath,
     sessionId
@@ -393,6 +400,9 @@ export function ConversationViewer({
             Failed Calls {failedToolCalls.length > 0 ? `(${failedToolCalls.length})` : ""}
           </TabsTrigger>
           <TabsTrigger value="context">Context</TabsTrigger>
+          <TabsTrigger value="dag">
+            DAG {conversationDag ? `(${conversationDag.stats.totalNodes})` : ""}
+          </TabsTrigger>
           <TabsTrigger value="subagents">
             Sub-agents{" "}
             {subagents.length > 0 ? `(${subagents.length})` : ""}
@@ -507,6 +517,24 @@ export function ConversationViewer({
             model={conversation.model}
             contextWindow={conversation.contextWindow}
           />
+        </TabsContent>
+
+        <TabsContent value="dag">
+          <div className="mt-4">
+            {isDagLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <Skeleton key={index} className="h-28 w-full" />
+                ))}
+              </div>
+            ) : dagError || !conversationDag ? (
+              <p className="text-sm text-muted-foreground">
+                Could not build a DAG for this conversation.
+              </p>
+            ) : (
+              <ConversationDagView dag={conversationDag} />
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="subagents">

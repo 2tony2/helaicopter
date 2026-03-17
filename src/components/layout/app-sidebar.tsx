@@ -8,6 +8,7 @@ import {
   BarChart3,
   DollarSign,
   Database,
+  Network,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", label: "Analytics", icon: BarChart3 },
   { href: "/conversations", label: "Conversations", icon: MessageSquare },
+  { href: "/dags", label: "DAGs", icon: Network },
   { href: "/plans", label: "Plans", icon: FileText },
   { href: "/prompts", label: "Prompts", icon: Sparkles },
   { href: "/databases", label: "Databases", icon: Database },
