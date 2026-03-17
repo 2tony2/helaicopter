@@ -35,10 +35,15 @@ def test_execution_plan_uses_integration_branch_targeting() -> None:
         config_path=config_path,
     )
 
-    assert plan.integration_branch == "oats/overnight/run-auth-and-dashboard"
+    expected_integration_branch = (
+        f"{config.git.integration_branch_prefix.rstrip('/')}/run-auth-and-dashboard"
+    )
+    expected_task_branch = f"{config.git.task_branch_prefix.rstrip('/')}/auth"
+
+    assert plan.integration_branch == expected_integration_branch
     assert plan.task_pr_target == plan.integration_branch
     assert plan.final_pr_target == "main"
-    assert plan.tasks[0].branch_name == "oats/task/auth"
+    assert plan.tasks[0].branch_name == expected_task_branch
     assert plan.tasks[0].pr_base == plan.integration_branch
 
 
@@ -61,7 +66,7 @@ def test_pr_commands_target_integration_branch_then_main() -> None:
 
     assert "--base" in task_pr_command
     assert plan.integration_branch in task_pr_command
-    assert "oats/task/auth" in task_pr_command
+    assert plan.tasks[0].branch_name in task_pr_command
     assert "--base" in final_pr_command
     assert "main" in final_pr_command
     assert plan.integration_branch in final_pr_command
@@ -108,7 +113,7 @@ def test_pr_apply_dry_run_with_auto_merge_uses_merge_operator() -> None:
     record = execute_pr_plan(plan, config, execute=False)
 
     labels = [command.label for command in record.commands]
-    assert labels == [
+    expected_labels = [
         "integration-1",
         "integration-2",
         "integration-3",
@@ -116,9 +121,12 @@ def test_pr_apply_dry_run_with_auto_merge_uses_merge_operator() -> None:
         "task-pr-merge:auth",
         "task-pr-create:dashboard_api",
         "task-pr-merge:dashboard_api",
-        "final-pr-create",
     ]
+    if config.git.auto_create_final_pr:
+        expected_labels.append("final-pr-create")
+
+    assert labels == expected_labels
     merge_record = next(command for command in record.commands if command.label == "task-pr-merge:auth")
     assert merge_record.agent == "codex"
     assert record.auto_merge_enabled is True
-    assert record.final_pr_created is True
+    assert record.final_pr_created is config.git.auto_create_final_pr

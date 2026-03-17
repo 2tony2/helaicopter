@@ -1,7 +1,7 @@
 [repo]
 base_branch = "main"
-worktree_dir = ".oats-worktrees"
-default_concurrency = 3
+worktree_dir = "/Users/tony/Code/helaicopter-worktrees"
+default_concurrency = 2
 
 [agents]
 planner = "codex"
@@ -25,16 +25,16 @@ commands = [
 fail_fast = true
 
 [git]
-task_branch_prefix = "oats/task/"
-integration_branch_prefix = "oats/overnight/"
+task_branch_prefix = "codex/oats/task/"
+integration_branch_prefix = "codex/oats/overnight/"
 integration_branch_base = "main"
 final_pr_target = "main"
-auto_push = true
-auto_create_task_prs = true
+auto_push = false
+auto_create_task_prs = false
 auto_merge_task_prs_into_integration = false
-auto_create_final_pr = true
+auto_create_final_pr = false
 require_manual_final_review = true
-delete_worktree_on_success = true
+delete_worktree_on_success = false
 
 [conflicts]
 enabled = true
@@ -46,9 +46,9 @@ allow_inferred_dependencies = true
 prefer_explicit_dependencies = true
 
 [logging]
-session_dir = "~/.overnightoats/sessions"
+session_dir = "/Users/tony/Code/helaicopter-worktrees/.oats-sessions"
 persist_format = "sqlite"
 write_markdown_report = true
 
 [context]
-instruction_files = ["AGENTS.md"]
+instruction_files = ["AGENTS.md", "docs/plans/fastapi_backend_migration_plan.md"]
