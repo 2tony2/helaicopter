@@ -5,8 +5,8 @@ default_concurrency = 2
 
 [agents]
 planner = "codex"
-executor = "claude"
-conflict_resolver = "claude"
+executor = "codex"
+conflict_resolver = "codex"
 merge_operator = "codex"
 
 [agent.codex]

@@ -129,3 +129,4 @@ def test_prompts_switch_out_of_read_only_mode() -> None:
     assert "Read-only" not in planner_prompt
     assert "Do not modify files" not in task_prompt
     assert "Writable execution run." in task_prompt
+    assert "Implement the task now in the current worktree." in task_prompt

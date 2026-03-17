@@ -236,7 +236,7 @@ class RunExecutionRecord(BaseModel):
     repo_root: Path
     config_path: Path
     run_spec_path: Path
-    mode: Literal["read-only"] = "read-only"
+    mode: Literal["read-only", "writable"] = "read-only"
     integration_branch: str
     task_pr_target: str
     final_pr_target: str

@@ -173,15 +173,27 @@ def build_task_prompt(
         lines.extend(["", "Validation commands:"])
         for command in task.validation_commands:
             lines.append(f"- {command}")
-    lines.extend(
-        [
-            "",
-            "Return a concise implementation brief with:",
-            "1. Likely files or packages involved",
-            "2. Ordered implementation steps",
-            "3. Main risks or merge-conflict hotspots",
-        ]
-    )
+    if read_only:
+        lines.extend(
+            [
+                "",
+                "Return a concise implementation brief with:",
+                "1. Likely files or packages involved",
+                "2. Ordered implementation steps",
+                "3. Main risks or merge-conflict hotspots",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "Implement the task now in the current worktree.",
+                "After making changes, return a concise execution summary with:",
+                "1. Files changed",
+                "2. Validation commands run and outcomes",
+                "3. Remaining risks or follow-ups",
+            ]
+        )
     return "\n".join(lines)
 
 

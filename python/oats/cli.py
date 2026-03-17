@@ -340,6 +340,7 @@ def run(
         repo_root=execution_plan.repo_root,
         config_path=execution_plan.config_path,
         run_spec_path=execution_plan.run_spec_path,
+        mode="read-only" if read_only else "writable",
         planner=planner_result,
         integration_branch=execution_plan.integration_branch,
         task_pr_target=execution_plan.task_pr_target,

@@ -16,7 +16,7 @@ def test_load_repo_config() -> None:
     config = load_repo_config(config_path)
 
     assert config.repo.base_branch == "main"
-    assert config.agents.executor == "claude"
+    assert config.agents.executor == "codex"
     assert config.agents.merge_operator == "codex"
     assert config.agent["codex"].command == "codex"
     assert config.git.final_pr_target == "main"
