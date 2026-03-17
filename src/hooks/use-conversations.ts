@@ -11,6 +11,7 @@ import type {
   ConversationDagSummary,
   DatabaseStatus,
   EvaluationPrompt,
+  OvernightOatsRunRecord,
   SubscriptionSettings,
 } from "@/lib/types";
 
@@ -77,6 +78,14 @@ export function useConversationDagSummaries(
   const qs = params.toString();
   return useSWR<ConversationDagSummary[]>(
     `/api/conversation-dags${qs ? `?${qs}` : ""}`,
+    fetcher,
+    conversationSwrOptions
+  );
+}
+
+export function useOvernightOatsRuns() {
+  return useSWR<OvernightOatsRunRecord[]>(
+    "/api/orchestration/oats",
     fetcher,
     conversationSwrOptions
   );

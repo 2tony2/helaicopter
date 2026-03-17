@@ -25,3 +25,7 @@ export function isOpenAIModel(model?: string): boolean {
   const m = model.toLowerCase();
   return m.includes("gpt") || m.includes("o3") || m.includes("o4");
 }
+
+export function isLikelyActive(lastUpdatedAt: number, windowMs = 60_000): boolean {
+  return lastUpdatedAt > 0 && Date.now() - lastUpdatedAt <= windowMs;
+}

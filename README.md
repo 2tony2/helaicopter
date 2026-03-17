@@ -16,6 +16,20 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Integrated Tooling
+
+This repo now also vendors the `overnight-oats` orchestration CLI as the `oats` Python package. That keeps the repo-local agent workflow tooling next to the app and database code instead of split across multiple repositories.
+
+```bash
+# inspect a run spec
+uv run oats plan examples/sample_run.md
+
+# or through npm
+npm run oats -- plan examples/sample_run.md
+```
+
+The default repo policy lives in `.oats/config.toml`, sample run specs live in `examples/`, and the Python implementation lives in `python/oats/`.
+
 ## Requirements
 
 - **Node.js** 20+ (22+ recommended)

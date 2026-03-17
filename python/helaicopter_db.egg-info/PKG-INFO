@@ -6,4 +6,7 @@ Requires-Python: >=3.13
 Requires-Dist: alembic>=1.14.1
 Requires-Dist: duckdb>=1.4.0
 Requires-Dist: duckdb-engine>=0.17.0
+Requires-Dist: pydantic>=2.7.0
+Requires-Dist: rich>=13.7.0
 Requires-Dist: sqlalchemy>=2.0.38
+Requires-Dist: typer>=0.12.3

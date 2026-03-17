@@ -320,6 +320,15 @@ export function ConversationViewer({
               fast
             </Badge>
           )}
+          {conversation.isRunning && (
+            <Badge variant="outline" className="text-xs gap-2 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              </span>
+              running
+            </Badge>
+          )}
           {conversation.totalReasoningTokens && conversation.totalReasoningTokens > 0 && (
             <Badge variant="outline" className="text-xs font-mono gap-1 text-amber-600 dark:text-amber-400">
               <Brain className="h-3 w-3" />
@@ -371,8 +380,15 @@ export function ConversationViewer({
             </span>
           )}
           <span className="text-sm text-muted-foreground">
-            {conversation.startTime
-              ? format(conversation.startTime, "MMM d, yyyy h:mm a")
+            created{" "}
+            {conversation.createdAt
+              ? format(conversation.createdAt, "MMM d, yyyy h:mm a")
+              : ""}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            updated{" "}
+            {conversation.lastUpdatedAt
+              ? format(conversation.lastUpdatedAt, "MMM d, yyyy h:mm a")
               : ""}
           </span>
         </div>

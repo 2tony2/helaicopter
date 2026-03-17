@@ -52,7 +52,7 @@ export function ConversationDagList() {
         conversation.projectName.toLowerCase().includes(q) ||
         conversation.gitBranch?.toLowerCase().includes(q)
       );
-    });
+    }).sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt);
   }, [search, summaries]);
 
   const aggregate = useMemo(() => {
@@ -181,6 +181,15 @@ export function ConversationDagList() {
                             {formatModelName(conversation.model)}
                           </Badge>
                         )}
+                        {conversation.isRunning && (
+                          <Badge variant="outline" className="text-xs gap-2 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                            </span>
+                            running
+                          </Badge>
+                        )}
                       </div>
                       <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
                         <div className="rounded-xl border bg-muted/20 px-3 py-2 text-xs">
@@ -223,8 +232,17 @@ export function ConversationDagList() {
 
                     <div className="shrink-0 text-right text-xs text-muted-foreground">
                       <div>
-                        {conversation.timestamp
-                          ? formatDistanceToNow(conversation.timestamp, {
+                        updated{" "}
+                        {conversation.lastUpdatedAt
+                          ? formatDistanceToNow(conversation.lastUpdatedAt, {
+                              addSuffix: true,
+                            })
+                          : ""}
+                      </div>
+                      <div>
+                        created{" "}
+                        {conversation.createdAt
+                          ? formatDistanceToNow(conversation.createdAt, {
                               addSuffix: true,
                             })
                           : ""}

@@ -49,6 +49,7 @@ import {
   getHistoricalConversationStore,
 } from "./historical-conversation-store";
 import { startOfTodayMs } from "./time-windows";
+import { isLikelyActive } from "./utils";
 
 const TIME_SERIES_KEYS = ["hourly", "daily", "weekly", "monthly"] as const;
 type TimeSeriesKey = (typeof TIME_SERIES_KEYS)[number];
@@ -390,8 +391,8 @@ export async function listProjects(): Promise<ProjectInfo[]> {
           lastActivity: 0,
         };
         existing.count++;
-        if (conv.timestamp > existing.lastActivity)
-          existing.lastActivity = conv.timestamp;
+        if (conv.lastUpdatedAt > existing.lastActivity)
+          existing.lastActivity = conv.lastUpdatedAt;
         codexProjectMap.set(conv.projectPath, existing);
       }
       for (const [encodedPath, info] of codexProjectMap) {
@@ -457,12 +458,11 @@ export async function listRawConversations(
 
         // Check cache first
         const cached = await summaryCache.get(filePath);
-        if (cached && (cached as { _summaryCacheVersion?: number })._summaryCacheVersion === 2) {
+        if (cached && (cached as { _summaryCacheVersion?: number })._summaryCacheVersion === 3) {
           const c = cached as ConversationSummary;
-          // Even cached entries must pass the timestamp cutoff
-          if (cutoffMs && c.timestamp && c.timestamp < cutoffMs) continue;
-          if (dayScope === "today" && c.timestamp < todayStartMs) continue;
-          if (dayScope === "beforeToday" && c.timestamp >= todayStartMs) continue;
+          if (cutoffMs && c.lastUpdatedAt && c.lastUpdatedAt < cutoffMs) continue;
+          if (dayScope === "today" && c.lastUpdatedAt < todayStartMs) continue;
+          if (dayScope === "beforeToday" && c.lastUpdatedAt >= todayStartMs) continue;
           conversations.push(c);
           continue;
         }
@@ -487,6 +487,8 @@ export async function listRawConversations(
             taskCount = tasks.length;
           } catch { /* no tasks dir */ }
 
+          const stats = await stat(filePath).catch(() => null);
+          const lastUpdatedAt = Math.max(summary.endTimestamp, stats?.mtimeMs ?? 0);
           const conv = {
             sessionId,
             projectPath: entry.name,
@@ -494,6 +496,9 @@ export async function listRawConversations(
             threadType: "main",
             firstMessage: summary.firstMessage,
             timestamp: summary.timestamp,
+            createdAt: summary.timestamp,
+            lastUpdatedAt,
+            isRunning: isLikelyActive(lastUpdatedAt),
             messageCount: summary.messageCount,
             model: summary.model,
             totalInputTokens: summary.totalInputTokens,
@@ -508,14 +513,13 @@ export async function listRawConversations(
             taskCount,
             gitBranch: summary.gitBranch,
             speed: summary.speed,
-            _summaryCacheVersion: 2,
+            _summaryCacheVersion: 3,
           } as ConversationSummary & { _summaryCacheVersion: number };
 
           await summaryCache.set(filePath, conv);
-          // Apply timestamp cutoff after parsing
-          if (cutoffMs && conv.timestamp && conv.timestamp < cutoffMs) continue;
-          if (dayScope === "today" && conv.timestamp < todayStartMs) continue;
-          if (dayScope === "beforeToday" && conv.timestamp >= todayStartMs) continue;
+          if (cutoffMs && conv.lastUpdatedAt && conv.lastUpdatedAt < cutoffMs) continue;
+          if (dayScope === "today" && conv.lastUpdatedAt < todayStartMs) continue;
+          if (dayScope === "beforeToday" && conv.lastUpdatedAt >= todayStartMs) continue;
           conversations.push(conv);
         } catch {
           // Skip files that can't be parsed
@@ -532,10 +536,10 @@ export async function listRawConversations(
       const codexConvs = await listCodexConversations(days);
       const scopedCodexConvs = codexConvs.filter((conversation) => {
         if (dayScope === "today") {
-          return conversation.timestamp >= todayStartMs;
+          return conversation.lastUpdatedAt >= todayStartMs;
         }
         if (dayScope === "beforeToday") {
-          return conversation.timestamp < todayStartMs;
+          return conversation.lastUpdatedAt < todayStartMs;
         }
         return true;
       });
@@ -552,7 +556,7 @@ export async function listRawConversations(
     }
   }
 
-  return conversations.sort((a, b) => b.timestamp - a.timestamp);
+  return conversations.sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt);
 }
 
 export async function listLegacyConversations(
@@ -567,7 +571,7 @@ export async function listLegacyConversations(
   ]);
 
   return [...historicalConversations, ...liveConversations].sort(
-    (a, b) => b.timestamp - a.timestamp
+    (a, b) => b.lastUpdatedAt - a.lastUpdatedAt
   );
 }
 
@@ -748,6 +752,7 @@ export async function getRawConversation(
 
   try {
     const processed = processConversation(events, sessionId, projectPath);
+    processed.isRunning = isLikelyActive(processed.lastUpdatedAt);
     processed.plans = processed.plans.map((plan) => ({
       ...plan,
       sourcePath: filePath,
@@ -805,6 +810,7 @@ export async function getSubagentConversation(
   try {
     const events = await parseJsonlFile(filePath);
     const processed = processConversation(events, agentId, projectPath);
+    processed.isRunning = isLikelyActive(processed.lastUpdatedAt);
     processed.subagents = await discoverSubagents(
       projectPath,
       agentId,

@@ -74,7 +74,7 @@ function toNode(
     model: conversation?.model,
     messageCount: conversation?.messages.length ?? 0,
     totalTokens: conversation ? totalConversationTokens(conversation) : 0,
-    timestamp: conversation?.startTime ?? 0,
+    timestamp: conversation?.lastUpdatedAt ?? 0,
     depth,
     path: buildConversationPath(projectPath, sessionId),
     isRoot,
@@ -242,5 +242,5 @@ export async function listConversationDagSummaries(
 
   return summaries
     .filter((summary): summary is ConversationDagSummary => summary !== null)
-    .sort((a, b) => b.timestamp - a.timestamp);
+    .sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt);
 }

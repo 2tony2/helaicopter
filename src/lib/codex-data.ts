@@ -23,6 +23,7 @@ import type {
 } from "./types";
 import Database from "better-sqlite3";
 import { decodePlanId } from "./plan-utils";
+import { isLikelyActive } from "./utils";
 
 /** Thread metadata from Codex SQLite database */
 interface CodexThread {
@@ -45,14 +46,14 @@ interface CodexThread {
 }
 
 interface CodexConversationSummaryCache extends ConversationSummary {
-  _codexCacheVersion: 5;
+  _codexCacheVersion: 6;
   _codexParentThreadId?: string;
   _codexAgentRole?: string;
   _codexAgentNickname?: string;
 }
 
 interface CodexConversationCache extends ProcessedConversation {
-  _codexCacheVersion: 3;
+  _codexCacheVersion: 4;
 }
 
 function parseThreadSource(source: string | null): { parentThreadId?: string } {
@@ -254,9 +255,9 @@ export async function listCodexConversations(
   for (const { filePath, sessionId } of sessionFiles) {
     // Check cache first
     const cached = await summaryCache.get(filePath);
-    if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 5) {
+    if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 6) {
       const c = cached as CodexConversationSummaryCache;
-      if (cutoffMs && c.timestamp && c.timestamp < cutoffMs) continue;
+      if (cutoffMs && c.lastUpdatedAt && c.lastUpdatedAt < cutoffMs) continue;
       conversations.push(c);
       continue;
     }
@@ -271,6 +272,12 @@ export async function listCodexConversations(
       const projectPath = "codex:" + cwdToProjectPath(cwd);
       const firstMessage = thread?.first_user_message || summary.firstMessage;
 
+      const fileStats = await stat(filePath).catch(() => null);
+      const lastUpdatedAt = Math.max(
+        summary.endTimestamp,
+        (thread?.updated_at ?? 0) * 1000,
+        fileStats?.mtimeMs ?? 0
+      );
       const conv: CodexConversationSummaryCache = {
         sessionId,
         projectPath,
@@ -278,6 +285,9 @@ export async function listCodexConversations(
         threadType: parentThreadId || summary.parentThreadId ? "subagent" : "main",
         firstMessage: firstMessage.slice(0, 200),
         timestamp: summary.timestamp,
+        createdAt: summary.timestamp,
+        lastUpdatedAt,
+        isRunning: isLikelyActive(lastUpdatedAt),
         messageCount: summary.messageCount,
         model: summary.model,
         totalInputTokens: summary.totalInputTokens,
@@ -293,14 +303,14 @@ export async function listCodexConversations(
         gitBranch: thread?.git_branch || undefined,
         reasoningEffort: summary.reasoningEffort,
         totalReasoningTokens: summary.totalReasoningTokens > 0 ? summary.totalReasoningTokens : undefined,
-        _codexCacheVersion: 5,
+        _codexCacheVersion: 6,
         _codexParentThreadId: parentThreadId || summary.parentThreadId,
         _codexAgentRole: thread?.agent_role || summary.agentRole,
         _codexAgentNickname: thread?.agent_nickname || summary.agentNickname,
       };
 
       await summaryCache.set(filePath, conv);
-      if (cutoffMs && conv.timestamp && conv.timestamp < cutoffMs) continue;
+      if (cutoffMs && conv.lastUpdatedAt && conv.lastUpdatedAt < cutoffMs) continue;
       conversations.push(conv);
     } catch {
       // Skip unparseable files
@@ -345,7 +355,7 @@ export async function listCodexConversations(
         ),
       };
     })
-    .sort((a, b) => b.timestamp - a.timestamp);
+    .sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt);
 }
 
 export async function getCodexConversation(
@@ -357,7 +367,7 @@ export async function getCodexConversation(
   if (!match) return null;
 
   const cached = await conversationCache.get(match.filePath);
-  if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 3) {
+  if (cached && (cached as { _codexCacheVersion?: number })._codexCacheVersion === 4) {
     return cached as ProcessedConversation;
   }
 
@@ -382,11 +392,18 @@ export async function getCodexConversation(
 
     const processed: CodexConversationCache = {
       ...processCodexConversation(lines, sessionId, projectPath),
-      _codexCacheVersion: 3,
+      _codexCacheVersion: 4,
     };
+    const fileStats = await stat(match.filePath).catch(() => null);
     if (thread?.git_branch) {
       processed.gitBranch = thread.git_branch;
     }
+    processed.lastUpdatedAt = Math.max(
+      processed.lastUpdatedAt,
+      (thread?.updated_at ?? 0) * 1000,
+      fileStats?.mtimeMs ?? 0
+    );
+    processed.isRunning = isLikelyActive(processed.lastUpdatedAt);
     processed.plans = processed.plans.map((plan) => ({
       ...plan,
       sourcePath: match.filePath,

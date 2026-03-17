@@ -50,6 +50,9 @@ next-env.d.ts
 .venv/
 __pycache__/
 *.pyc
+.oats/runs/
+.oats/pr-runs/
+.oats-worktrees/
 
 # generated database artifacts
 /public/database-artifacts/

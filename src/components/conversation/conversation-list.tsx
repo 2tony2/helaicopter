@@ -42,7 +42,7 @@ export function ConversationList() {
       c.projectName.toLowerCase().includes(q) ||
       c.gitBranch?.toLowerCase().includes(q)
     );
-  });
+  }).sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt);
 
   return (
     <div className="space-y-4">
@@ -137,12 +137,28 @@ export function ConversationList() {
                             fast
                           </Badge>
                         )}
+                        {conv.isRunning && (
+                          <Badge variant="outline" className="text-xs gap-2 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                            </span>
+                            running
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <span className="text-xs text-muted-foreground">
-                        {conv.timestamp
-                          ? formatDistanceToNow(conv.timestamp, { addSuffix: true })
+                        updated{" "}
+                        {conv.lastUpdatedAt
+                          ? formatDistanceToNow(conv.lastUpdatedAt, { addSuffix: true })
+                          : ""}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        created{" "}
+                        {conv.createdAt
+                          ? formatDistanceToNow(conv.createdAt, { addSuffix: true })
                           : ""}
                       </span>
                       <div className="flex items-center gap-2.5 text-xs text-muted-foreground">

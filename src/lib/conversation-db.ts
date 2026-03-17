@@ -170,7 +170,7 @@ function queryHistoricalConversationRows(
   const threadTypeSelect = hasConversationThreadTypeColumn(db)
     ? "thread_type"
     : "'main' AS thread_type";
-  const clauses = ["datetime(started_at) < datetime(?)"];
+  const clauses = ["datetime(ended_at) < datetime(?)"];
   const params: unknown[] = [startOfTodayIso()];
 
   if (projectFilter) {
@@ -179,7 +179,7 @@ function queryHistoricalConversationRows(
   }
 
   if (days) {
-    clauses.push("datetime(started_at) >= datetime(?)");
+    clauses.push("datetime(ended_at) >= datetime(?)");
     params.push(daysAgoIso(days));
   }
 
@@ -211,7 +211,7 @@ function queryHistoricalConversationRows(
           task_count
         FROM conversations
         WHERE ${clauses.join(" AND ")}
-        ORDER BY datetime(started_at) DESC
+        ORDER BY datetime(ended_at) DESC
       `
     )
     .all(...params) as ConversationRow[];
@@ -323,6 +323,9 @@ export function listHistoricalConversationSummaries(
       threadType: row.thread_type,
       firstMessage: row.first_message,
       timestamp: parseTimestamp(row.started_at),
+      createdAt: parseTimestamp(row.started_at),
+      lastUpdatedAt: parseTimestamp(row.ended_at),
+      isRunning: false,
       messageCount: row.message_count,
       model: row.model ?? undefined,
       totalInputTokens: row.total_input_tokens,
@@ -623,6 +626,9 @@ export function getHistoricalConversation(
     return {
       sessionId,
       projectPath,
+      createdAt: parseTimestamp(conversationRow.started_at),
+      lastUpdatedAt: parseTimestamp(conversationRow.ended_at),
+      isRunning: false,
       messages,
       plans,
       totalUsage: {

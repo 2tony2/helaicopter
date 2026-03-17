@@ -1,6 +1,10 @@
 import { join } from "path";
 import { homedir } from "os";
 
+export const WORKSPACES_DIR = join(homedir(), "Code");
+export const OATS_DIR = join(homedir(), ".oats");
+export const OVERNIGHT_OATS_DIR = join(homedir(), ".overnightoats");
+
 // Claude Code paths
 export const CLAUDE_DIR = join(homedir(), ".claude");
 export const PROJECTS_DIR = join(CLAUDE_DIR, "projects");

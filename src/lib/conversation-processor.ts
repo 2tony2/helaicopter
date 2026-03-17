@@ -371,6 +371,9 @@ export function processConversation(
   return {
     sessionId,
     projectPath,
+    createdAt: startTime === Infinity ? 0 : startTime,
+    lastUpdatedAt: endTime,
+    isRunning: false,
     messages,
     plans,
     totalUsage,
