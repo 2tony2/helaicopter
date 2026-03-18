@@ -81,13 +81,21 @@
 - Do not start Prefect runtime work before the Markdown-first canonical run-definition boundary exists.
 - Do not cut over the orchestration dashboard until the backend Prefect proxy exists.
 - Keep Markdown input as the only supported run-definition input for this plan.
+- Keep schedule, queue, and work-pool defaults in `.oats/config.toml` plus deploy-time CLI overrides; do not put those fields into Markdown v1.
+- Treat validation defaults, retry, timeout, and branch/worktree execution defaults as repo-config or CLI-driven in v1; do not invent new Markdown syntax for them.
+- Use one shared Prefect flow implementation fed by compiled runtime payloads; do not generate per-spec flow modules.
 - Keep the worker on the host for the first rollout.
 - Preserve the current `.oats/config.toml` discovery behavior unless there is a strong reason to change it.
+- Keep legacy `.oats/runtime/` and `.oats/runs/` history readable in Helaicopter during the cutover; no historical backfill into Prefect is required.
+- Treat Prefect-native retry/rerun as the only v1 resume path; local artifact checkpoints are not a second orchestration engine.
+- Treat live Prefect-backed backend endpoints as the source of truth for the Helaicopter dashboard; `oats sync` only refreshes supplementary local metadata.
 
 ## Task 1: Prefect Local Platform Foundation
 
 **Files:**
 - Modify: `pyproject.toml`
+- Modify: `.oats/config.toml`
+- Modify: `python/oats/models.py`
 - Create: `python/oats/prefect/settings.py`
 - Create: `ops/prefect/docker-compose.yml`
 - Create: `ops/prefect/.env.example`
@@ -98,8 +106,12 @@
 Create `tests/oats/test_prefect_settings.py` covering:
 - env parsing for Prefect API base URL
 - default work-pool and queue names
+- default tags plus default task retry/timeout values
+- default validation-command fallback surface needed by the canonical loader/runtime
+- reuse of existing `[validation]`, `[git]`, and `[repo]` config sections alongside the new `[prefect]` section
+- repo-config parsing for Prefect schedule/routing defaults
+- v1 cron schedule parsing with timezone
 - Compose file path helpers
-- requirement that Markdown remains the only supported run-spec input for this phase
 
 - [ ] **Step 2: Run the new test to verify it fails**
 
@@ -108,13 +120,20 @@ Expected: FAIL because `oats.prefect.settings` does not exist yet.
 
 - [ ] **Step 3: Add the runtime dependency and settings module**
 
-Update `pyproject.toml` to add the Prefect dependency and create `python/oats/prefect/settings.py` with a focused settings object similar to:
+Update `pyproject.toml`, extend `.oats/config.toml` with a new `[prefect]` section while reusing the existing `[validation]`, `[git]`, and `[repo]` sections, update `python/oats/models.py` for the new Prefect config surface, and create `python/oats/prefect/settings.py` with a focused settings object similar to:
 
 ```python
 class PrefectSettings(BaseModel):
     api_url: str
     work_pool: str = "local-macos"
     default_queue: str = "scheduled"
+    default_tags: list[str] = []
+    default_validation_commands: list[str] = []
+    default_task_retry_count: int = 0
+    default_task_timeout_seconds: int | None = None
+    default_schedule_enabled: bool = True
+    default_schedule_cron: str | None = None
+    default_schedule_timezone: str = "Europe/Amsterdam"
     compose_file: Path
     env_example_file: Path
 ```
@@ -138,7 +157,7 @@ Expected: tests pass and Compose config exits 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pyproject.toml python/oats/prefect/settings.py ops/prefect/docker-compose.yml ops/prefect/.env.example tests/oats/test_prefect_settings.py
+git add pyproject.toml .oats/config.toml python/oats/models.py python/oats/prefect/settings.py ops/prefect/docker-compose.yml ops/prefect/.env.example tests/oats/test_prefect_settings.py
 git commit -m "feat: add prefect local platform foundation"
 ```
 
@@ -155,7 +174,7 @@ git commit -m "feat: add prefect local platform foundation"
 Create `tests/oats/test_launchd_assets.py` to assert:
 - the plist template references the worker wrapper script
 - the wrapper invokes `caffeinate`
-- the wrapper starts the Prefect worker against the configured work pool
+- the wrapper bootstraps or starts the Prefect worker against the configured work pool using `--type process`
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -167,11 +186,12 @@ Expected: FAIL because the assets do not exist yet.
 Create `ops/scripts/prefect-worker.sh` that:
 - exports any required local env vars
 - runs `caffeinate`
-- starts `prefect worker start --pool local-macos`
+- ensures the work pool exists, or starts the worker with `--type process` so the pool can be created safely
+- starts `prefect worker start --pool local-macos --type process`
 
 - [ ] **Step 4: Add the launchd template and runbook**
 
-Document load/unload/log paths in `docs/prefect-local-ops.md` and create a `.plist.template` that points at the wrapper script rather than hard-coding machine-local paths directly into docs.
+Document load/unload/log paths in `docs/prefect-local-ops.md` and create a `.plist.template` that points at the wrapper script rather than hard-coding machine-local paths directly into docs. Include an explicit work-pool bootstrap path in the runbook.
 
 - [ ] **Step 5: Validate assets**
 
@@ -200,7 +220,10 @@ git commit -m "feat: add launchd worker assets"
 Create `tests/oats/test_run_definition_loader.py` covering:
 - loading an existing Markdown run spec from `examples/`
 - translating it into a canonical task graph
+- preserving the repo-relative `source_path` needed for deterministic deployment identity
 - preserving acceptance criteria, notes, and validation overrides
+- attaching normalized repo-execution, retry/timeout, routing, and display metadata from repo config
+- reusing existing `[validation]`, `[git]`, and `[repo]` sections instead of duplicating those defaults under Prefect-specific keys
 - rejecting non-Markdown inputs for this rollout
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -221,16 +244,39 @@ class CanonicalTaskDefinition(BaseModel):
     acceptance_criteria: list[str] = []
     notes: list[str] = []
     validation_commands: list[str] = []
+    retry_count: int = 0
+    timeout_seconds: int | None = None
+
+class CanonicalDeploymentRouting(BaseModel):
+    work_pool: str
+    queue: str
+    tags: list[str] = []
+    schedule_enabled: bool = False
+    schedule_cron: str | None = None
+    schedule_timezone: str | None = None
+
+class CanonicalRepoExecutionHints(BaseModel):
+    worktree_root: PurePosixPath = PurePosixPath(".oats-worktrees")
+    integration_branch_template: str | None = None
+    task_branch_template: str | None = None
+
+class CanonicalDisplayMetadata(BaseModel):
+    run_slug: str
+    source_label: str
 
 class CanonicalRunDefinition(BaseModel):
     title: str
-    source_path: Path
+    source_path: PurePosixPath
+    repo_root: Path
     tasks: list[CanonicalTaskDefinition]
+    deployment_routing: CanonicalDeploymentRouting
+    repo_execution_hints: CanonicalRepoExecutionHints
+    display_metadata: CanonicalDisplayMetadata
 ```
 
 - [ ] **Step 4: Implement the Markdown loader**
 
-Create `python/oats/run_definition_loader.py` so the canonical loader wraps the current Markdown parser behavior and explicitly errors on unsupported non-Markdown inputs.
+Create `python/oats/run_definition_loader.py` so the canonical loader wraps the current Markdown parser behavior, explicitly errors on unsupported non-Markdown inputs, preserves a repo-relative POSIX `source_path` for deployment identity while still being able to resolve the absolute file on disk for parsing, and normalizes execution/display defaults by merging the Markdown graph with `[validation]`, `[git]`, `[repo]`, and `[prefect]` config inputs.
 
 - [ ] **Step 5: Update parser/model boundaries only as needed**
 
@@ -260,8 +306,12 @@ git commit -m "feat: add markdown-first canonical run definition"
 Create `tests/oats/test_prefect_compiler.py` covering:
 - canonical run-definition to Prefect graph translation
 - dependency preservation
-- tag/queue/work-pool mapping
+- tag/queue/work-pool mapping from repo config plus deploy-time overrides
+- cron schedule translation from repo config/CLI override into deployment payloads
+- default tags, validation defaults, retry, and timeout entering the compiled payload from repo config and overrides
+- deterministic deployment key/name derived from the repo-relative run-spec path
 - deterministic deployment naming
+- stable shared-flow entrypoint reference carried in the compiled deployment spec
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -270,7 +320,7 @@ Expected: FAIL because the compiler does not exist.
 
 - [ ] **Step 3: Implement Prefect-facing models**
 
-Create `python/oats/prefect/models.py` for deployment payloads, task graph metadata, tags, and run parameters. Keep these models separate from the canonical input models.
+Create `python/oats/prefect/models.py` for deployment payloads, task graph metadata, tags, run parameters, and an explicit compile-overrides model for pool, queue, tags, schedule, and timeout inputs. Keep these models separate from the canonical input models.
 
 - [ ] **Step 4: Implement the compiler**
 
@@ -280,11 +330,14 @@ Create `python/oats/prefect/compiler.py` with a public function like:
 def compile_run_definition(
     run_definition: CanonicalRunDefinition,
     repo_config: RepoConfig,
+    repo_root: Path,
+    overrides: PrefectCompileOverrides | None = None,
 ) -> PrefectDeploymentSpec:
     ...
 ```
 
 The compiler must not generate bespoke Python files per run.
+It must also merge routing defaults from `.oats/config.toml` without pushing those concerns into Markdown, preserve the repo-relative source path as the stable deployment key, and emit a stable shared-flow entrypoint reference that Task 5 can register before Task 6 fills in the full runtime behavior.
 
 - [ ] **Step 5: Validate**
 
@@ -303,6 +356,8 @@ git commit -m "feat: add prefect compiler"
 **Files:**
 - Create: `python/oats/prefect/client.py`
 - Create: `python/oats/prefect/deployments.py`
+- Create: `python/oats/prefect/artifacts.py`
+- Create: `python/oats/prefect/flows.py`
 - Modify: `python/oats/cli.py`
 - Create: `tests/oats/test_prefect_deployments.py`
 
@@ -310,8 +365,14 @@ git commit -m "feat: add prefect compiler"
 
 Create `tests/oats/test_prefect_deployments.py` covering:
 - deployment upsert behavior
-- manual run trigger behavior
-- CLI command wiring for `deploy`, `run`, and `status`
+- triggering from an existing deployment identifier
+- manual run trigger behavior from a run-spec path with implicit deployment upsert
+- CLI command wiring for `deploy`, `trigger`, `inspect`, and `sync`
+- schedule upsert behavior for the v1 one-cron-per-deployment model
+- `oats inspect` and `oats sync` contract behavior
+- one-way local artifact/linkage metadata refresh
+- `oats sync` not being required for live dashboard/backend Prefect reads
+- registration against the stable shared-flow entrypoint contract from Task 4
 - explicit use of Markdown run specs as the CLI input path
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -330,11 +391,25 @@ Create `python/oats/prefect/client.py` as a focused wrapper around Prefect's API
 
 - [ ] **Step 4: Implement deployment registration**
 
-Create `python/oats/prefect/deployments.py` to convert compiled specs into Prefect deployment requests.
+Create `python/oats/prefect/deployments.py` to convert compiled specs into Prefect deployment requests, including schedule creation/upsert for the v1 cron schedule model. Create `python/oats/prefect/artifacts.py` to hold normalized run-definition snapshots, deployment/run linkage metadata, git/worktree metadata, last-seen task summaries, and one-way sync helpers used by `oats inspect` and `oats sync`. Create `python/oats/prefect/flows.py` with a minimal shared Prefect flow entrypoint that matches the compiler's stable entrypoint reference so deployment registration has a concrete target before the richer runtime lands in Task 6.
 
 - [ ] **Step 5: Rework the CLI surface**
 
-Modify `python/oats/cli.py` so new commands route through the Prefect-backed compiler/client path. Keep the old local runtime commands available until Task 10, but mark them as legacy in help text.
+Modify `python/oats/cli.py` so new commands route through the Prefect-backed compiler/client path:
+- `oats deploy`
+- `oats trigger`
+- `oats inspect`
+- `oats sync`
+
+Define the v1 override surface explicitly:
+- `oats deploy <run-spec> [--pool ...] [--queue ...] [--tag ...] [--schedule-cron ...] [--schedule-timezone ...] [--no-schedule] [--timeout-seconds ...]`
+- `oats trigger <run-spec>` for compile-plus-upsert-plus-trigger
+- `oats trigger --deployment <deployment-key>` for triggering an existing deployment directly
+
+Keep the old local runtime commands available until Task 10, but mark them as legacy in help text.
+For v1, `oats trigger <run-spec>` must compile the Markdown, upsert the deployment, and then create the flow run.
+For v1, `oats inspect` must read deployment/run state from Prefect, and `oats sync` must perform one-way metadata reconciliation from Prefect into local `.oats/` artifacts.
+Do not make the live backend/frontend path depend on `oats sync`.
 
 - [ ] **Step 6: Validate**
 
@@ -345,25 +420,28 @@ Expected: tests pass and CLI help includes the new Prefect-backed commands.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add python/oats/prefect/client.py python/oats/prefect/deployments.py python/oats/cli.py tests/oats/test_prefect_deployments.py
+git add python/oats/prefect/client.py python/oats/prefect/deployments.py python/oats/prefect/artifacts.py python/oats/prefect/flows.py python/oats/cli.py tests/oats/test_prefect_deployments.py
 git commit -m "feat: add prefect deployment cli"
 ```
 
 ## Task 6: Prefect-Native Flow Runtime and Artifact Checkpoints
 
 **Files:**
-- Create: `python/oats/prefect/flows.py`
+- Modify: `python/oats/prefect/flows.py`
 - Create: `python/oats/prefect/tasks.py`
-- Create: `python/oats/prefect/artifacts.py`
 - Create: `tests/oats/test_prefect_flows.py`
 
 - [ ] **Step 1: Write failing flow-runtime tests**
 
 Create `tests/oats/test_prefect_flows.py` covering:
 - compiled task graph execution order
+- a small fixed set of infrastructure tasks being distinct from canonical Oats-node task runs
+- dynamic Prefect task creation where canonical Oats nodes become real Prefect task runs
 - retry-safe task wrappers
+- provider invocation and validation command execution inside Prefect tasks
 - local artifact checkpoint writes
 - run metadata linking Prefect flow-run IDs back to `.oats/`
+- absence of bespoke local-checkpoint resume behavior in v1
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -372,13 +450,15 @@ Expected: FAIL because the flow runtime does not exist.
 
 - [ ] **Step 3: Implement the shared flow entry point**
 
-Create `python/oats/prefect/flows.py` with one reusable Prefect flow entry point that accepts a compiled run payload rather than generating bespoke flow modules.
+Extend the minimal shared flow entry point in `python/oats/prefect/flows.py` so it executes compiled run payloads rather than only existing as a registration target. Keep one reusable Prefect flow entry point instead of generating bespoke flow modules, and make its fixed infrastructure tasks explicit so canonical Oats task runs remain separately identifiable.
 
 - [ ] **Step 4: Implement task wrappers and artifact checkpoints**
 
-Create `python/oats/prefect/tasks.py` and `python/oats/prefect/artifacts.py` so individual graph nodes can:
-- emit structured local checkpoints
-- record linked Prefect run metadata
+Create `python/oats/prefect/tasks.py` so individual graph nodes can:
+- execute real work via the existing repo/provider invocation path
+- run validation commands in-task where appropriate
+- emit structured local checkpoints using the artifact helpers introduced in Task 5
+- record linked Prefect run metadata through that shared artifact layer
 - be retried safely without corrupting local artifacts
 
 - [ ] **Step 5: Validate**
@@ -389,7 +469,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add python/oats/prefect/flows.py python/oats/prefect/tasks.py python/oats/prefect/artifacts.py tests/oats/test_prefect_flows.py
+git add python/oats/prefect/flows.py python/oats/prefect/tasks.py tests/oats/test_prefect_flows.py
 git commit -m "feat: add prefect flow runtime"
 ```
 
@@ -405,8 +485,12 @@ git commit -m "feat: add prefect flow runtime"
 Create `tests/oats/test_prefect_worktree.py` covering:
 - idempotent worktree creation
 - branch naming and integration-branch derivation
+- fixed v1 worktree root under `.oats-worktrees/`
+- one task worktree per flow-run/task pair
 - safe reruns when a worktree already exists
 - repo execution context attachment to Prefect task payloads
+- handoff from worktree/bootstrap tasks into provider execution tasks
+- no same-run parallel repo mutation in v1
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -420,6 +504,8 @@ Create `python/oats/prefect/worktree.py` for:
 - integration branch preparation
 - task-branch preparation
 - rerun-safe cleanup hooks
+
+Use one task worktree per flow-run/task pair rooted under `.oats-worktrees/<flow-run-id>/<task-id>/`. Keep same-run repo mutation sequential in v1 even though Prefect records real task runs for each canonical node.
 
 - [ ] **Step 4: Reuse existing git helpers where possible**
 
@@ -457,7 +543,10 @@ Create `tests/test_api_prefect_orchestration.py` covering:
 - list flow runs
 - fetch a single flow-run detail
 - show worker and work-pool state
-- join Prefect payloads with repo-local Oats metadata when available
+- show queue placement and deployment schedule/health summaries
+- show task-run summaries and stale worker/flow states
+- join Prefect payloads with repo-local Oats metadata, git branches, and worktree context when available
+- legacy Oats runtime history remains readable as historical data during migration
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -471,6 +560,8 @@ The adapter should be backend-owned and hide raw Prefect HTTP shapes from the re
 - [ ] **Step 4: Implement backend application/schema/router layers**
 
 Add a new backend orchestration family for Prefect rather than forcing Prefect data into the existing disk-artifact Oats schema.
+Treat the live Prefect-backed backend surface as the primary source for dashboard state; local synced metadata is only supplemental join data.
+Include explicit schema fields for repo root, worktree path, branch names, and local artifact references so the frontend contract is complete before UI work starts.
 
 - [ ] **Step 5: Wire settings and services**
 
@@ -505,8 +596,10 @@ git commit -m "feat: add prefect orchestration backend api"
 Create `src/lib/client/prefect-normalize.test.ts` using `node:test` to cover:
 - new endpoint builders
 - normalization of Prefect deployments and flow runs
-- worker/work-pool summaries
-- joined links back to local Oats artifacts
+- worker/work-pool/queue summaries
+- deployment schedule/health summaries
+- task-run summaries and stale-state indicators
+- joined links back to local Oats artifacts, worktrees, and branch context
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -515,11 +608,12 @@ Expected: FAIL because the endpoint builders and normalizers do not exist.
 
 - [ ] **Step 3: Add endpoint/type/normalize support**
 
-Extend the client and type layers to represent Prefect-backed orchestration objects explicitly. Do not overload the old `OvernightOatsRunRecord` types if a new type family will keep the boundary cleaner.
+Extend the client and type layers to represent Prefect-backed orchestration objects explicitly, including branch/worktree metadata and local artifact links. Do not overload the old `OvernightOatsRunRecord` types if a new type family will keep the boundary cleaner.
 
 - [ ] **Step 4: Update the orchestration UI**
 
-Adapt the orchestration page and panels so they can display Prefect deployments, flow runs, worker health, and linked repo-local artifacts.
+Adapt the orchestration page and panels so they can display Prefect deployments, flow runs, worker health, queue placement, deployment schedules/health, task-run summaries, stale states, linked repo-local artifacts, and branch/worktree context for each run.
+Do not require a prior `oats sync` for the dashboard to render current Prefect state.
 
 - [ ] **Step 5: Validate**
 
@@ -550,6 +644,8 @@ Add or extend tests so they assert:
 - the new Prefect path is the primary orchestration surface
 - legacy local-runtime commands are either deprecated or clearly labeled
 - backend orchestration routes do not misrepresent Prefect-backed runs as legacy disk-state runs
+- legacy `.oats/runtime/` and `.oats/runs/` history remains visible as historical read-only data without a backfill job
+- `oats run` and `oats status` now point at Prefect-backed behavior while legacy runtime commands remain available under explicit legacy names
 
 - [ ] **Step 2: Run the targeted tests to verify the gaps**
 
@@ -558,7 +654,10 @@ Expected: at least one FAIL before cutover changes land.
 
 - [ ] **Step 3: Make the cutover explicit**
 
-Update CLI help text, backend orchestration copy, and docs so Prefect is clearly the primary path and the old local runtime path is explicitly legacy.
+Update CLI help text, backend orchestration copy, and docs so Prefect is clearly the primary path and the old local runtime path is explicitly legacy. At this stage:
+- `oats run` becomes an alias to the Prefect-backed trigger path
+- `oats status` becomes an alias to the Prefect-backed inspect path
+- legacy local runtime commands move under explicit `legacy-*` names
 
 - [ ] **Step 4: Write the cutover runbook**
 
@@ -568,6 +667,7 @@ Create `docs/oats-prefect-cutover.md` covering:
 - `oats deploy`
 - schedule creation
 - Helaicopter orchestration UI expectations
+- historical legacy Oats run visibility expectations
 - rollback plan
 
 - [ ] **Step 5: Run full verification**
@@ -575,6 +675,12 @@ Create `docs/oats-prefect-cutover.md` covering:
 Run: `uv run --group dev pytest -q`
 Run: `node --import tsx --test src/lib/client/normalize.test.ts src/lib/client/prefect-normalize.test.ts`
 Run: `npm run lint`
+Manual smoke checks:
+- start the Compose stack
+- load the `launchd` worker
+- verify worker registration in Prefect
+- verify one scheduled run fires from the configured cron schedule
+- verify the Helaicopter orchestration page renders live Prefect state
 Expected: all targeted tests and lint pass.
 
 - [ ] **Step 6: Commit**

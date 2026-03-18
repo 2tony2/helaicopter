@@ -25,9 +25,9 @@ commands = [
 fail_fast = true
 
 [git]
-task_branch_prefix = "oats/task/"
-integration_branch_prefix = "oats/overnight/"
-integration_branch_base = "main"
+task_branch_prefix = "codex/task/"
+integration_branch_prefix = "codex/"
+integration_branch_base = "codex/run-prefect-native-oats-orchestration"
 final_pr_target = "main"
 auto_push = true
 auto_create_task_prs = true

@@ -9,7 +9,10 @@ Implement Task 1 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 
 Acceptance criteria:
 - Prefect runtime dependency is added and importable
-- `python/oats/prefect/settings.py` exists with tested defaults for API URL, pool, queue, and asset paths
+- `python/oats/prefect/settings.py` exists with tested defaults for API URL, pool, queue, tags, retry/timeout, and asset paths
+- the new Prefect config surface reuses the existing validation, git, and repo sections rather than duplicating them
+- `.oats/config.toml` has the repo-level Prefect routing defaults needed for v1 deployment compilation
+- v1 schedule defaults are modeled as one optional cron schedule plus timezone
 - `ops/prefect/docker-compose.yml` and `ops/prefect/.env.example` exist and validate
 - tests cover settings and Compose asset discovery
 
@@ -29,6 +32,7 @@ Implement Task 2 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 Acceptance criteria:
 - launchd plist template exists for the worker
 - worker wrapper script exists and wraps `prefect worker start` in `caffeinate`
+- worker bootstrap handles the `local-macos` process work pool explicitly
 - local ops documentation covers load, unload, logs, and environment expectations
 - tests validate the launchd and wrapper assets
 
@@ -48,6 +52,9 @@ Implement Task 3 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 Acceptance criteria:
 - canonical run-definition models exist
 - the loader successfully converts current Markdown examples into canonical run definitions
+- canonical run definitions preserve the repo-relative source path used for deterministic deployment identity
+- canonical run definitions attach normalized repo-execution, retry/timeout, routing, and display metadata from repo config
+- canonical loading reuses existing validation, git, and repo config sections instead of copying those defaults into Markdown
 - non-Markdown run-definition inputs are explicitly rejected for this rollout
 - existing parser coverage still passes
 
@@ -67,8 +74,11 @@ Implement Task 4 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 Acceptance criteria:
 - Prefect compiler models exist and are tested
 - dependency edges from the canonical graph are preserved
-- work-pool, queue, tag, and naming decisions are deterministic
-- compiled payloads are reusable by a shared flow entrypoint
+- work-pool, queue, tag, and naming decisions are deterministic and sourced from repo config plus deploy-time overrides
+- v1 cron schedule defaults compile into deployment payloads correctly
+- default tags, validation defaults, retry, and timeout enter the compiled payload from repo config and overrides
+- deployment identity is deterministic from the repo-relative run-spec path
+- compiled payloads carry a stable shared-flow entrypoint contract and are reusable by that shared runtime
 
 Notes:
 - prefer one shared flow runtime that accepts compiled payloads
@@ -81,12 +91,18 @@ Validation override:
 Title: T005 Prefect Client, Deployment Registration, And Thin CLI Commands
 Depends on: prefect_compiler, launchd_worker_assets
 
-Implement Task 5 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orchestration.md`. Add the Prefect HTTP client, deployment registration layer, and thin Oats CLI commands for `deploy`, `run`, and `status` while preserving current legacy commands until cutover.
+Implement Task 5 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orchestration.md`. Add the Prefect HTTP client, deployment registration layer, and thin Oats CLI commands for `deploy`, `trigger`, `inspect`, and `sync` while preserving current legacy commands until cutover.
 
 Acceptance criteria:
 - Prefect HTTP client exists for deployment and flow-run operations
 - deployment upsert logic is covered by tests
-- CLI help includes the new Prefect-backed commands
+- triggering from an existing deployment identifier is covered by tests
+- CLI help includes `deploy`, `trigger`, `inspect`, and `sync`
+- CLI overrides exist for pool, queue, tags, schedule, timezone, and timeout
+- `oats trigger <run-spec>` performs compile, deployment upsert, and flow-run creation in one v1 path
+- `oats inspect` and `oats sync` have explicit, tested v1 behavior
+- one-way local metadata/artifact sync exists for deployment/run linkage
+- deployment registration targets the stable shared-flow entrypoint contract from the compiler/runtime boundary
 - Markdown run specs are still the only accepted input path
 
 Notes:
@@ -104,8 +120,12 @@ Implement Task 6 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 
 Acceptance criteria:
 - shared Prefect flow entrypoint exists
+- any fixed infrastructure tasks are explicit and remain distinct from canonical Oats-node task runs
+- canonical Oats nodes become real Prefect task runs inside the shared flow
 - task wrappers preserve dependency order and retry-safe behavior
+- Prefect tasks perform provider invocation and validation work through the repo execution path
 - local artifacts link Prefect flow-run identifiers back to `.oats/`
+- v1 resume semantics are explicitly Prefect-native retry/rerun rather than bespoke local checkpoint resume
 - flow runtime tests pass
 
 Notes:
@@ -124,7 +144,9 @@ Implement Task 7 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 Acceptance criteria:
 - worktree orchestration helpers exist and are idempotent
 - integration-branch and task-branch setup is part of the runtime path
+- task worktrees live under the fixed v1 `.oats-worktrees/` root with one worktree per flow-run/task pair
 - reruns do not corrupt existing worktrees
+- same-run repo mutation is sequential in v1 even though Prefect records real task runs
 - tests cover the worktree lifecycle
 
 Notes:
@@ -143,12 +165,13 @@ Implement Task 8 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 Acceptance criteria:
 - backend Prefect port, adapter, application, schema, and router layers exist
 - backend config/service wiring supports Prefect API access
-- tests cover deployments, flow runs, worker state, and local metadata joins
+- tests cover deployments, flow runs, queue placement, schedule/health summaries, task-run summaries, stale states, local metadata joins, and branch/worktree context
 - router aggregation includes the new Prefect orchestration family
 
 Notes:
 - do not have the browser call Prefect directly
 - keep raw Prefect HTTP payloads out of frontend-facing schema types
+- treat live backend-managed Prefect state as the primary dashboard data source
 
 Validation override:
 - uv run --group dev pytest -q tests/test_api_prefect_orchestration.py
@@ -162,12 +185,13 @@ Implement Task 9 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-orc
 Acceptance criteria:
 - frontend endpoint builders and types cover Prefect orchestration resources
 - normalization tests exist for Prefect payloads
-- orchestration UI renders Prefect deployments, runs, and worker state
-- frontend links can connect Prefect run state to local artifacts and repo context
+- orchestration UI renders Prefect deployments, runs, worker state, queue placement, schedule/health summaries, task-run summaries, and stale states
+- frontend links can connect Prefect run state to local artifacts, branch context, and worktree context
 
 Notes:
 - keep the visual language consistent with the current orchestration dashboard
 - do not collapse the new data model into old disk-only Oats types if that muddies the boundary
+- render live state from backend-managed Prefect endpoints; synced local metadata is supplemental only
 
 Validation override:
 - node --import tsx --test src/lib/client/prefect-normalize.test.ts
@@ -182,7 +206,10 @@ Implement Task 10 from `docs/superpowers/plans/2026-03-18-prefect-native-oats-or
 Acceptance criteria:
 - Oats CLI and docs clearly position Prefect as the primary orchestration path
 - backend/orchestration copy and routes no longer imply the legacy runtime path is primary
+- legacy `.oats/runtime/` and `.oats/runs/` history remains visible as read-only historical data during migration
+- `oats run` and `oats status` map to Prefect-backed behavior while legacy runtime commands remain available under explicit legacy names
 - cutover runbook covers Compose, launchd worker bootstrap, deploy, run, and rollback
+- manual smoke validation for Compose, launchd, worker registration, scheduling, and live dashboard rendering is documented and performed
 - targeted end-to-end validation commands are documented and green
 
 Notes:
