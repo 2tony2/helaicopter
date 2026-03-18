@@ -1,16 +1,18 @@
-"""Schemas for conversation summaries, detail views, and related read APIs."""
+"""legacy `snake_case` schemas for conversations; Wave 7 keeps this deferred."""
 
 from __future__ import annotations
 
-from typing import Any
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, RootModel
+from helaicopter_domain.ids import AgentId, PlanId, SessionId
+from helaicopter_domain.paths import EncodedProjectKey, ProjectDisplayPath
+from helaicopter_domain.vocab import ProviderName, ProviderSelection
+
+ConversationDagProviderParam = ProviderSelection
 
 ConversationThreadType = Literal["main", "subagent"]
-ConversationBlockType = Literal["text", "thinking", "tool_call"]
 ContextCategory = Literal["tool", "mcp", "subagent", "thinking", "conversation"]
-ConversationDagProviderParam = Literal["all", "claude", "codex"]
 
 
 class ConversationListQueryParams(BaseModel):
@@ -18,7 +20,7 @@ class ConversationListQueryParams(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    project: str | None = Field(
+    project: EncodedProjectKey | None = Field(
         default=None,
         description="Optional encoded project path filter.",
     )
@@ -34,7 +36,7 @@ class ConversationDagListQueryParams(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    project: str | None = Field(
+    project: EncodedProjectKey | None = Field(
         default=None,
         description="Optional encoded project path filter.",
     )
@@ -43,7 +45,7 @@ class ConversationDagListQueryParams(BaseModel):
         ge=1,
         description="Restrict summaries to the trailing number of days.",
     )
-    provider: ConversationDagProviderParam | None = Field(
+    provider: ProviderSelection | None = Field(
         default=None,
         description="Optional provider filter. Use `all` or omit for combined DAGs.",
     )
@@ -65,9 +67,9 @@ class HistoryQueryParams(BaseModel):
 class ConversationSummaryResponse(BaseModel):
     """Summary of a single Claude/Codex conversation session."""
 
-    session_id: str
-    project_path: str
-    project_name: str
+    session_id: SessionId
+    project_path: EncodedProjectKey
+    project_name: ProjectDisplayPath
     thread_type: Literal["main", "subagent"]
     first_message: str
     timestamp: float
@@ -82,9 +84,9 @@ class ConversationSummaryResponse(BaseModel):
     total_cache_read_tokens: int = 0
     tool_use_count: int = 0
     failed_tool_call_count: int = 0
-    tool_breakdown: dict[str, int] = Field(default_factory=dict)
+    tool_breakdown: dict[str, int] = {}
     subagent_count: int = 0
-    subagent_type_breakdown: dict[str, int] = Field(default_factory=dict)
+    subagent_type_breakdown: dict[str, int] = {}
     task_count: int = 0
     git_branch: str | None = None
     reasoning_effort: str | None = None
@@ -99,18 +101,44 @@ class ConversationUsageResponse(BaseModel):
     cache_read_tokens: int = 0
 
 
-class ConversationMessageBlockResponse(BaseModel):
-    """Display-oriented block within a conversation message."""
+class ConversationToolInputResponse(RootModel[dict[str, object]]):
+    """Opaque tool input payload exposed on the legacy conversation surface."""
 
-    type: ConversationBlockType
-    text: str | None = None
-    thinking: str | None = None
+
+class ConversationTextBlockResponse(BaseModel):
+    """Rendered plain-text block within a conversation message."""
+
+    type: Literal["text"]
+    text: str
+
+
+class ConversationThinkingBlockResponse(BaseModel):
+    """Rendered reasoning block within a conversation message."""
+
+    type: Literal["thinking"]
+    thinking: str
     char_count: int | None = None
+
+
+class ConversationToolCallBlockResponse(BaseModel):
+    """Rendered tool-call block within a conversation message."""
+
+    type: Literal["tool_call"]
     tool_use_id: str | None = None
     tool_name: str | None = None
-    input: dict[str, Any] = Field(default_factory=dict)
+    input: ConversationToolInputResponse = Field(
+        default_factory=lambda: ConversationToolInputResponse(root={})
+    )
     result: str | None = None
     is_error: bool | None = None
+
+
+ConversationMessageBlockResponse = Annotated[
+    ConversationTextBlockResponse
+    | ConversationThinkingBlockResponse
+    | ConversationToolCallBlockResponse,
+    Field(discriminator="type"),
+]
 
 
 class ConversationMessageResponse(BaseModel):
@@ -119,7 +147,7 @@ class ConversationMessageResponse(BaseModel):
     id: str
     role: str
     timestamp: float
-    blocks: list[ConversationMessageBlockResponse] = Field(default_factory=list)
+    blocks: list[ConversationMessageBlockResponse] = []
     usage: ConversationUsageResponse | None = None
     model: str | None = None
     reasoning_tokens: int | None = None
@@ -134,31 +162,31 @@ class ConversationPlanStepResponse(BaseModel):
 class ConversationPlanResponse(BaseModel):
     """Embedded plan extracted from a conversation."""
 
-    id: str
+    id: PlanId
     slug: str
     title: str
     preview: str
     content: str
-    provider: Literal["claude", "codex"]
+    provider: ProviderName
     timestamp: float
     model: str | None = None
     source_path: str | None = None
-    session_id: str | None = None
-    project_path: str | None = None
+    session_id: SessionId | None = None
+    project_path: EncodedProjectKey | None = None
     explanation: str | None = None
-    steps: list[ConversationPlanStepResponse] = Field(default_factory=list)
+    steps: list[ConversationPlanStepResponse] = []
 
 
 class ConversationSubagentResponse(BaseModel):
     """Known subagent metadata for a conversation."""
 
-    agent_id: str
+    agent_id: AgentId
     description: str | None = None
     subagent_type: str | None = None
     nickname: str | None = None
     has_file: bool = False
-    project_path: str | None = None
-    session_id: str | None = None
+    project_path: EncodedProjectKey | None = None
+    session_id: SessionId | None = None
 
 
 class ConversationContextBucketResponse(BaseModel):
@@ -187,8 +215,8 @@ class ConversationContextStepResponse(BaseModel):
 
 
 class ConversationContextAnalyticsResponse(BaseModel):
-    buckets: list[ConversationContextBucketResponse] = Field(default_factory=list)
-    steps: list[ConversationContextStepResponse] = Field(default_factory=list)
+    buckets: list[ConversationContextBucketResponse] = []
+    steps: list[ConversationContextStepResponse] = []
 
 
 class ConversationContextWindowResponse(BaseModel):
@@ -200,20 +228,20 @@ class ConversationContextWindowResponse(BaseModel):
 class ConversationDetailResponse(BaseModel):
     """Structured detail response for one conversation."""
 
-    session_id: str
-    project_path: str
+    session_id: SessionId
+    project_path: EncodedProjectKey
     thread_type: ConversationThreadType = "main"
     created_at: float
     last_updated_at: float
     is_running: bool
-    messages: list[ConversationMessageResponse] = Field(default_factory=list)
-    plans: list[ConversationPlanResponse] = Field(default_factory=list)
+    messages: list[ConversationMessageResponse] = []
+    plans: list[ConversationPlanResponse] = []
     total_usage: ConversationUsageResponse = Field(default_factory=ConversationUsageResponse)
     model: str | None = None
     git_branch: str | None = None
     start_time: float = 0
     end_time: float = 0
-    subagents: list[ConversationSubagentResponse] = Field(default_factory=list)
+    subagents: list[ConversationSubagentResponse] = []
     context_analytics: ConversationContextAnalyticsResponse = Field(
         default_factory=ConversationContextAnalyticsResponse
     )
@@ -228,36 +256,49 @@ class ConversationDetailResponse(BaseModel):
 class ProjectResponse(BaseModel):
     """Project listing entry for the conversations UI."""
 
-    encoded_path: str
-    display_name: str
+    encoded_path: EncodedProjectKey
+    display_name: ProjectDisplayPath
     full_path: str
     session_count: int = 0
     last_activity: float = 0
+
+
+class HistoryPastedContentsResponse(RootModel[dict[str, object]]):
+    """Opaque pasted-content payload exposed on the legacy history surface."""
 
 
 class HistoryEntryResponse(BaseModel):
     """One CLI history entry from Claude or Codex."""
 
     display: str
-    pasted_contents: dict[str, Any] | None = None
+    pasted_contents: HistoryPastedContentsResponse | None = None
     timestamp: float = 0
     project: str | None = None
+
+
+class ConversationTaskResponse(BaseModel):
+    """Legacy task payload exposed on the conversations API."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    task_id: str | None = Field(default=None, alias="taskId")
+    title: str | None = None
 
 
 class TaskListResponse(BaseModel):
     """Task payloads associated with a conversation session."""
 
-    session_id: str
-    tasks: list[dict[str, Any]] = Field(default_factory=list)
+    session_id: SessionId
+    tasks: list[ConversationTaskResponse] = []
 
 
 class ConversationDagNodeResponse(BaseModel):
     """A single node in the conversation agent-tree DAG."""
 
     id: str
-    session_id: str
-    parent_session_id: str | None = None
-    project_path: str
+    session_id: SessionId
+    parent_session_id: SessionId | None = None
+    project_path: EncodedProjectKey
     label: str
     description: str | None = None
     nickname: str | None = None
@@ -294,10 +335,10 @@ class ConversationDagStatsResponse(BaseModel):
 class ConversationDagResponse(BaseModel):
     """Full agent-tree DAG for a conversation."""
 
-    project_path: str
-    root_session_id: str
-    nodes: list[ConversationDagNodeResponse] = Field(default_factory=list)
-    edges: list[ConversationDagEdgeResponse] = Field(default_factory=list)
+    project_path: EncodedProjectKey
+    root_session_id: SessionId
+    nodes: list[ConversationDagNodeResponse] = []
+    edges: list[ConversationDagEdgeResponse] = []
     stats: ConversationDagStatsResponse
 
 

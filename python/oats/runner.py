@@ -7,13 +7,48 @@ import subprocess
 import time
 import threading
 import uuid
-from typing import Any, Callable, TextIO
+from typing import Callable, Literal, TextIO, TypedDict
 
+from pydantic import ConfigDict, TypeAdapter, ValidationError, validate_call
 from oats.models import AgentInvocationResult, AgentCommand, PlannedTask
 
 
 class AgentInvocationError(RuntimeError):
     """Raised when an agent CLI call fails."""
+
+
+class InvocationProgress(TypedDict, total=False):
+    session_id: str
+    session_id_field: str
+    requested_session_id: str
+    output_text: str
+
+
+class _CodexAgentMessageItem(TypedDict):
+    type: Literal["agent_message"]
+    text: str
+
+
+class _CodexThreadStartedEvent(TypedDict):
+    type: Literal["thread.started"]
+    thread_id: str
+
+
+class _CodexItemCompletedEvent(TypedDict):
+    type: Literal["item.completed"]
+    item: _CodexAgentMessageItem
+
+
+_CodexRunnerEvent = _CodexThreadStartedEvent | _CodexItemCompletedEvent
+
+
+class _ClaudeCliResult(TypedDict, total=False):
+    session_id: str
+    result: str
+
+
+_CODEX_RUNNER_EVENT_ADAPTER = TypeAdapter(_CodexRunnerEvent)
+_CLAUDE_CLI_RESULT_ADAPTER = TypeAdapter(_ClaudeCliResult)
 
 
 class _StreamCollector:
@@ -55,6 +90,7 @@ class _StreamCollector:
         return "".join(self._chunks)
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def invoke_agent(
     *,
     agent_name: str,
@@ -67,7 +103,7 @@ def invoke_agent(
     dangerous_bypass: bool = False,
     raise_on_nonzero: bool = True,
     on_heartbeat: Callable[[], None] | None = None,
-    on_progress: Callable[[dict[str, Any]], None] | None = None,
+    on_progress: Callable[[InvocationProgress], None] | None = None,
 ) -> AgentInvocationResult:
     started_at = datetime.now(timezone.utc)
 
@@ -142,6 +178,7 @@ def invoke_agent(
     return result
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def build_planner_prompt(
     run_title: str,
     tasks: list[PlannedTask],
@@ -193,6 +230,7 @@ def build_planner_prompt(
     return "\n".join(lines)
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def build_task_prompt(
     task: PlannedTask,
     run_title: str,
@@ -254,6 +292,7 @@ def build_task_prompt(
     return "\n".join(lines)
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def build_merge_prompt(
     *,
     task_id: str,
@@ -266,7 +305,7 @@ def build_merge_prompt(
             "You may use git and gh commands.",
             "Required outcome:",
             f"- Merge PR {pr_url} into {integration_branch} using a merge commit.",
-            f"- Keep the source branch for auditability.",
+            "- Keep the source branch for auditability.",
             f"- After merging, fast-forward the local {integration_branch} branch from origin.",
             "",
             "Constraints:",
@@ -342,20 +381,14 @@ def _parse_codex_result(
     output_text = ""
 
     for line in completed.stdout.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError:
+        payload = _parse_codex_runner_event(line)
+        if payload is None:
             continue
         payload_type = payload.get("type")
         if payload_type == "thread.started":
-            thread_id = payload.get("thread_id")
+            thread_id = payload["thread_id"]
         elif payload_type == "item.completed":
-            item = payload.get("item", {})
-            if item.get("type") == "agent_message":
-                output_text = item.get("text", output_text)
+            output_text = payload["item"].get("text", output_text)
 
     return AgentInvocationResult(
         agent="codex",
@@ -377,21 +410,17 @@ def _parse_codex_result(
 
 def _handle_codex_progress_line(
     line: str,
-    on_progress: Callable[[dict[str, Any]], None] | None,
+    on_progress: Callable[[InvocationProgress], None] | None,
 ) -> None:
     if on_progress is None:
         return
-    stripped = line.strip()
-    if not stripped:
-        return
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError:
+    payload = _parse_codex_runner_event(line)
+    if payload is None:
         return
     payload_type = payload.get("type")
     if payload_type == "thread.started":
-        thread_id = payload.get("thread_id")
-        if isinstance(thread_id, str) and thread_id:
+        thread_id = payload["thread_id"]
+        if thread_id:
             on_progress(
                 {
                     "session_id": thread_id,
@@ -399,11 +428,9 @@ def _handle_codex_progress_line(
                 }
             )
     elif payload_type == "item.completed":
-        item = payload.get("item", {})
-        if item.get("type") == "agent_message":
-            text = item.get("text")
-            if isinstance(text, str) and text:
-                on_progress({"output_text": text})
+        text = payload["item"].get("text")
+        if text:
+            on_progress({"output_text": text})
 
 
 def _parse_claude_result(
@@ -422,12 +449,12 @@ def _parse_claude_result(
 
     stripped = completed.stdout.strip()
     if stripped:
-        try:
-            payload = json.loads(stripped)
+        payload = _parse_claude_cli_result(stripped)
+        if payload is None:
+            output_text = stripped
+        else:
             session_id = payload.get("session_id")
             output_text = payload.get("result", "")
-        except json.JSONDecodeError:
-            output_text = stripped
     if not session_id:
         session_id = requested_session_id
 
@@ -453,18 +480,14 @@ def _parse_claude_result(
 def _handle_claude_progress_line(
     line: str,
     requested_session_id: str,
-    on_progress: Callable[[dict[str, Any]], None] | None,
+    on_progress: Callable[[InvocationProgress], None] | None,
 ) -> None:
     if on_progress is None:
         return
-    stripped = line.strip()
-    if not stripped:
+    payload = _parse_claude_cli_result(line)
+    if payload is None:
         return
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError:
-        return
-    progress: dict[str, Any] = {"requested_session_id": requested_session_id}
+    progress: InvocationProgress = {"requested_session_id": requested_session_id}
     session_id = payload.get("session_id")
     if isinstance(session_id, str) and session_id:
         progress["session_id"] = session_id
@@ -473,6 +496,26 @@ def _handle_claude_progress_line(
     if isinstance(result, str) and result:
         progress["output_text"] = result
     on_progress(progress)
+
+
+def _parse_codex_runner_event(line: str) -> _CodexRunnerEvent | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        return _CODEX_RUNNER_EVENT_ADAPTER.validate_python(json.loads(stripped))
+    except (ValidationError, json.JSONDecodeError):
+        return None
+
+
+def _parse_claude_cli_result(raw_output: str) -> _ClaudeCliResult | None:
+    stripped = raw_output.strip()
+    if not stripped:
+        return None
+    try:
+        return _CLAUDE_CLI_RESULT_ADAPTER.validate_python(json.loads(stripped))
+    except (ValidationError, json.JSONDecodeError):
+        return None
 
 
 def _run_command(

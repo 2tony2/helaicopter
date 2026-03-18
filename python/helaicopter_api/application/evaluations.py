@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import ConfigDict, InstanceOf, validate_call
+
 from helaicopter_api.application.conversations import get_conversation
 from helaicopter_api.application.evaluation_prompts import resolve_evaluation_prompt
 from helaicopter_api.bootstrap.services import BackendServices
@@ -21,8 +23,9 @@ class ConversationEvaluationConversationNotFoundError(LookupError):
     """Raised when the requested conversation cannot be loaded."""
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_conversation_evaluations(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     project_path: str,
     session_id: str,
@@ -33,8 +36,9 @@ def list_conversation_evaluations(
     return [_to_response(record) for record in records]
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def create_conversation_evaluation(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     project_path: str,
     session_id: str,
@@ -209,9 +213,10 @@ def _format_block(block: ConversationMessageBlockResponse) -> str:
     if block.type == "thinking":
         return f"message thinking:\n{block.thinking or ''}"
 
+    tool_input = block.input.root
     parts = [
         f"message tool call: {block.tool_name or 'unknown'}",
-        f"input: {json.dumps(block.input, indent=2)}",
+        f"input: {json.dumps(tool_input, indent=2)}",
         f"result:\n{block.result}" if block.result else None,
         "status: failed" if block.is_error else "status: succeeded",
     ]

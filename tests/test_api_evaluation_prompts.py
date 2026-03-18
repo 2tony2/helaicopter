@@ -5,13 +5,13 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Iterator
 
 from fastapi.testclient import TestClient
 
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
 from helaicopter_api.application.evaluation_prompts import resolve_evaluation_prompt
+from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 
@@ -60,11 +60,18 @@ def _create_prompt_db(path: Path) -> None:
         connection.close()
 
 
+def _services_stub(**attrs: object) -> BackendServices:
+    services = object.__new__(BackendServices)
+    for name, value in attrs.items():
+        setattr(services, name, value)
+    return services
+
+
 @contextmanager
 def evaluation_prompt_client(db_path: Path) -> Iterator[tuple[TestClient, SqliteAppStore]]:
     store = SqliteAppStore(db_path=db_path)
     application = create_app()
-    application.dependency_overrides[get_services] = lambda: SimpleNamespace(app_sqlite_store=store)
+    application.dependency_overrides[get_services] = lambda: _services_stub(app_sqlite_store=store)
     try:
         with TestClient(application) as client:
             yield client, store
@@ -178,6 +185,23 @@ class TestEvaluationPromptEndpoints:
         assert response.status_code == 404
         assert response.json()["detail"] == "Prompt 'missing-prompt' not found."
 
+    def test_prompt_requests_reject_snake_case_payload_keys(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+        _create_prompt_db(db_path)
+
+        with evaluation_prompt_client(db_path) as (client, _store):
+            response = client.post(
+                "/evaluation-prompts",
+                json={
+                    "name": "Failure-focused review",
+                    "description": "Inspect failed tool calls.",
+                    "prompt_text": "Review every failed tool call and propose better recovery steps.",
+                },
+            )
+
+        assert response.status_code == 422
+        assert any(error["loc"][-1] == "prompt_text" for error in response.json()["detail"])
+
     def test_delete_removes_user_prompt_and_rejects_default_prompt(self, tmp_path: Path) -> None:
         db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
         _create_prompt_db(db_path)
@@ -217,6 +241,13 @@ class TestEvaluationPromptEndpoints:
             "/EvaluationPromptUpdateRequest"
         )
 
+        create_schema = schema["components"]["schemas"]["EvaluationPromptCreateRequest"]
+        response_schema = schema["components"]["schemas"]["EvaluationPromptResponse"]
+        assert "promptText" in create_schema["properties"]
+        assert "prompt_text" not in create_schema["properties"]
+        assert "promptId" in response_schema["properties"]
+        assert "prompt_id" not in response_schema["properties"]
+
 
 class TestEvaluationPromptResolution:
     def test_resolve_defaults_when_prompt_id_is_missing(self, tmp_path: Path) -> None:
@@ -224,7 +255,7 @@ class TestEvaluationPromptResolution:
         _create_prompt_db(db_path)
         store = SqliteAppStore(db_path=db_path)
 
-        resolved = resolve_evaluation_prompt(SimpleNamespace(app_sqlite_store=store))
+        resolved = resolve_evaluation_prompt(_services_stub(app_sqlite_store=store))
 
         assert resolved.prompt_id == "default-conversation-review"
         assert resolved.is_default is True
@@ -235,7 +266,7 @@ class TestEvaluationPromptResolution:
         store = SqliteAppStore(db_path=db_path)
 
         resolved = resolve_evaluation_prompt(
-            SimpleNamespace(app_sqlite_store=store),
+            _services_stub(app_sqlite_store=store),
             prompt_id="prompt-1",
         )
 

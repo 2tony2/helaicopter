@@ -23,6 +23,7 @@ evaluations_router = APIRouter(prefix="/conversations", tags=["evaluations"])
 @evaluations_router.get(
     "/{project_path}/{session_id}/evaluations",
     response_model=list[ConversationEvaluationResponse],
+    response_model_by_alias=True,
 )
 async def conversation_evaluations_index(
     project_path: str,
@@ -40,6 +41,7 @@ async def conversation_evaluations_index(
 @evaluations_router.post(
     "/{project_path}/{session_id}/evaluations",
     response_model=ConversationEvaluationResponse,
+    response_model_by_alias=True,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def conversation_evaluations_create(

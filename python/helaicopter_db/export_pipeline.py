@@ -6,9 +6,15 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
-from .settings import REPO_ROOT
+from helaicopter_api.server.config import Settings, load_settings
+
+from .export_types import (
+    ExportConversationEnvelope,
+    parse_export_conversation_envelope,
+    parse_export_meta_payload,
+)
 
 
 @dataclass
@@ -21,8 +27,9 @@ class ExportMeta:
     window_end: str | None
 
 
-def tsx_binary() -> Path:
-    binary = REPO_ROOT / "node_modules" / ".bin" / "tsx"
+def tsx_binary(settings: Settings | None = None) -> Path:
+    project_root = (settings or load_settings()).project_root
+    binary = project_root / "node_modules" / ".bin" / "tsx"
     if sys.platform.startswith("win"):
         binary = binary.with_suffix(".cmd")
     if not binary.exists():
@@ -30,11 +37,12 @@ def tsx_binary() -> Path:
     return binary
 
 
-def iter_export_rows() -> Iterable[dict[str, Any]]:
+def iter_export_rows(settings: Settings | None = None) -> Iterable[ExportConversationEnvelope]:
+    project_root = (settings or load_settings()).project_root
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_handle:
         process = subprocess.Popen(
-            [str(tsx_binary()), "scripts/export-parsed-data.ts"],
-            cwd=REPO_ROOT,
+            [str(tsx_binary(settings)), "scripts/export-parsed-data.ts"],
+            cwd=project_root,
             stdout=subprocess.PIPE,
             stderr=stderr_handle,
             text=True,
@@ -46,8 +54,9 @@ def iter_export_rows() -> Iterable[dict[str, Any]]:
                 if not line.strip():
                     continue
                 record = json.loads(line)
-                if record.get("type") == "conversation":
-                    yield record
+                envelope = parse_export_conversation_envelope(record)
+                if envelope is not None and envelope.get("type") == "conversation":
+                    yield envelope
         finally:
             return_code = process.wait()
             stderr_handle.seek(0)
@@ -56,10 +65,11 @@ def iter_export_rows() -> Iterable[dict[str, Any]]:
                 raise RuntimeError(stderr.strip() or "The TypeScript export pipeline failed.")
 
 
-def read_export_meta() -> ExportMeta:
+def read_export_meta(settings: Settings | None = None) -> ExportMeta:
+    project_root = (settings or load_settings()).project_root
     process = subprocess.run(
-        [str(tsx_binary()), "scripts/export-parsed-data.ts", "--meta-only"],
-        cwd=REPO_ROOT,
+        [str(tsx_binary(settings)), "scripts/export-parsed-data.ts", "--meta-only"],
+        cwd=project_root,
         capture_output=True,
         text=True,
         check=True,
@@ -67,7 +77,9 @@ def read_export_meta() -> ExportMeta:
     lines = [line.strip() for line in process.stdout.splitlines() if line.strip()]
     if not lines:
         raise RuntimeError("The export metadata pipeline did not return any output.")
-    payload = json.loads(lines[-1])
+    payload = parse_export_meta_payload(json.loads(lines[-1]))
+    if payload is None:
+        raise RuntimeError("The export metadata pipeline returned an invalid payload.")
     return ExportMeta(
         conversation_count=int(payload["conversationCount"]),
         input_key=str(payload["inputKey"]),

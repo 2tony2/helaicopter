@@ -4,38 +4,21 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from helaicopter_domain.ids import RunId, SessionId, TaskId
+from helaicopter_domain.paths import EncodedProjectKey
+from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
+from helaicopter_api.schema.common import CamelCaseHttpResponseModel
 
 
-def _to_camel(value: str) -> str:
-    head, *tail = value.split("_")
-    return head + "".join(part.capitalize() for part in tail)
-
-
-class OrchestrationCamelModel(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=_to_camel,
-        populate_by_name=True,
-    )
-
-
-OrchestrationTaskStatus = Literal[
-    "pending", "running", "succeeded", "failed", "timed_out", "skipped", "blocked"
-]
-OrchestrationRunStatus = Literal[
-    "pending", "planning", "running", "completed", "failed", "timed_out"
-]
-
-
-class OrchestrationInvocationResponse(OrchestrationCamelModel):
+class OrchestrationInvocationResponse(CamelCaseHttpResponseModel):
     """Agent invocation snapshot."""
 
-    agent: str
+    agent: ProviderName
     role: str
     command: list[str]
     cwd: str
     prompt: str
-    session_id: str | None = None
+    session_id: SessionId | None = None
     output_text: str = ""
     raw_stdout: str = ""
     raw_stderr: str = ""
@@ -43,32 +26,32 @@ class OrchestrationInvocationResponse(OrchestrationCamelModel):
     timed_out: bool = False
     started_at: str
     finished_at: str | None = None
-    project_path: str | None = None
+    project_path: EncodedProjectKey | None = None
     conversation_path: str | None = None
 
 
-class OrchestrationTaskResponse(OrchestrationCamelModel):
+class OrchestrationTaskResponse(CamelCaseHttpResponseModel):
     """A single task within an orchestration run."""
 
-    task_id: str
+    task_id: TaskId
     title: str
-    depends_on: list[str] = Field(default_factory=list)
-    status: OrchestrationTaskStatus
+    depends_on: list[str] = []
+    status: TaskRuntimeStatus
     attempts: int = 0
     invocation: OrchestrationInvocationResponse | None = None
 
 
-class OrchestrationDagNodeResponse(OrchestrationCamelModel):
+class OrchestrationDagNodeResponse(CamelCaseHttpResponseModel):
     id: str
     kind: Literal["planner", "task"]
     label: str
     description: str | None = None
     role: str
-    agent: str
-    session_id: str | None = None
-    project_path: str | None = None
+    agent: ProviderName
+    session_id: SessionId | None = None
+    project_path: EncodedProjectKey | None = None
     conversation_path: str | None = None
-    status: str
+    status: TaskRuntimeStatus | RunRuntimeStatus
     is_active: bool = False
     attempts: int | None = None
     last_heartbeat_at: str | None = None
@@ -77,20 +60,20 @@ class OrchestrationDagNodeResponse(OrchestrationCamelModel):
     depth: int = 0
 
 
-class OrchestrationDagEdgeResponse(OrchestrationCamelModel):
+class OrchestrationDagEdgeResponse(CamelCaseHttpResponseModel):
     id: str
     source: str
     target: str
     label: str | None = None
 
 
-class OrchestrationDagStatsResponse(OrchestrationCamelModel):
+class OrchestrationDagStatsResponse(CamelCaseHttpResponseModel):
     total_nodes: int = 0
     total_edges: int = 0
     max_depth: int = 0
     max_breadth: int = 0
     root_count: int = 0
-    provider_breakdown: dict[str, int] = Field(default_factory=dict)
+    provider_breakdown: dict[ProviderName, int] = {}
     timed_out_count: int = 0
     active_count: int = 0
     pending_count: int = 0
@@ -98,18 +81,18 @@ class OrchestrationDagStatsResponse(OrchestrationCamelModel):
     succeeded_count: int = 0
 
 
-class OrchestrationDagResponse(OrchestrationCamelModel):
-    nodes: list[OrchestrationDagNodeResponse] = Field(default_factory=list)
-    edges: list[OrchestrationDagEdgeResponse] = Field(default_factory=list)
+class OrchestrationDagResponse(CamelCaseHttpResponseModel):
+    nodes: list[OrchestrationDagNodeResponse] = []
+    edges: list[OrchestrationDagEdgeResponse] = []
     stats: OrchestrationDagStatsResponse
 
 
-class OrchestrationRunResponse(OrchestrationCamelModel):
+class OrchestrationRunResponse(CamelCaseHttpResponseModel):
     """Full orchestration run record."""
 
     source: Literal["overnight-oats"] = "overnight-oats"
     contract_version: str
-    run_id: str
+    run_id: RunId
     run_title: str
     repo_root: str
     config_path: str
@@ -118,12 +101,12 @@ class OrchestrationRunResponse(OrchestrationCamelModel):
     integration_branch: str
     task_pr_target: str
     final_pr_target: str
-    status: OrchestrationRunStatus
-    active_task_id: str | None = None
+    status: RunRuntimeStatus
+    active_task_id: TaskId | None = None
     heartbeat_at: str | None = None
     finished_at: str | None = None
     planner: OrchestrationInvocationResponse | None = None
-    tasks: list[OrchestrationTaskResponse] = Field(default_factory=list)
+    tasks: list[OrchestrationTaskResponse] = []
     created_at: str
     last_updated_at: str
     is_running: bool = False

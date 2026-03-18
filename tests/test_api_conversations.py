@@ -10,8 +10,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from helaicopter_api.application.conversations import _compact_dict
+from helaicopter_api.application.conversations import _compact_dict, _shape_conversation_task
 from helaicopter_api.bootstrap.services import build_services
+from helaicopter_api.ports.app_sqlite import HistoricalConversationTask
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -695,6 +696,32 @@ def test_compact_dict_keeps_non_empty_lists_without_raising() -> None:
 
 
 class TestConversationEndpoints:
+    def test_shape_conversation_task_uses_trusted_fast_path_for_validated_store_tasks(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        task = HistoricalConversationTask.model_validate(
+            {
+                "taskId": "T200",
+                "title": "Hot path",
+                "status": "running",
+            }
+        )
+
+        monkeypatch.setattr(
+            HistoricalConversationTask,
+            "model_dump",
+            lambda self, *args, **kwargs: pytest.fail("validated tasks should not be dumped before shaping"),
+        )
+
+        response = _shape_conversation_task(task)
+
+        assert response.model_dump(by_alias=True) == {
+            "taskId": "T200",
+            "title": "Hot path",
+            "status": "running",
+        }
+
     def test_list_and_detail_cover_claude_and_codex(self, conversations_client: TestClient) -> None:
         response = conversations_client.get("/conversations")
 
@@ -968,3 +995,8 @@ class TestProjectsHistoryAndTasks:
         assert tasks_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/TaskListResponse"
         )
+
+        message_schema = schema["components"]["schemas"]["ConversationMessageResponse"]
+        block_items = message_schema["properties"]["blocks"]["items"]
+        assert block_items["discriminator"]["propertyName"] == "type"
+        assert set(block_items["discriminator"]["mapping"]) == {"text", "thinking", "tool_call"}

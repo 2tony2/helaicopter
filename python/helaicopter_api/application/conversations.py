@@ -9,11 +9,24 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from pydantic import ConfigDict, InstanceOf, validate_call
+
+from helaicopter_api.application.codex_payloads import (
+    CodexSessionLine,
+    parse_codex_session_lines,
+    parse_codex_session_source,
+    parse_codex_spawn_agent_arguments,
+    parse_codex_spawn_agent_output,
+    parse_codex_update_plan_arguments,
+    payload_for_line,
+)
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import (
     HistoricalConversationMessage,
+    HistoricalConversationPlanStep,
     HistoricalConversationRecord,
     HistoricalConversationSummary,
+    HistoricalConversationTask,
     HistoricalMessageBlock,
 )
 from helaicopter_api.ports.claude_fs import RawConversationEvent
@@ -28,15 +41,20 @@ from helaicopter_api.schema.conversations import (
     ConversationDagResponse,
     ConversationDagSummaryResponse,
     ConversationDetailResponse,
-    ConversationListQueryParams,
     ConversationMessageBlockResponse,
     ConversationMessageResponse,
     ConversationPlanResponse,
     ConversationPlanStepResponse,
     ConversationSubagentResponse,
     ConversationSummaryResponse,
+    ConversationTaskResponse,
+    ConversationTextBlockResponse,
+    ConversationThinkingBlockResponse,
+    ConversationToolCallBlockResponse,
+    ConversationToolInputResponse,
     ConversationUsageResponse,
     HistoryEntryResponse,
+    HistoryPastedContentsResponse,
     ProjectResponse,
     TaskListResponse,
 )
@@ -48,8 +66,9 @@ _ACTIVE_WINDOW = timedelta(minutes=1)
 _MAX_RESULT_LENGTH = 20_000
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_conversations(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     project: str | None = None,
     days: int | None = None,
@@ -78,8 +97,9 @@ def list_conversations(
     )
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_conversation(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     project_path: str,
     session_id: str,
@@ -96,8 +116,9 @@ def get_conversation(
     return _get_claude_live_conversation(services, project_path=project_path, session_id=session_id)
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_subagent_conversation(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     project_path: str,
     parent_session_id: str,
@@ -119,8 +140,9 @@ def get_subagent_conversation(
     )
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_conversation_dags(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     project: str | None = None,
     days: int | None = None,
@@ -144,8 +166,9 @@ def list_conversation_dags(
         if dag is None:
             continue
         dag_summaries.append(
-            ConversationDagSummaryResponse(
-                **summary.model_dump(),
+            ConversationDagSummaryResponse.model_construct(
+                **summary.__dict__,
+                _fields_set=set(summary.__dict__) | {"dag"},
                 dag=dag.stats,
             )
         )
@@ -153,8 +176,9 @@ def list_conversation_dags(
     return dag_summaries
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_conversation_dag(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     project_path: str,
     session_id: str,
@@ -180,7 +204,8 @@ def get_conversation_dag(
     )
 
 
-def list_projects(services: BackendServices) -> list[ProjectResponse]:
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def list_projects(services: InstanceOf[BackendServices]) -> list[ProjectResponse]:
     """Return aggregated project rows derived from merged conversation summaries."""
     projects: dict[str, ProjectResponse] = {}
     for summary in list_conversations(services):
@@ -204,8 +229,9 @@ def list_projects(services: BackendServices) -> list[ProjectResponse]:
     )
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_history(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     limit: int,
 ) -> list[HistoryEntryResponse]:
@@ -213,7 +239,7 @@ def list_history(
     entries = [
         HistoryEntryResponse(
             display=item.display,
-            pasted_contents=item.pasted_contents,
+            pasted_contents=_shape_history_pasted_contents(item.pasted_contents),
             timestamp=float(item.timestamp),
             project=item.project,
         )
@@ -231,8 +257,9 @@ def list_history(
     return entries[:limit]
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_tasks(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     session_id: str,
 ) -> TaskListResponse:
@@ -240,7 +267,10 @@ def get_tasks(
     tasks = services.app_sqlite_store.get_historical_tasks_for_session(session_id)
     if tasks is None:
         tasks = services.claude_task_reader.read_tasks(session_id)
-    return TaskListResponse(session_id=session_id, tasks=tasks or [])
+    return TaskListResponse(
+        session_id=session_id,
+        tasks=[_shape_conversation_task(task) for task in tasks or []],
+    )
 
 
 def _provider_for_project_path(project_path: str) -> str:
@@ -425,6 +455,32 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
     )
 
 
+def _shape_history_pasted_contents(
+    payload: object | None,
+) -> HistoryPastedContentsResponse | None:
+    if payload is None:
+        return None
+    data = getattr(payload, "root", payload)
+    if not isinstance(data, dict):
+        return None
+    return HistoryPastedContentsResponse(root=data)
+
+
+def _shape_conversation_task(task: object) -> ConversationTaskResponse:
+    if isinstance(task, ConversationTaskResponse):
+        return task
+    if isinstance(task, HistoricalConversationTask):
+        extras = dict(task.model_extra or {})
+        return ConversationTaskResponse.model_construct(
+            task_id=task.task_id,
+            title=task.title,
+            _fields_set={"task_id", "title"} | set(extras),
+            **extras,
+        )
+    dump = task.model_dump(mode="python") if hasattr(task, "model_dump") else task
+    return ConversationTaskResponse.model_validate(dump)
+
+
 def _shape_historical_message(message: HistoricalConversationMessage) -> ConversationMessageResponse:
     return ConversationMessageResponse(
         id=message.message_id,
@@ -446,17 +502,51 @@ def _shape_historical_message(message: HistoricalConversationMessage) -> Convers
 def _shape_historical_block(block: HistoricalMessageBlock) -> ConversationMessageBlockResponse:
     block_type = block.block_type if block.block_type in {"text", "thinking", "tool_call"} else "text"
     input_payload = _parse_json_object(block.tool_input_json)
-    return ConversationMessageBlockResponse(
-        type=block_type,
-        text=block.text_content if block_type == "text" else None,
-        thinking=block.text_content if block_type == "thinking" else None,
-        char_count=len(block.text_content) if block_type == "thinking" and block.text_content else None,
-        tool_use_id=block.tool_use_id,
-        tool_name=block.tool_name,
-        input=input_payload,
-        result=block.tool_result_text,
-        is_error=block.is_error if block_type == "tool_call" else None,
+    if block_type == "thinking":
+        return _thinking_block(block.text_content or "")
+    if block_type == "tool_call":
+        return _tool_call_block(
+            tool_use_id=block.tool_use_id,
+            tool_name=block.tool_name,
+            input_payload=input_payload,
+            result=block.tool_result_text,
+            is_error=block.is_error,
+        )
+    return _text_block(block.text_content or "")
+
+
+def _text_block(text: str) -> ConversationTextBlockResponse:
+    return ConversationTextBlockResponse(type="text", text=text)
+
+
+def _thinking_block(thinking: str) -> ConversationThinkingBlockResponse:
+    return ConversationThinkingBlockResponse(
+        type="thinking",
+        thinking=thinking,
+        char_count=len(thinking),
     )
+
+
+def _tool_call_block(
+    *,
+    tool_use_id: str | None = None,
+    tool_name: str | None = None,
+    input_payload: dict[str, object] | None = None,
+    result: str | None = None,
+    is_error: bool | None = None,
+) -> ConversationToolCallBlockResponse:
+    return ConversationToolCallBlockResponse(
+        type="tool_call",
+        tool_use_id=tool_use_id,
+        tool_name=tool_name,
+        input=_tool_input_payload(input_payload),
+        result=result,
+        is_error=is_error,
+    )
+
+
+def _tool_input_payload(payload: dict[str, object] | None) -> ConversationToolInputResponse:
+    return ConversationToolInputResponse(root=payload or {})
 
 
 def _list_claude_live_summaries(
@@ -646,7 +736,7 @@ def _shape_claude_live_conversation_detail(
     thread_type: str,
 ) -> ConversationDetailResponse:
     messages: list[ConversationMessageResponse] = []
-    pending_tool_calls: dict[str, ConversationMessageBlockResponse] = {}
+    pending_tool_calls: dict[str, ConversationToolCallBlockResponse] = {}
     total_usage = _UsageTotals()
     bucket_totals: dict[str, _BucketTotals] = {}
     context_steps: list[ConversationContextStepResponse] = []
@@ -685,11 +775,11 @@ def _shape_claude_live_conversation_detail(
                 if block_type == "text":
                     text = _string_or_none(block.get("text"))
                     if text:
-                        user_blocks.append(ConversationMessageBlockResponse(type="text", text=text))
+                        user_blocks.append(_text_block(text))
             if not user_blocks:
                 text = _string_or_none(message.get("content"))
                 if text:
-                    user_blocks.append(ConversationMessageBlockResponse(type="text", text=text))
+                    user_blocks.append(_text_block(text))
             if user_blocks:
                 messages.append(
                     ConversationMessageResponse(
@@ -719,25 +809,18 @@ def _shape_claude_live_conversation_detail(
             if block_type == "text":
                 text = _string_or_none(block.get("text"))
                 if text:
-                    blocks.append(ConversationMessageBlockResponse(type="text", text=text))
+                    blocks.append(_text_block(text))
             elif block_type == "thinking":
                 thinking = _string_or_none(block.get("thinking"))
                 if thinking:
                     has_thinking = True
-                    blocks.append(
-                        ConversationMessageBlockResponse(
-                            type="thinking",
-                            thinking=thinking,
-                            char_count=len(thinking),
-                        )
-                    )
+                    blocks.append(_thinking_block(thinking))
             elif block_type == "tool_use":
                 tool_name = _string_or_none(block.get("name")) or "unknown"
-                tool_call = ConversationMessageBlockResponse(
-                    type="tool_call",
+                tool_call = _tool_call_block(
                     tool_use_id=_string_or_none(block.get("id")),
                     tool_name=tool_name,
-                    input=_dict_or_none(block.get("input")),
+                    input_payload=_dict_or_none(block.get("input")),
                 )
                 blocks.append(tool_call)
                 if tool_call.tool_use_id:
@@ -1097,7 +1180,7 @@ def _summarize_codex_artifact(
     *,
     thread: CodexThreadRecord | None,
 ) -> tuple[ConversationSummaryResponse | None, str | None, str | None]:
-    lines = _parse_jsonl_objects(artifact.content)
+    lines = parse_codex_session_lines(artifact.content)
     if not lines:
         return None, None, None
 
@@ -1131,14 +1214,14 @@ def _summarize_codex_artifact(
                 end_timestamp = ts
 
         line_type = _string_or_none(line.get("type"))
-        payload = _dict_or_none(line.get("payload"))
+        payload = payload_for_line(line)
         if line_type == "session_meta":
             session_id = _string_or_none(payload.get("id")) or session_id
             cwd = _string_or_none(payload.get("cwd")) or cwd
-            source = payload.get("source")
-            if isinstance(source, dict):
+            source = parse_codex_session_source(payload.get("source"))
+            if source is not None:
                 parent_thread_id = _string_or_none(
-                    _dict_or_none(_dict_or_none(source.get("subagent")).get("thread_spawn")).get("parent_thread_id")
+                    ((source.get("subagent") or {}).get("thread_spawn") or {}).get("parent_thread_id")
                 ) or parent_thread_id
             agent_role = _string_or_none(payload.get("agent_role")) or agent_role
         elif line_type == "turn_context":
@@ -1157,8 +1240,9 @@ def _summarize_codex_artifact(
                 tool_name = _codex_tool_display_name(_string_or_none(payload.get("name")) or "unknown")
                 tool_breakdown[tool_name] = tool_breakdown.get(tool_name, 0) + 1
                 if _string_or_none(payload.get("name")) == "spawn_agent":
-                    pending_spawn_calls[_string_or_none(payload.get("call_id")) or ""] = _spawn_agent_type(
-                        _parse_json_string_object(payload.get("arguments"))
+                    args = parse_codex_spawn_agent_arguments(payload.get("arguments"))
+                    pending_spawn_calls[_string_or_none(payload.get("call_id")) or ""] = (
+                        _spawn_agent_type(args or {})
                     )
             elif item_type == "custom_tool_call":
                 tool_use_count += 1
@@ -1240,14 +1324,14 @@ def _get_codex_live_conversation(
     if artifact is None:
         return None
 
-    lines = _parse_jsonl_objects(artifact.content)
+    lines = parse_codex_session_lines(artifact.content)
     if not lines:
         return None
 
     thread_by_id = _codex_threads_by_id(services)
     thread = thread_by_id.get(session_id)
     messages: list[ConversationMessageResponse] = []
-    pending_tool_calls: dict[str, ConversationMessageBlockResponse] = {}
+    pending_tool_calls: dict[str, ConversationToolCallBlockResponse] = {}
     pending_blocks: list[ConversationMessageBlockResponse] = []
     pending_tool_names: list[str] = []
     total_usage = _UsageTotals()
@@ -1327,7 +1411,7 @@ def _get_codex_live_conversation(
             if ts > end_time:
                 end_time = ts
         line_type = _string_or_none(line.get("type"))
-        payload = _dict_or_none(line.get("payload"))
+        payload = payload_for_line(line)
 
         if line_type == "turn_context":
             model = _string_or_none(payload.get("model")) or model
@@ -1369,10 +1453,7 @@ def _get_codex_live_conversation(
             role = _string_or_none(payload.get("role"))
             content = payload.get("content")
             if role == "user":
-                text_blocks = [
-                    ConversationMessageBlockResponse(type="text", text=text)
-                    for text in _codex_message_texts(content, input_mode=True)
-                ]
+                text_blocks = [_text_block(text) for text in _codex_message_texts(content, input_mode=True)]
                 if text_blocks:
                     messages.append(
                         ConversationMessageResponse(
@@ -1384,7 +1465,7 @@ def _get_codex_live_conversation(
                     )
             elif role == "assistant":
                 for text in _codex_message_texts(content, input_mode=False):
-                    pending_blocks.append(ConversationMessageBlockResponse(type="text", text=text))
+                    pending_blocks.append(_text_block(text))
                 last_assistant_timestamp = ts
                 last_assistant_id = f"assistant-{next_index}"
             continue
@@ -1392,22 +1473,15 @@ def _get_codex_live_conversation(
         if item_type == "reasoning":
             for text in _codex_reasoning_texts(payload.get("summary")):
                 has_thinking = True
-                pending_blocks.append(
-                    ConversationMessageBlockResponse(
-                        type="thinking",
-                        thinking=text,
-                        char_count=len(text),
-                    )
-                )
+                pending_blocks.append(_thinking_block(text))
             continue
 
         if item_type == "function_call":
             tool_name = _codex_tool_display_name(_string_or_none(payload.get("name")) or "unknown")
-            tool_call = ConversationMessageBlockResponse(
-                type="tool_call",
+            tool_call = _tool_call_block(
                 tool_use_id=_string_or_none(payload.get("call_id")),
                 tool_name=tool_name,
-                input=_parse_json_string_object(payload.get("arguments")),
+                input_payload=_parse_json_string_object(payload.get("arguments")),
             )
             pending_blocks.append(tool_call)
             if tool_call.tool_use_id:
@@ -1428,11 +1502,10 @@ def _get_codex_live_conversation(
 
         if item_type == "custom_tool_call":
             tool_name = _codex_tool_display_name(_string_or_none(payload.get("name")) or "unknown")
-            tool_call = ConversationMessageBlockResponse(
-                type="tool_call",
+            tool_call = _tool_call_block(
                 tool_use_id=_string_or_none(payload.get("call_id")),
                 tool_name=tool_name,
-                input={"patch": _string_or_none(payload.get("input")) or ""},
+                input_payload={"patch": _string_or_none(payload.get("input")) or ""},
             )
             pending_blocks.append(tool_call)
             if tool_call.tool_use_id:
@@ -1453,11 +1526,10 @@ def _get_codex_live_conversation(
 
         if item_type == "web_search_call":
             action = _dict_or_none(payload.get("action"))
-            tool_call = ConversationMessageBlockResponse(
-                type="tool_call",
+            tool_call = _tool_call_block(
                 tool_use_id=f"web-search-{next_index}-{int(ts)}",
                 tool_name=_codex_tool_display_name("web_search_call"),
-                input=_compact_dict(
+                input_payload=_compact_dict(
                     {
                         "type": _string_or_none(action.get("type")),
                         "query": _string_or_none(action.get("query")),
@@ -1515,7 +1587,7 @@ def _get_codex_live_conversation(
 
 
 def _extract_codex_plans(
-    lines: list[dict[str, Any]],
+    lines: list[CodexSessionLine],
     *,
     session_id: str,
     project_path: str,
@@ -1525,7 +1597,7 @@ def _extract_codex_plans(
 
     for line in lines:
         line_type = _string_or_none(line.get("type"))
-        payload = _dict_or_none(line.get("payload"))
+        payload = payload_for_line(line)
         if line_type == "turn_context":
             latest_model = _string_or_none(payload.get("model")) or latest_model
             continue
@@ -1536,11 +1608,11 @@ def _extract_codex_plans(
         call_id = _string_or_none(payload.get("call_id"))
         if not call_id:
             continue
-        args = _parse_json_string_object(payload.get("arguments"))
+        args = parse_codex_update_plan_arguments(payload.get("arguments")) or {}
         explanation = _string_or_none(args.get("explanation"))
         steps = [
             ConversationPlanStepResponse(step=_string_or_none(item.get("step")) or "", status=_string_or_none(item.get("status")) or "")
-            for item in _list_of_dicts(args.get("plan"))
+            for item in (args.get("plan") or [])
             if _string_or_none(item.get("step"))
         ]
         if not explanation and not steps:
@@ -1577,7 +1649,7 @@ def _extract_codex_plans(
 
 
 def _discover_codex_subagents(
-    lines: list[dict[str, Any]],
+    lines: list[CodexSessionLine],
     *,
     session_id: str,
     project_path: str,
@@ -1589,10 +1661,10 @@ def _discover_codex_subagents(
     for line in lines:
         if _string_or_none(line.get("type")) != "response_item":
             continue
-        payload = _dict_or_none(line.get("payload"))
+        payload = payload_for_line(line)
         item_type = _string_or_none(payload.get("type"))
         if item_type == "function_call" and _string_or_none(payload.get("name")) == "spawn_agent":
-            args = _parse_json_string_object(payload.get("arguments"))
+            args = parse_codex_spawn_agent_arguments(payload.get("arguments")) or {}
             pending_spawn_calls[_string_or_none(payload.get("call_id")) or ""] = {
                 "description": _summarize_spawn_agent_message(args),
                 "subagent_type": _spawn_agent_type(args),
@@ -1670,7 +1742,7 @@ def _parse_jsonl_objects(content: str) -> list[dict[str, Any]]:
 
 
 def _event_message(event: RawConversationEvent) -> dict[str, Any]:
-    return event.message if isinstance(event.message, dict) else {}
+    return event.message.root if event.message is not None else {}
 
 
 def _message_content_list(message: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1713,16 +1785,16 @@ def _tool_result_text(content: Any) -> str:
     return str(content)
 
 
-def _shape_plan_steps(raw_steps: list[dict[str, Any]]) -> list[ConversationPlanStepResponse]:
+def _shape_plan_steps(raw_steps: list[HistoricalConversationPlanStep]) -> list[ConversationPlanStepResponse]:
     steps: list[ConversationPlanStepResponse] = []
     for step in raw_steps:
-        label = _string_or_none(step.get("step"))
+        label = _string_or_none(step.step)
         if not label:
             continue
         steps.append(
             ConversationPlanStepResponse(
                 step=label,
-                status=_string_or_none(step.get("status")) or "",
+                status=_string_or_none(step.status) or "",
             )
         )
     return steps
@@ -1816,14 +1888,11 @@ def _cwd_to_display_name(cwd: str) -> str:
 
 
 def _parse_parent_thread_id(source: str | None) -> str | None:
-    if not source or not source.strip().startswith("{"):
-        return None
-    try:
-        parsed = json.loads(source)
-    except json.JSONDecodeError:
+    parsed = parse_codex_session_source(source)
+    if parsed is None:
         return None
     return _string_or_none(
-        _dict_or_none(_dict_or_none(parsed.get("subagent")).get("thread_spawn")).get("parent_thread_id")
+        ((parsed.get("subagent") or {}).get("thread_spawn") or {}).get("parent_thread_id")
     )
 
 
@@ -1907,13 +1976,8 @@ def _summarize_spawn_agent_message(args: dict[str, Any]) -> str | None:
 
 
 def _parse_spawn_agent_output(raw_output: Any) -> dict[str, str | None]:
-    if not isinstance(raw_output, str):
-        return {"agent_id": None, "nickname": None}
-    try:
-        parsed = json.loads(raw_output)
-    except json.JSONDecodeError:
-        return {"agent_id": None, "nickname": None}
-    if not isinstance(parsed, dict):
+    parsed = parse_codex_spawn_agent_output(raw_output)
+    if parsed is None:
         return {"agent_id": None, "nickname": None}
     return {
         "agent_id": _string_or_none(parsed.get("agent_id") or parsed.get("agentId") or parsed.get("id")),

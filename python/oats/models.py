@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from helaicopter_domain.ids import RunId, SessionId, TaskId
+from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
 
 
 class RepoSettings(BaseModel):
@@ -14,23 +16,25 @@ class RepoSettings(BaseModel):
 
 
 class AgentsSettings(BaseModel):
-    planner: str = "codex"
-    executor: str = "claude"
-    conflict_resolver: str = "claude"
-    merge_operator: str = "codex"
+    planner: ProviderName = "codex"
+    executor: ProviderName = "claude"
+    conflict_resolver: ProviderName = "claude"
+    merge_operator: ProviderName = "codex"
 
 
 class AgentCommand(BaseModel):
     command: str
-    args: list[str] = Field(default_factory=list)
+    args: list[str] = []
 
 
 class ValidationSettings(BaseModel):
-    commands: list[str] = Field(default_factory=list)
+    commands: list[str] = []
     fail_fast: bool = True
 
 
 class GitSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     task_branch_prefix: str = "oats/task/"
     integration_branch_prefix: str = "oats/overnight/"
     integration_branch_base: str = "main"
@@ -41,20 +45,6 @@ class GitSettings(BaseModel):
     auto_create_final_pr: bool = True
     require_manual_final_review: bool = True
     delete_worktree_on_success: bool = True
-
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_legacy_fields(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        migrated = dict(data)
-        if "branch_prefix" in migrated and "task_branch_prefix" not in migrated:
-            migrated["task_branch_prefix"] = migrated.pop("branch_prefix")
-        if "pr_target" in migrated and "final_pr_target" not in migrated:
-            migrated["final_pr_target"] = migrated.pop("pr_target")
-        if "auto_create_pr" in migrated and "auto_create_task_prs" not in migrated:
-            migrated["auto_create_task_prs"] = migrated.pop("auto_create_pr")
-        return migrated
 
 
 class ConflictSettings(BaseModel):
@@ -86,7 +76,7 @@ class ContextSettings(BaseModel):
 class RepoConfig(BaseModel):
     repo: RepoSettings = Field(default_factory=RepoSettings)
     agents: AgentsSettings = Field(default_factory=AgentsSettings)
-    agent: dict[str, AgentCommand] = Field(default_factory=dict)
+    agent: dict[str, AgentCommand] = {}
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     git: GitSettings = Field(default_factory=GitSettings)
     conflicts: ConflictSettings = Field(default_factory=ConflictSettings)
@@ -114,10 +104,10 @@ class TaskSpec(BaseModel):
     id: str
     title: str | None = None
     prompt: str
-    depends_on: list[str] = Field(default_factory=list)
-    acceptance_criteria: list[str] = Field(default_factory=list)
-    notes: list[str] = Field(default_factory=list)
-    validation_override: list[str] = Field(default_factory=list)
+    depends_on: list[str] = []
+    acceptance_criteria: list[str] = []
+    notes: list[str] = []
+    validation_override: list[str] = []
     raw_body: str
 
     @field_validator("id")
@@ -152,9 +142,9 @@ class PlannedTask(BaseModel):
     id: str
     title: str
     prompt: str
-    depends_on: list[str] = Field(default_factory=list)
-    acceptance_criteria: list[str] = Field(default_factory=list)
-    validation_commands: list[str] = Field(default_factory=list)
+    depends_on: list[str] = []
+    acceptance_criteria: list[str] = []
+    validation_commands: list[str] = []
     branch_name: str
     pr_base: str
 
@@ -180,7 +170,7 @@ class PullRequestPlan(BaseModel):
     base_branch: str
     body: str
     draft: bool = False
-    task_id: str | None = None
+    task_id: TaskId | None = None
 
 
 class CommandExecutionRecord(BaseModel):
@@ -191,8 +181,8 @@ class CommandExecutionRecord(BaseModel):
     exit_code: int = 0
     stdout: str = ""
     stderr: str = ""
-    agent: str | None = None
-    session_id: str | None = None
+    agent: ProviderName | None = None
+    session_id: SessionId | None = None
     session_id_field: str | None = None
     timed_out: bool = False
 
@@ -207,20 +197,20 @@ class PullRequestApplyRecord(BaseModel):
     auto_merge_enabled: bool
     final_pr_created: bool
     executed: bool
-    commands: list[CommandExecutionRecord] = Field(default_factory=list)
+    commands: list[CommandExecutionRecord] = []
     record_path: Path | None = None
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AgentInvocationResult(BaseModel):
-    agent: str
+    agent: ProviderName
     role: Literal["planner", "executor", "conflict_resolver", "merge_operator"]
     command: list[str]
     cwd: Path
     prompt: str
-    session_id: str | None = None
+    session_id: SessionId | None = None
     session_id_field: str | None = None
-    requested_session_id: str | None = None
+    requested_session_id: SessionId | None = None
     output_text: str = ""
     raw_stdout: str = ""
     raw_stderr: str = ""
@@ -231,14 +221,14 @@ class AgentInvocationResult(BaseModel):
 
 
 class TaskExecutionRecord(BaseModel):
-    task_id: str
+    task_id: TaskId
     title: str
-    depends_on: list[str] = Field(default_factory=list)
+    depends_on: list[str] = []
     invocation: AgentInvocationResult
 
 
 class RunExecutionRecord(BaseModel):
-    run_id: str | None = None
+    run_id: RunId | None = None
     run_title: str
     repo_root: Path
     config_path: Path
@@ -248,40 +238,19 @@ class RunExecutionRecord(BaseModel):
     task_pr_target: str
     final_pr_target: str
     planner: AgentInvocationResult | None = None
-    tasks: list[TaskExecutionRecord] = Field(default_factory=list)
+    tasks: list[TaskExecutionRecord] = []
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     record_path: Path | None = None
 
-
-TaskRuntimeStatus = Literal[
-    "pending",
-    "running",
-    "succeeded",
-    "failed",
-    "timed_out",
-    "skipped",
-    "blocked",
-]
-
-RunRuntimeStatus = Literal[
-    "pending",
-    "planning",
-    "running",
-    "completed",
-    "failed",
-    "timed_out",
-]
-
-
 class InvocationRuntimeRecord(BaseModel):
-    agent: str
+    agent: ProviderName
     role: Literal["planner", "executor", "conflict_resolver", "merge_operator"]
-    command: list[str] = Field(default_factory=list)
+    command: list[str] = []
     cwd: Path
     prompt: str
-    session_id: str | None = None
+    session_id: SessionId | None = None
     session_id_field: str | None = None
-    requested_session_id: str | None = None
+    requested_session_id: SessionId | None = None
     output_text: str = ""
     raw_stdout: str = ""
     raw_stderr: str = ""
@@ -289,16 +258,17 @@ class InvocationRuntimeRecord(BaseModel):
     timed_out: bool = False
     started_at: datetime | None = None
     last_heartbeat_at: datetime | None = None
+    last_progress_event_at: datetime | None = None
     finished_at: datetime | None = None
 
 
 class TaskRuntimeRecord(BaseModel):
-    task_id: str
+    task_id: TaskId
     title: str
-    depends_on: list[str] = Field(default_factory=list)
+    depends_on: list[str] = []
     branch_name: str
     pr_base: str
-    agent: str
+    agent: ProviderName
     role: Literal["executor"] = "executor"
     status: TaskRuntimeStatus = "pending"
     attempts: int = 0
@@ -307,7 +277,7 @@ class TaskRuntimeRecord(BaseModel):
 
 class RunPlanSnapshot(BaseModel):
     contract_version: Literal["oats-plan-v1"] = "oats-plan-v1"
-    run_id: str
+    run_id: RunId
     run_title: str
     repo_root: Path
     config_path: Path
@@ -317,22 +287,26 @@ class RunPlanSnapshot(BaseModel):
     task_pr_target: str
     final_pr_target: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    tasks: list[PlannedTask] = Field(default_factory=list)
+    tasks: list[PlannedTask] = []
 
 
 class RuntimeProgressEvent(BaseModel):
     contract_version: Literal["oats-event-v1"] = "oats-event-v1"
-    run_id: str
+    run_id: RunId
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     event_type: str
     run_status: RunRuntimeStatus
-    task_id: str | None = None
+    task_id: TaskId | None = None
     message: str | None = None
+    agent: ProviderName | None = None
+    session_id: SessionId | None = None
+    heartbeat_at: datetime | None = None
+    output_text: str | None = None
 
 
 class RunRuntimeState(BaseModel):
     contract_version: Literal["oats-runtime-v1"] = "oats-runtime-v1"
-    run_id: str
+    run_id: RunId
     run_title: str
     repo_root: Path
     config_path: Path
@@ -343,11 +317,11 @@ class RunRuntimeState(BaseModel):
     final_pr_target: str
     runtime_dir: Path
     status: RunRuntimeStatus = "pending"
-    active_task_id: str | None = None
+    active_task_id: TaskId | None = None
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     finished_at: datetime | None = None
     planner: InvocationRuntimeRecord | None = None
-    tasks: list[TaskRuntimeRecord] = Field(default_factory=list)
+    tasks: list[TaskRuntimeRecord] = []
     final_record_path: Path | None = None

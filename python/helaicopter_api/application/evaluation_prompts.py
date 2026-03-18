@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pydantic import ConfigDict, InstanceOf, validate_call
+
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.schema.evaluations import (
     EvaluationPromptCreateRequest,
@@ -14,15 +16,17 @@ class EvaluationPromptNotFoundError(LookupError):
     """Raised when a prompt id does not resolve to a stored prompt."""
 
 
-def list_evaluation_prompts(services: BackendServices) -> list[EvaluationPromptResponse]:
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def list_evaluation_prompts(services: InstanceOf[BackendServices]) -> list[EvaluationPromptResponse]:
     """Return all prompts after explicitly ensuring the built-in default exists."""
     services.app_sqlite_store.ensure_default_evaluation_prompt()
     prompts = services.app_sqlite_store.list_evaluation_prompts()
     return [_to_response(prompt) for prompt in prompts]
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def resolve_evaluation_prompt(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     prompt_id: str | None = None,
 ) -> EvaluationPromptResponse:
@@ -36,8 +40,9 @@ def resolve_evaluation_prompt(
     return _to_response(prompt)
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def create_evaluation_prompt(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     body: EvaluationPromptCreateRequest,
 ) -> EvaluationPromptResponse:
     """Persist and return a user-managed evaluation prompt."""
@@ -49,8 +54,9 @@ def create_evaluation_prompt(
     return _to_response(prompt)
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def update_evaluation_prompt(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     prompt_id: str,
     body: EvaluationPromptUpdateRequest,
 ) -> EvaluationPromptResponse:
@@ -70,7 +76,8 @@ def update_evaluation_prompt(
     return _to_response(prompt)
 
 
-def delete_evaluation_prompt(services: BackendServices, prompt_id: str) -> None:
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def delete_evaluation_prompt(services: InstanceOf[BackendServices], prompt_id: str) -> None:
     """Delete one stored user-managed prompt."""
     try:
         services.app_sqlite_store.delete_evaluation_prompt(prompt_id)

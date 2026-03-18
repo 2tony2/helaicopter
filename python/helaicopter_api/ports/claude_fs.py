@@ -6,14 +6,24 @@ adapters directly.  Bootstrap wires the real implementations at startup.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, RootModel
+from helaicopter_domain.ids import SessionId
+from helaicopter_domain.paths import AbsoluteProjectPath, EncodedProjectKey
 
 
 # ---------------------------------------------------------------------------
 # Value objects returned by the ports
 # ---------------------------------------------------------------------------
+
+
+class RawConversationMessage(RootModel[dict[str, object]]):
+    """Opaque Claude message payload preserved at the filesystem boundary."""
+
+
+class RawConversationEventData(RootModel[dict[str, object]]):
+    """Opaque Claude event ``data`` payload preserved at the filesystem boundary."""
 
 
 class RawConversationEvent(BaseModel):
@@ -23,13 +33,13 @@ class RawConversationEvent(BaseModel):
     uuid: str = ""
     parent_uuid: str | None = None
     timestamp: float | str = 0
-    session_id: str | None = None
+    session_id: SessionId | None = None
     git_branch: str | None = None
-    message: dict | None = None
+    message: RawConversationMessage | None = None
     plan_content: str | None = None
     slug: str | None = None
     cwd: str | None = None
-    data: dict | None = None
+    data: RawConversationEventData | None = None
 
     model_config = {"extra": "allow"}
 
@@ -37,11 +47,15 @@ class RawConversationEvent(BaseModel):
 class SessionInfo(BaseModel):
     """Lightweight metadata about a session file on disk."""
 
-    session_id: str
-    project_dir: str
+    session_id: SessionId
+    project_dir: EncodedProjectKey
     path: str
     size_bytes: int
     modified_at: float
+
+
+class ClaudeHistoryPastedContents(RootModel[dict[str, object]]):
+    """Opaque pasted-content payload from Claude history."""
 
 
 class HistoryEntry(BaseModel):
@@ -50,7 +64,16 @@ class HistoryEntry(BaseModel):
     display: str
     timestamp: float = 0
     project: str | None = None
-    pasted_contents: dict | None = None
+    pasted_contents: ClaudeHistoryPastedContents | None = None
+
+
+class ClaudeTaskPayload(BaseModel):
+    """Task JSON payload returned by the Claude filesystem task reader."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    task_id: str | None = Field(default=None, alias="taskId")
+    title: str | None = None
 
 
 class PlanFile(BaseModel):
@@ -66,8 +89,8 @@ class ProjectDir(BaseModel):
     """A project directory under ``~/.claude/projects/``."""
 
     dir_name: str
-    full_path: str
-    session_ids: list[str] = Field(default_factory=list)
+    full_path: AbsoluteProjectPath
+    session_ids: list[SessionId] = []
 
 
 # ---------------------------------------------------------------------------
@@ -83,11 +106,13 @@ class ConversationReader(Protocol):
         """Return all project directories that contain session files."""
         ...
 
-    def list_sessions(self, project_dir: str) -> list[SessionInfo]:
+    def list_sessions(self, project_dir: EncodedProjectKey) -> list[SessionInfo]:
         """Return session metadata for a given project directory name."""
         ...
 
-    def read_session_events(self, project_dir: str, session_id: str) -> list[RawConversationEvent]:
+    def read_session_events(
+        self, project_dir: EncodedProjectKey, session_id: SessionId
+    ) -> list[RawConversationEvent]:
         """Read and parse all JSONL events for a session."""
         ...
 
@@ -121,6 +146,6 @@ class HistoryReader(Protocol):
 class TaskReader(Protocol):
     """Read task payloads from ``~/.claude/tasks/<session_id>/``."""
 
-    def read_tasks(self, session_id: str) -> list[dict[str, Any]]:
+    def read_tasks(self, session_id: SessionId) -> list[ClaudeTaskPayload]:
         """Return all JSON task payloads for one session, newest file-order independent."""
         ...

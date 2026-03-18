@@ -2,28 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
-from pydantic import BaseModel, ConfigDict, Field
-
-DatabaseStatusKey = Literal["sqlite", "legacy_duckdb"]
-DatabaseRole = Literal["metadata", "legacy_debug"]
-DatabaseAvailability = Literal["ready", "missing", "unreachable"]
-
-
-def _to_camel(value: str) -> str:
-    head, *tail = value.split("_")
-    return head + "".join(part.capitalize() for part in tail)
+from pydantic import BaseModel, Field
+from helaicopter_domain.vocab import (
+    DatabaseAvailability,
+    DatabaseRefreshStatus,
+    DatabaseRole,
+    DatabaseStatusKey,
+    RuntimeReadBackend,
+)
+from helaicopter_api.schema.common import CamelCaseHttpResponseModel, camel_case_request_config
 
 
-class DatabaseCamelModel(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=_to_camel,
-        populate_by_name=True,
-    )
-
-
-class DatabaseColumnSchemaResponse(DatabaseCamelModel):
+class DatabaseColumnSchemaResponse(CamelCaseHttpResponseModel):
     name: str
     type: str
     nullable: bool = False
@@ -32,13 +22,13 @@ class DatabaseColumnSchemaResponse(DatabaseCamelModel):
     references: str | None = None
 
 
-class DatabaseTableSchemaResponse(DatabaseCamelModel):
+class DatabaseTableSchemaResponse(CamelCaseHttpResponseModel):
     name: str
     row_count: int = 0
-    columns: list[DatabaseColumnSchemaResponse] = Field(default_factory=list)
+    columns: list[DatabaseColumnSchemaResponse] = []
 
 
-class DatabaseArtifactStatusResponse(DatabaseCamelModel):
+class DatabaseArtifactStatusResponse(CamelCaseHttpResponseModel):
     key: DatabaseStatusKey
     label: str
     engine: str
@@ -51,23 +41,23 @@ class DatabaseArtifactStatusResponse(DatabaseCamelModel):
     public_path: str | None = None
     docs_url: str | None = None
     table_count: int = 0
-    tables: list[DatabaseTableSchemaResponse] = Field(default_factory=list)
+    tables: list[DatabaseTableSchemaResponse] = []
 
 
-class DatabaseRuntimeResponse(DatabaseCamelModel):
-    analytics_read_backend: Literal["legacy"]
-    conversation_summary_read_backend: Literal["legacy"]
+class DatabaseRuntimeResponse(CamelCaseHttpResponseModel):
+    analytics_read_backend: RuntimeReadBackend
+    conversation_summary_read_backend: RuntimeReadBackend
 
 
-class DatabaseArtifactsResponse(DatabaseCamelModel):
+class DatabaseArtifactsResponse(CamelCaseHttpResponseModel):
     sqlite: DatabaseArtifactStatusResponse
-    legacy_duckdb: DatabaseArtifactStatusResponse = Field(alias="legacyDuckdb")
+    legacy_duckdb: DatabaseArtifactStatusResponse
 
 
-class DatabaseStatusResponse(DatabaseCamelModel):
+class DatabaseStatusResponse(CamelCaseHttpResponseModel):
     """Overall database status including refresh state."""
 
-    status: Literal["idle", "running", "completed", "failed"]
+    status: DatabaseRefreshStatus
     trigger: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
@@ -85,7 +75,9 @@ class DatabaseStatusResponse(DatabaseCamelModel):
     databases: DatabaseArtifactsResponse
 
 
-class DatabaseRefreshRequest(DatabaseCamelModel):
+class DatabaseRefreshRequest(BaseModel):
+    model_config = camel_case_request_config(extra="forbid")
+
     force: bool = False
     trigger: str = "manual"
     stale_after_seconds: int = Field(default=21_600, ge=0)

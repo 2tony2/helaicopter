@@ -5,11 +5,22 @@ from __future__ import annotations
 import base64
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Literal, TypedDict, cast
+from typing import Literal, TypedDict
 
+from pydantic import ConfigDict, InstanceOf, TypeAdapter, ValidationError, validate_call
+
+from helaicopter_api.application.codex_payloads import (
+    CodexSessionLine,
+    CodexUpdatePlanArguments,
+    CodexUpdatePlanStep,
+    parse_codex_session_lines,
+    parse_codex_update_plan_arguments,
+    payload_for_line,
+)
 from helaicopter_api.bootstrap.services import BackendServices
-from helaicopter_api.ports.claude_fs import RawConversationEvent, SessionInfo
+from helaicopter_api.ports.claude_fs import RawConversationEvent
 from helaicopter_api.ports.codex_sqlite import CodexThreadRecord
 from helaicopter_api.schema.plans import (
     PlanDetailResponse,
@@ -37,9 +48,28 @@ class CodexSessionPlanSource(TypedDict):
 
 
 PlanSource = FilePlanSource | ClaudeSessionPlanSource | CodexSessionPlanSource
+_PLAN_SOURCE_ADAPTER = TypeAdapter(PlanSource)
 
 
-def list_plans(services: BackendServices) -> list[PlanSummaryResponse]:
+@dataclass(frozen=True, slots=True)
+class _ExtractedPlan:
+    id: str
+    slug: str
+    title: str
+    preview: str
+    content: str
+    provider: str
+    timestamp: float
+    model: str | None = None
+    source_path: str | None = None
+    session_id: str | None = None
+    project_path: str | None = None
+    explanation: str | None = None
+    steps: list[PlanStepResponse] | None = None
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def list_plans(services: InstanceOf[BackendServices]) -> list[PlanSummaryResponse]:
     """Return file-backed Claude plans plus session-backed Claude/Codex plans."""
     claude_session_plans = _list_claude_session_plans(services)
     codex_session_plans = _list_codex_session_plans(services)
@@ -50,7 +80,8 @@ def list_plans(services: BackendServices) -> list[PlanSummaryResponse]:
     )
 
 
-def get_plan(services: BackendServices, plan_id: str) -> PlanDetailResponse | None:
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailResponse | None:
     """Return one plan by encoded id or legacy Claude file slug."""
     source = _decode_plan_id(plan_id)
     if source is None:
@@ -141,7 +172,7 @@ def _get_claude_session_plan(
     if not events:
         return None
     source_path = _session_source_path(services, project_path, session_id)
-    for event in _extract_claude_session_details(
+    for event in _extract_claude_session_plan_data(
         events,
         session_id=session_id,
         project_path=project_path,
@@ -155,7 +186,7 @@ def _get_claude_session_plan(
                 "eventId": event_id,
             }
         ):
-            return event
+            return _plan_detail_response(event)
     return None
 
 
@@ -167,19 +198,8 @@ def _extract_claude_session_plans(
     source_path: str,
 ) -> list[PlanSummaryResponse]:
     return [
-        PlanSummaryResponse(
-            id=plan.id,
-            slug=plan.slug,
-            title=plan.title,
-            preview=_summarize_plan_content(plan.content, plan.slug)["preview"],
-            provider=plan.provider,
-            timestamp=plan.timestamp,
-            model=plan.model,
-            source_path=plan.source_path,
-            session_id=plan.session_id,
-            project_path=plan.project_path,
-        )
-        for plan in _extract_claude_session_details(
+        _plan_summary_response(plan)
+        for plan in _extract_claude_session_plan_data(
             events,
             session_id=session_id,
             project_path=project_path,
@@ -195,7 +215,25 @@ def _extract_claude_session_details(
     project_path: str,
     source_path: str,
 ) -> list[PlanDetailResponse]:
-    plans: list[PlanDetailResponse] = []
+    return [
+        _plan_detail_response(plan)
+        for plan in _extract_claude_session_plan_data(
+            events,
+            session_id=session_id,
+            project_path=project_path,
+            source_path=source_path,
+        )
+    ]
+
+
+def _extract_claude_session_plan_data(
+    events: list[RawConversationEvent],
+    *,
+    session_id: str,
+    project_path: str,
+    source_path: str,
+) -> list[_ExtractedPlan]:
+    plans: list[_ExtractedPlan] = []
     latest_model: str | None = None
 
     for event in events:
@@ -208,7 +246,7 @@ def _extract_claude_session_details(
             continue
         metadata = _summarize_plan_content(content, event.slug or session_id)
         plans.append(
-            PlanDetailResponse(
+            _ExtractedPlan(
                 id=_encode_plan_id(
                     {
                         "kind": "claude-session",
@@ -226,6 +264,7 @@ def _extract_claude_session_details(
                 source_path=source_path,
                 session_id=session_id,
                 project_path=project_path,
+                preview=metadata["preview"],
             )
         )
 
@@ -261,7 +300,7 @@ def _get_codex_session_plan(
     thread = services.codex_store.get_thread(session_id)
     lines = _parse_codex_lines(artifact.content)
     project_path = _codex_project_path(lines, thread)
-    for plan in _extract_codex_session_details(
+    for plan in _extract_codex_session_plan_data(
         lines,
         session_id=session_id,
         project_path=project_path,
@@ -274,31 +313,20 @@ def _get_codex_session_plan(
                 "callId": call_id,
             }
         ):
-            return plan
+            return _plan_detail_response(plan)
     return None
 
 
 def _extract_codex_session_plans(
-    lines: list[dict[str, Any]],
+    lines: list[CodexSessionLine],
     *,
     session_id: str,
     project_path: str,
     source_path: str,
 ) -> list[PlanSummaryResponse]:
     return [
-        PlanSummaryResponse(
-            id=plan.id,
-            slug=plan.slug,
-            title=plan.title,
-            preview=_summarize_plan_content(plan.content, plan.slug)["preview"],
-            provider=plan.provider,
-            timestamp=plan.timestamp,
-            model=plan.model,
-            source_path=plan.source_path,
-            session_id=plan.session_id,
-            project_path=plan.project_path,
-        )
-        for plan in _extract_codex_session_details(
+        _plan_summary_response(plan)
+        for plan in _extract_codex_session_plan_data(
             lines,
             session_id=session_id,
             project_path=project_path,
@@ -308,18 +336,36 @@ def _extract_codex_session_plans(
 
 
 def _extract_codex_session_details(
-    lines: list[dict[str, Any]],
+    lines: list[CodexSessionLine],
     *,
     session_id: str,
     project_path: str,
     source_path: str,
 ) -> list[PlanDetailResponse]:
-    plans: list[PlanDetailResponse] = []
+    return [
+        _plan_detail_response(plan)
+        for plan in _extract_codex_session_plan_data(
+            lines,
+            session_id=session_id,
+            project_path=project_path,
+            source_path=source_path,
+        )
+    ]
+
+
+def _extract_codex_session_plan_data(
+    lines: list[CodexSessionLine],
+    *,
+    session_id: str,
+    project_path: str,
+    source_path: str,
+) -> list[_ExtractedPlan]:
+    plans: list[_ExtractedPlan] = []
     latest_model: str | None = None
 
     for line in lines:
         if line.get("type") == "turn_context":
-            payload = cast(dict[str, Any], line.get("payload") or {})
+            payload = payload_for_line(line)
             model = payload.get("model")
             if isinstance(model, str) and model.strip():
                 latest_model = model.strip()
@@ -328,7 +374,7 @@ def _extract_codex_session_details(
         if line.get("type") != "response_item":
             continue
 
-        payload = cast(dict[str, Any], line.get("payload") or {})
+        payload = payload_for_line(line)
         if payload.get("type") != "function_call" or payload.get("name") != "update_plan":
             continue
 
@@ -336,15 +382,17 @@ def _extract_codex_session_details(
         if not isinstance(call_id, str) or not call_id.strip():
             continue
 
-        args = _parse_json_mapping(payload.get("arguments"))
+        args = parse_codex_update_plan_arguments(payload.get("arguments"))
+        if args is None:
+            continue
         explanation = _parse_codex_explanation(args)
         steps = _parse_codex_plan_steps(args.get("plan"))
         if explanation is None and not steps:
             continue
 
-        slug, title, content = _summarize_codex_plan(call_id, explanation, steps)
+        slug, title, preview, content = _summarize_codex_plan(call_id, explanation, steps)
         plans.append(
-            PlanDetailResponse(
+            _ExtractedPlan(
                 id=_encode_plan_id(
                     {
                         "kind": "codex-session",
@@ -361,6 +409,7 @@ def _extract_codex_session_details(
                 source_path=source_path,
                 session_id=session_id,
                 project_path=project_path,
+                preview=preview,
                 explanation=explanation,
                 steps=steps,
             )
@@ -384,25 +433,60 @@ def _session_source_path(
 def _claude_event_model(event: RawConversationEvent) -> str | None:
     if event.type != "assistant":
         return None
-    message = event.message
-    if not isinstance(message, dict):
+    if event.message is None:
         return None
+    message = event.message.root
     model = message.get("model")
     if isinstance(model, str) and model.strip():
         return model.strip()
     return None
 
 
+def _plan_summary_response(plan: _ExtractedPlan) -> PlanSummaryResponse:
+    return PlanSummaryResponse(
+        id=plan.id,
+        slug=plan.slug,
+        title=plan.title,
+        preview=plan.preview,
+        provider=plan.provider,
+        timestamp=plan.timestamp,
+        model=plan.model,
+        source_path=plan.source_path,
+        session_id=plan.session_id,
+        project_path=plan.project_path,
+    )
+
+
+def _plan_detail_response(plan: _ExtractedPlan) -> PlanDetailResponse:
+    return PlanDetailResponse(
+        id=plan.id,
+        slug=plan.slug,
+        title=plan.title,
+        content=plan.content,
+        provider=plan.provider,
+        timestamp=plan.timestamp,
+        model=plan.model,
+        source_path=plan.source_path,
+        session_id=plan.session_id,
+        project_path=plan.project_path,
+        explanation=plan.explanation,
+        steps=plan.steps or [],
+    )
+
+
 def _summarize_codex_plan(
     call_id: str,
     explanation: str | None,
     steps: list[PlanStepResponse],
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str]:
     title_source = _first_non_empty_line(explanation) or (
         steps[0].step if steps else f"Plan update {call_id[-8:]}"
     )
     title = _truncate(title_source.strip(), max_length=80)
     slug = f"codex-{_slugify(title)}-{call_id[-8:]}"
+    preview_parts = [explanation] if explanation else []
+    preview_parts.extend(f"{_checkbox_for_status(step.status)} {step.step}" for step in steps)
+    preview = _truncate(" ".join(part for part in preview_parts if part), max_length=200)
 
     content_lines = [f"# {title}"]
     if explanation:
@@ -411,24 +495,22 @@ def _summarize_codex_plan(
         content_lines.extend(["", "## Steps", ""])
         for step in steps:
             content_lines.append(f"{_checkbox_for_status(step.status)} {step.step}")
-    return slug, title, "\n".join(content_lines)
+    return slug, title, preview, "\n".join(content_lines)
 
 
-def _parse_codex_explanation(payload: dict[str, Any]) -> str | None:
+def _parse_codex_explanation(payload: CodexUpdatePlanArguments) -> str | None:
     explanation = payload.get("explanation")
     if isinstance(explanation, str) and explanation.strip():
         return explanation.strip()
     return None
 
 
-def _parse_codex_plan_steps(raw_plan: object) -> list[PlanStepResponse]:
-    if not isinstance(raw_plan, list):
+def _parse_codex_plan_steps(raw_plan: list[dict[str, object]] | list[CodexUpdatePlanStep] | None) -> list[PlanStepResponse]:
+    if raw_plan is None:
         return []
 
     steps: list[PlanStepResponse] = []
     for item in raw_plan:
-        if not isinstance(item, dict):
-            continue
         step = item.get("step")
         if not isinstance(step, str) or not step.strip():
             continue
@@ -439,13 +521,13 @@ def _parse_codex_plan_steps(raw_plan: object) -> list[PlanStepResponse]:
 
 
 def _codex_project_path(
-    lines: list[dict[str, Any]],
+    lines: list[CodexSessionLine],
     thread: CodexThreadRecord | None,
 ) -> str:
     for line in lines:
         if line.get("type") != "session_meta":
             continue
-        payload = cast(dict[str, Any], line.get("payload") or {})
+        payload = payload_for_line(line)
         cwd = payload.get("cwd")
         if isinstance(cwd, str) and cwd.strip():
             return f"codex:{_cwd_to_project_path(cwd.strip())}"
@@ -454,31 +536,8 @@ def _codex_project_path(
     return "codex:unknown"
 
 
-def _parse_codex_lines(content: str) -> list[dict[str, Any]]:
-    lines: list[dict[str, Any]] = []
-    for raw_line in content.splitlines():
-        stripped = raw_line.strip()
-        if not stripped:
-            continue
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            lines.append(parsed)
-    return lines
-
-
-def _parse_json_mapping(raw_value: object) -> dict[str, Any]:
-    if isinstance(raw_value, dict):
-        return dict(raw_value)
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        return {}
-    try:
-        parsed = json.loads(raw_value)
-    except json.JSONDecodeError:
-        return {}
-    return dict(parsed) if isinstance(parsed, dict) else {}
+def _parse_codex_lines(content: str) -> list[CodexSessionLine]:
+    return parse_codex_session_lines(content)
 
 
 def _summarize_plan_content(content: str, fallback_slug: str) -> dict[str, str]:
@@ -508,38 +567,11 @@ def _decode_plan_id(plan_id: str) -> PlanSource | None:
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
         parsed = None
 
-    if isinstance(parsed, dict):
-        kind = parsed.get("kind")
-        if kind == "file" and isinstance(parsed.get("slug"), str):
-            return cast(FilePlanSource, {"kind": "file", "slug": parsed["slug"]})
-        if (
-            kind == "claude-session"
-            and isinstance(parsed.get("projectPath"), str)
-            and isinstance(parsed.get("sessionId"), str)
-            and isinstance(parsed.get("eventId"), str)
-        ):
-            return cast(
-                ClaudeSessionPlanSource,
-                {
-                    "kind": "claude-session",
-                    "projectPath": parsed["projectPath"],
-                    "sessionId": parsed["sessionId"],
-                    "eventId": parsed["eventId"],
-                },
-            )
-        if (
-            kind == "codex-session"
-            and isinstance(parsed.get("sessionId"), str)
-            and isinstance(parsed.get("callId"), str)
-        ):
-            return cast(
-                CodexSessionPlanSource,
-                {
-                    "kind": "codex-session",
-                    "sessionId": parsed["sessionId"],
-                    "callId": parsed["callId"],
-                },
-            )
+    if parsed is not None:
+        try:
+            return _PLAN_SOURCE_ADAPTER.validate_python(parsed)
+        except ValidationError:
+            pass
 
     if plan_id:
         return {"kind": "file", "slug": plan_id}

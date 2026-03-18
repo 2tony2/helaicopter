@@ -1,4 +1,6 @@
+from datetime import timedelta
 from pathlib import Path
+import json
 import threading
 
 from oats.models import AgentInvocationResult
@@ -9,6 +11,8 @@ from oats.runtime_state import (
     build_plan_snapshot,
     load_runtime_state,
     prepare_invocation_runtime,
+    record_invocation_heartbeat,
+    record_invocation_progress,
     write_plan_snapshot,
     write_runtime_state,
 )
@@ -110,3 +114,88 @@ def test_write_runtime_state_tolerates_concurrent_writes(tmp_path: Path) -> None
 
     assert not errors
     assert (state.runtime_dir / "state.json").exists()
+
+
+def test_record_invocation_progress_appends_runtime_event(tmp_path: Path) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=tmp_path,
+        config_path=tmp_path / ".oats" / "config.toml",
+    )
+    state = build_initial_runtime_state(
+        execution_plan,
+        mode="writable",
+        run_id="sample-run-progress",
+        executor_agent=config.agents.executor,
+    )
+    runtime_task = state.tasks[0]
+    runtime_task.status = "running"
+    runtime_task.invocation = prepare_invocation_runtime(
+        agent=config.agents.executor,
+        role="executor",
+        cwd=tmp_path,
+        prompt="do work",
+    )
+    write_runtime_state(state)
+
+    record_invocation_progress(
+        state,
+        runtime_task.invocation,
+        event_type="task_progress",
+        task_id=runtime_task.task_id,
+        output_text="Still implementing the DTO boundary layer.",
+    )
+
+    events = (state.runtime_dir / "events.jsonl").read_text().strip().splitlines()
+    event = json.loads(events[-1])
+    assert event["event_type"] == "task_progress"
+    assert event["task_id"] == runtime_task.task_id
+    assert event["output_text"] == "Still implementing the DTO boundary layer."
+
+
+def test_record_invocation_heartbeat_appends_runtime_event(tmp_path: Path) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=tmp_path,
+        config_path=tmp_path / ".oats" / "config.toml",
+    )
+    state = build_initial_runtime_state(
+        execution_plan,
+        mode="writable",
+        run_id="sample-run-heartbeat",
+        executor_agent=config.agents.executor,
+    )
+    runtime_task = state.tasks[0]
+    runtime_task.status = "running"
+    runtime_task.invocation = prepare_invocation_runtime(
+        agent=config.agents.executor,
+        role="executor",
+        cwd=tmp_path,
+        prompt="do work",
+    )
+    runtime_task.invocation.last_progress_event_at = (
+        runtime_task.invocation.last_heartbeat_at - timedelta(seconds=120)
+    )
+    write_runtime_state(state)
+
+    emitted = record_invocation_heartbeat(
+        state,
+        runtime_task.invocation,
+        event_type="task_heartbeat",
+        task_id=runtime_task.task_id,
+        min_interval_seconds=30,
+    )
+
+    events = (state.runtime_dir / "events.jsonl").read_text().strip().splitlines()
+    event = json.loads(events[-1])
+    assert emitted is True
+    assert event["event_type"] == "task_heartbeat"
+    assert event["task_id"] == runtime_task.task_id

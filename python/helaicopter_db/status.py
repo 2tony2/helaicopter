@@ -1,21 +1,83 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TypedDict
 
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import inspect, text
+from helaicopter_api.server.config import Settings
+from helaicopter_domain.vocab import DatabaseRefreshStatus, RuntimeReadBackend
 
 from .db import create_oltp_engine
-from .settings import (
-    DUCKDB_LEGACY_ARTIFACT,
-    SQLITE_ARTIFACT,
-    STATUS_FILE,
-)
+from .settings import get_database_settings
 
 
-def _sqlite_table_summaries(engine) -> list[dict[str, Any]]:
+class DatabaseColumnPayload(TypedDict):
+    name: str
+    type: str
+    nullable: bool
+    defaultValue: str | None
+    isPrimaryKey: bool
+    references: str | None
+
+
+class DatabaseTablePayload(TypedDict):
+    name: str
+    rowCount: int
+    columns: list[DatabaseColumnPayload]
+
+
+class DatabaseRuntimePayload(TypedDict):
+    analyticsReadBackend: RuntimeReadBackend
+    conversationSummaryReadBackend: RuntimeReadBackend
+
+
+class DatabaseArtifactPayload(TypedDict):
+    key: str
+    label: str
+    engine: str
+    role: str
+    availability: str
+    note: str
+    error: str | None
+    path: str
+    target: str | None
+    publicPath: str | None
+    docsUrl: str | None
+    tableCount: int
+    tables: list[DatabaseTablePayload]
+
+
+class DatabaseArtifactsPayload(TypedDict):
+    sqlite: DatabaseArtifactPayload
+    legacyDuckdb: DatabaseArtifactPayload
+
+
+class DatabaseStatusPayload(TypedDict, total=False):
+    status: DatabaseRefreshStatus
+    trigger: str
+    startedAt: str
+    finishedAt: str | None
+    durationMs: int | float | None
+    error: str | None
+    lastSuccessfulRefreshAt: str | None
+    idempotencyKey: str | None
+    scopeLabel: str
+    windowDays: int
+    windowStart: str | None
+    windowEnd: str | None
+    sourceConversationCount: int
+    refreshIntervalMinutes: int
+    runtime: DatabaseRuntimePayload
+    databases: DatabaseArtifactsPayload
+
+
+_STATUS_PAYLOAD_ADAPTER = TypeAdapter(DatabaseStatusPayload)
+
+
+def _sqlite_table_summaries(engine) -> list[DatabaseTablePayload]:
     inspector = inspect(engine)
-    tables = []
+    tables: list[DatabaseTablePayload] = []
 
     for table_name in sorted(inspector.get_table_names()):
         pk_columns = set(inspector.get_pk_constraint(table_name).get("constrained_columns", []))
@@ -26,7 +88,7 @@ def _sqlite_table_summaries(engine) -> list[dict[str, Any]]:
             for column_name in foreign_key.get("constrained_columns") or []:
                 fk_map[column_name] = f"{referred_table}({', '.join(referred_columns)})"
 
-        columns = []
+        columns: list[DatabaseColumnPayload] = []
         for column in inspector.get_columns(table_name):
             default_value = column.get("default")
             columns.append(
@@ -53,10 +115,11 @@ def _sqlite_table_summaries(engine) -> list[dict[str, Any]]:
     return tables
 
 
-def _legacy_duckdb_table_summaries() -> list[dict[str, Any]]:
+def _legacy_duckdb_table_summaries(settings: Settings | None = None) -> list[DatabaseTablePayload]:
     import duckdb
 
-    connection = duckdb.connect(str(DUCKDB_LEGACY_ARTIFACT.path), read_only=True)
+    legacy_duckdb = get_database_settings(settings).legacy_duckdb
+    connection = duckdb.connect(str(legacy_duckdb.path), read_only=True)
     try:
         tables_rows = connection.execute(
             """
@@ -65,7 +128,7 @@ def _legacy_duckdb_table_summaries() -> list[dict[str, Any]]:
             WHERE database_name = ? AND schema_name = 'main'
             ORDER BY table_name
             """,
-            [DUCKDB_LEGACY_ARTIFACT.catalog_name],
+            [legacy_duckdb.catalog_name],
         ).fetchall()
 
         columns_rows = connection.execute(
@@ -75,7 +138,7 @@ def _legacy_duckdb_table_summaries() -> list[dict[str, Any]]:
             WHERE database_name = ? AND schema_name = 'main' AND internal = false
             ORDER BY table_name, column_index
             """,
-            [DUCKDB_LEGACY_ARTIFACT.catalog_name],
+            [legacy_duckdb.catalog_name],
         ).fetchall()
 
         constraints_rows = connection.execute(
@@ -84,7 +147,7 @@ def _legacy_duckdb_table_summaries() -> list[dict[str, Any]]:
             FROM duckdb_constraints()
             WHERE database_name = ? AND schema_name = 'main'
             """,
-            [DUCKDB_LEGACY_ARTIFACT.catalog_name],
+            [legacy_duckdb.catalog_name],
         ).fetchall()
 
         pk_columns: dict[str, set[str]] = {}
@@ -99,7 +162,7 @@ def _legacy_duckdb_table_summaries() -> list[dict[str, Any]]:
                 for column_name in column_names:
                     fk_columns[(table_name, column_name)] = reference
 
-        grouped_columns: dict[str, list[dict[str, Any]]] = {}
+        grouped_columns: dict[str, list[DatabaseColumnPayload]] = {}
         for table_name, column_name, data_type, is_nullable, column_default, _column_index in columns_rows:
             grouped_columns.setdefault(table_name, []).append(
                 {
@@ -112,7 +175,7 @@ def _legacy_duckdb_table_summaries() -> list[dict[str, Any]]:
                 }
             )
 
-        tables = []
+        tables: list[DatabaseTablePayload] = []
         for (table_name,) in tables_rows:
             row_count = connection.execute(
                 f'SELECT COUNT(*) AS count FROM "{table_name}"'
@@ -130,7 +193,7 @@ def _legacy_duckdb_table_summaries() -> list[dict[str, Any]]:
         connection.close()
 
 
-def _runtime_surface() -> dict[str, Any]:
+def _runtime_surface() -> DatabaseRuntimePayload:
     return {
         "analyticsReadBackend": "legacy",
         "conversationSummaryReadBackend": "legacy",
@@ -139,7 +202,7 @@ def _runtime_surface() -> dict[str, Any]:
 
 def build_status_payload(
     *,
-    status: str,
+    status: DatabaseRefreshStatus,
     trigger: str,
     started_at: str,
     finished_at: str | None,
@@ -152,10 +215,14 @@ def build_status_payload(
     window_start: str | None,
     window_end: str | None,
     source_conversation_count: int,
-) -> dict[str, Any]:
-    sqlite_tables: list[dict[str, Any]] = []
+    settings: Settings | None = None,
+) -> DatabaseStatusPayload:
+    database_settings = get_database_settings(settings)
+    sqlite = database_settings.sqlite
+    legacy_duckdb = database_settings.legacy_duckdb
+    sqlite_tables: list[DatabaseTablePayload] = []
     sqlite_error: str | None = None
-    oltp_engine = create_oltp_engine()
+    oltp_engine = create_oltp_engine(settings)
     try:
         sqlite_tables = _sqlite_table_summaries(oltp_engine)
     except Exception as exc:
@@ -163,11 +230,11 @@ def build_status_payload(
     finally:
         oltp_engine.dispose()
 
-    legacy_duckdb_tables: list[dict[str, Any]] = []
+    legacy_duckdb_tables: list[DatabaseTablePayload] = []
     legacy_duckdb_error: str | None = None
-    if DUCKDB_LEGACY_ARTIFACT.path.exists():
+    if legacy_duckdb.path.exists():
         try:
-            legacy_duckdb_tables = _legacy_duckdb_table_summaries()
+            legacy_duckdb_tables = _legacy_duckdb_table_summaries(settings)
         except Exception as exc:
             legacy_duckdb_error = str(exc)
 
@@ -189,9 +256,9 @@ def build_status_payload(
         "runtime": _runtime_surface(),
         "databases": {
             "sqlite": {
-                "key": SQLITE_ARTIFACT.key,
-                "label": SQLITE_ARTIFACT.label,
-                "engine": SQLITE_ARTIFACT.engine,
+                "key": sqlite.key,
+                "label": sqlite.label,
+                "engine": sqlite.engine,
                 "role": "metadata",
                 "availability": "ready" if sqlite_error is None else "unreachable",
                 "note": (
@@ -199,23 +266,23 @@ def build_status_payload(
                     "historical detail tables."
                 ),
                 "error": sqlite_error,
-                "path": str(SQLITE_ARTIFACT.path),
+                "path": str(sqlite.path),
                 "target": None,
-                "publicPath": SQLITE_ARTIFACT.public_path,
-                "docsUrl": SQLITE_ARTIFACT.docs_url,
+                "publicPath": sqlite.public_path,
+                "docsUrl": sqlite.docs_url,
                 "tableCount": len(sqlite_tables),
                 "tables": sqlite_tables,
             },
             "legacyDuckdb": {
-                "key": DUCKDB_LEGACY_ARTIFACT.key,
-                "label": DUCKDB_LEGACY_ARTIFACT.label,
-                "engine": DUCKDB_LEGACY_ARTIFACT.engine,
+                "key": legacy_duckdb.key,
+                "label": legacy_duckdb.label,
+                "engine": legacy_duckdb.engine,
                 "role": "legacy_debug",
                 "availability": (
                     "ready"
-                    if DUCKDB_LEGACY_ARTIFACT.path.exists() and legacy_duckdb_error is None
+                    if legacy_duckdb.path.exists() and legacy_duckdb_error is None
                     else "unreachable"
-                    if DUCKDB_LEGACY_ARTIFACT.path.exists()
+                    if legacy_duckdb.path.exists()
                     else "missing"
                 ),
                 "note": (
@@ -223,10 +290,10 @@ def build_status_payload(
                     "primary analytics serving path."
                 ),
                 "error": legacy_duckdb_error,
-                "path": str(DUCKDB_LEGACY_ARTIFACT.path),
+                "path": str(legacy_duckdb.path),
                 "target": None,
-                "publicPath": DUCKDB_LEGACY_ARTIFACT.public_path,
-                "docsUrl": DUCKDB_LEGACY_ARTIFACT.docs_url,
+                "publicPath": legacy_duckdb.public_path,
+                "docsUrl": legacy_duckdb.docs_url,
                 "tableCount": len(legacy_duckdb_tables),
                 "tables": legacy_duckdb_tables,
             },
@@ -234,14 +301,31 @@ def build_status_payload(
     }
 
 
-def load_status() -> dict[str, Any] | None:
-    if not STATUS_FILE.exists():
+def load_status(settings: Settings | None = None) -> DatabaseStatusPayload | None:
+    status_file = get_database_settings(settings).status_file
+    if not status_file.exists():
         return None
-    return json.loads(STATUS_FILE.read_text(encoding="utf-8"))
+    try:
+        parsed = json.loads(status_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return parse_status_payload(parsed)
 
 
-def write_status(payload: dict[str, Any]) -> None:
-    STATUS_FILE.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+def write_status(payload: object, settings: Settings | None = None) -> None:
+    validated = parse_status_payload(payload)
+    if validated is None:
+        raise ValueError("Invalid database status payload.")
+    status_file = get_database_settings(settings).status_file
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    status_file.write_text(json.dumps(validated, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def parse_status_payload(payload: object) -> DatabaseStatusPayload | None:
+    try:
+        return _STATUS_PAYLOAD_ADAPTER.validate_python(payload)
+    except ValidationError:
+        return None
 
 
 def main() -> None:

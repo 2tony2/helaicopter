@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from types import SimpleNamespace
 from typing import Callable, Iterator
 
 from fastapi.testclient import TestClient
 
 from helaicopter_api.application import database as database_application
+from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 
@@ -89,14 +89,21 @@ class StubEngine:
         self.dispose_calls += 1
 
 
+def _services_stub(**attrs: object) -> BackendServices:
+    services = object.__new__(BackendServices)
+    for name, value in attrs.items():
+        setattr(services, name, value)
+    return services
+
+
 @contextmanager
 def database_client(
     *,
     load_status: Callable[[], dict[str, object] | None],
     run_refresh: Callable[..., dict[str, object]],
-) -> Iterator[tuple[TestClient, SimpleNamespace]]:
+) -> Iterator[tuple[TestClient, BackendServices]]:
     application = create_app()
-    services = SimpleNamespace(cache=StubCache(), sqlite_engine=StubEngine())
+    services = _services_stub(cache=StubCache(), sqlite_engine=StubEngine())
     application.dependency_overrides[get_services] = lambda: services
     original_load_status = database_application.load_status
     original_run_refresh = database_application.run_refresh
@@ -112,6 +119,24 @@ def database_client(
 
 
 class TestDatabaseEndpoints:
+    def test_status_endpoint_bootstraps_when_persisted_status_payload_is_malformed(self) -> None:
+        refresh_calls: list[dict[str, object]] = []
+
+        def run_refresh(**kwargs: object) -> dict[str, object]:
+            refresh_calls.append(kwargs)
+            return _status_payload(trigger="bootstrap")
+
+        with database_client(load_status=lambda: [], run_refresh=run_refresh) as (client, services):
+            response = client.get("/databases/status")
+
+        assert response.status_code == 200
+        assert response.json()["trigger"] == "bootstrap"
+        assert refresh_calls == [
+            {"force": True, "trigger": "bootstrap", "stale_after_seconds": 21_600},
+        ]
+        assert services.cache.clear_calls == 1
+        assert services.sqlite_engine.dispose_calls == 1
+
     def test_status_endpoint_bootstraps_refresh_when_status_is_missing(self) -> None:
         refresh_calls: list[dict[str, object]] = []
 
@@ -184,3 +209,37 @@ class TestDatabaseEndpoints:
         assert body["databases"]["legacyDuckdb"]["key"] == "legacy_duckdb"
         assert services.cache.clear_calls == 1
         assert services.sqlite_engine.dispose_calls == 1
+
+    def test_refresh_endpoint_rejects_snake_case_payload_keys(self) -> None:
+        def run_refresh(**_kwargs: object) -> dict[str, object]:
+            return _status_payload(trigger="manual-ui")
+
+        with database_client(load_status=lambda: None, run_refresh=run_refresh) as (client, _services):
+            response = client.post(
+                "/databases/refresh",
+                json={"force": True, "trigger": "manual-ui", "stale_after_seconds": 123},
+            )
+
+        assert response.status_code == 422
+        assert any(error["loc"][-1] == "stale_after_seconds" for error in response.json()["detail"])
+
+    def test_openapi_exposes_database_camel_case_contract_fragments(self) -> None:
+        def run_refresh(**_kwargs: object) -> dict[str, object]:
+            return _status_payload(trigger="manual-ui")
+
+        with database_client(load_status=lambda: _status_payload(), run_refresh=run_refresh) as (client, _services):
+            response = client.get("/openapi.json")
+
+        assert response.status_code == 200
+        schema = response.json()
+        refresh_post = schema["paths"]["/databases/refresh"]["post"]
+        request_schema = schema["components"]["schemas"]["DatabaseRefreshRequest"]
+        status_schema = schema["components"]["schemas"]["DatabaseStatusResponse"]
+
+        assert refresh_post["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith(
+            "/DatabaseRefreshRequest"
+        )
+        assert "staleAfterSeconds" in request_schema["properties"]
+        assert "stale_after_seconds" not in request_schema["properties"]
+        assert "lastSuccessfulRefreshAt" in status_schema["properties"]
+        assert "last_successful_refresh_at" not in status_schema["properties"]

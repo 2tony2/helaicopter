@@ -5,14 +5,15 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Iterator
 from urllib.parse import quote
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from helaicopter_api.adapters.oats_artifacts import FileOatsRunStore
+from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 from oats.models import (
@@ -30,6 +31,13 @@ def _write_model(path: Path, model: BaseModel) -> None:
     path.write_text(model.model_dump_json(indent=2), encoding="utf-8")
 
 
+def _services_stub(**attrs: object) -> BackendServices:
+    services = object.__new__(BackendServices)
+    for name, value in attrs.items():
+        setattr(services, name, value)
+    return services
+
+
 @contextmanager
 def orchestration_client(project_root: Path) -> Iterator[TestClient]:
     application = create_app()
@@ -37,12 +45,106 @@ def orchestration_client(project_root: Path) -> Iterator[TestClient]:
         project_root=project_root,
         runtime_dir=project_root / ".oats" / "runtime",
     )
-    application.dependency_overrides[get_services] = lambda: SimpleNamespace(oats_run_store=store)
+    application.dependency_overrides[get_services] = lambda: _services_stub(oats_run_store=store)
     try:
         with TestClient(application) as client:
             yield client
     finally:
         application.dependency_overrides.clear()
+
+
+class TestOatsArtifactStore:
+    def test_store_uses_cached_json_validators_for_runtime_and_run_artifacts(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        now = datetime.now(UTC)
+        run_id = "oats-run-1"
+        repo_root = tmp_path
+        state_path = repo_root / ".oats" / "runtime" / run_id / "state.json"
+        record_path = repo_root / ".oats" / "runs" / "sample-record.json"
+
+        _write_model(
+            state_path,
+            RunRuntimeState(
+                run_id=run_id,
+                run_title="Ship orchestration API",
+                repo_root=repo_root,
+                config_path=repo_root / ".oats" / "config.toml",
+                run_spec_path=repo_root / "runs" / "sample.md",
+                mode="writable",
+                integration_branch="oats/overnight/orchestration-api",
+                task_pr_target="oats/overnight/orchestration-api",
+                final_pr_target="main",
+                runtime_dir=state_path.parent,
+                status="running",
+                active_task_id="task-api",
+                started_at=now - timedelta(minutes=10),
+                updated_at=now - timedelta(minutes=1),
+                heartbeat_at=now - timedelta(seconds=5),
+                planner=None,
+                tasks=[],
+                final_record_path=record_path,
+            ),
+        )
+        _write_model(
+            record_path,
+            RunExecutionRecord(
+                run_id=run_id,
+                run_title="Ship orchestration API",
+                repo_root=repo_root,
+                config_path=repo_root / ".oats" / "config.toml",
+                run_spec_path=repo_root / "runs" / "sample.md",
+                mode="writable",
+                integration_branch="oats/overnight/orchestration-api",
+                task_pr_target="oats/overnight/orchestration-api",
+                final_pr_target="main",
+                planner=AgentInvocationResult(
+                    agent="codex",
+                    role="planner",
+                    command=["codex", "exec"],
+                    cwd=repo_root,
+                    prompt="plan the run",
+                    session_id="planner-1",
+                    exit_code=0,
+                    started_at=now - timedelta(minutes=12),
+                    finished_at=now - timedelta(minutes=11),
+                ),
+                tasks=[],
+                recorded_at=now - timedelta(minutes=10),
+            ),
+        )
+
+        monkeypatch.setattr(
+            RunRuntimeState,
+            "model_validate_json",
+            classmethod(
+                lambda cls, *args, **kwargs: (_ for _ in ()).throw(
+                    AssertionError("runtime states should use cached JSON adapters")
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            RunExecutionRecord,
+            "model_validate_json",
+            classmethod(
+                lambda cls, *args, **kwargs: (_ for _ in ()).throw(
+                    AssertionError("run records should use cached JSON adapters")
+                )
+            ),
+        )
+
+        store = FileOatsRunStore(
+            project_root=repo_root,
+            runtime_dir=repo_root / ".oats" / "runtime",
+        )
+
+        runtime_states = store.list_runtime_states()
+        run_records = store.list_run_records()
+
+        assert [item.state.run_id for item in runtime_states] == [run_id]
+        assert [item.record.run_id for item in run_records] == [run_id]
 
 
 class TestOrchestrationEndpoint:
@@ -263,3 +365,11 @@ class TestOrchestrationEndpoint:
         assert orchestration_get["responses"]["200"]["content"]["application/json"]["schema"]["items"][
             "$ref"
         ].endswith("/OrchestrationRunResponse")
+
+        run_schema = schema["components"]["schemas"]["OrchestrationRunResponse"]
+        task_schema = schema["components"]["schemas"]["OrchestrationTaskResponse"]
+        assert "runId" in run_schema["properties"]
+        assert "run_id" not in run_schema["properties"]
+        assert "activeTaskId" in run_schema["properties"]
+        assert "taskId" in task_schema["properties"]
+        assert "task_id" not in task_schema["properties"]

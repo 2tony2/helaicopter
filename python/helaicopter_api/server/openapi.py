@@ -4,9 +4,15 @@ from __future__ import annotations
 
 OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "health", "description": "Liveness and readiness probes."},
-    {"name": "analytics", "description": "Aggregated token, cost, and activity analytics."},
+    {
+        "name": "analytics",
+        "description": "Aggregated token, cost, and activity analytics. Legacy snake_case HTTP surface deferred from Wave 7 camelCase alignment.",
+    },
     {"name": "conversation-dags", "description": "Conversation DAG summaries and backend-built graph stats."},
-    {"name": "conversations", "description": "Conversation summaries and full detail reads."},
+    {
+        "name": "conversations",
+        "description": "Conversation summaries and full detail reads. Legacy snake_case HTTP surface deferred from Wave 7 camelCase alignment.",
+    },
     {"name": "databases", "description": "Database refresh state and artifact inspection."},
     {"name": "evaluations", "description": "Evaluation prompt management and conversation review workflows."},
     {"name": "history", "description": "Merged CLI history from Claude and Codex."},

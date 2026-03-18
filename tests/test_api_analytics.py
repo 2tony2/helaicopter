@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from typing import Iterator
 
 from fastapi.testclient import TestClient
 
+from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -50,11 +50,18 @@ class StubStore:
         return list(self._rows)
 
 
+def _services_stub(**attrs: object) -> BackendServices:
+    services = object.__new__(BackendServices)
+    for name, value in attrs.items():
+        setattr(services, name, value)
+    return services
+
+
 @contextmanager
 def analytics_client(rows: list[HistoricalConversationSummary]) -> Iterator[tuple[TestClient, StubStore]]:
     store = StubStore(rows)
     application = create_app()
-    application.dependency_overrides[get_services] = lambda: SimpleNamespace(app_sqlite_store=store)
+    application.dependency_overrides[get_services] = lambda: _services_stub(app_sqlite_store=store)
     try:
         with TestClient(application) as client:
             yield client, store

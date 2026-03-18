@@ -1,6 +1,10 @@
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from oats.repo_config import find_repo_config, load_repo_config
+from oats.models import RepoConfig
 from oats.parser import parse_run_spec
 from oats.planner import build_execution_plan
 from oats.pr import (
@@ -122,3 +126,28 @@ def test_pr_apply_dry_run_with_auto_merge_uses_merge_operator() -> None:
     assert merge_record.agent == "codex"
     assert record.auto_merge_enabled is True
     assert record.final_pr_created is True
+
+
+def test_repo_config_rejects_legacy_git_field_names() -> None:
+    with pytest.raises(ValidationError):
+        RepoConfig.model_validate(
+            {
+                "agent": {
+                    "claude": {"command": "claude"},
+                    "codex": {"command": "codex"},
+                },
+                "agents": {
+                    "planner": "codex",
+                    "executor": "claude",
+                    "conflict_resolver": "claude",
+                    "merge_operator": "codex",
+                },
+                "git": {
+                    "branch_prefix": "oats/task/",
+                    "integration_branch_prefix": "oats/overnight/",
+                    "integration_branch_base": "main",
+                    "pr_target": "main",
+                    "auto_create_pr": True,
+                },
+            }
+        )

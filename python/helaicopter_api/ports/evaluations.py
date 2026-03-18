@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal, Protocol, runtime_checkable
+from typing import Callable, Protocol, runtime_checkable
+
+from helaicopter_domain.ids import EvaluationId
+from helaicopter_domain.vocab import EvaluationStatus, ProviderName
 
 
 @dataclass(frozen=True, slots=True)
 class EvaluationJobRequest:
-    evaluation_id: str
-    provider: Literal["claude", "codex"]
+    evaluation_id: EvaluationId
+    provider: ProviderName
     model: str
     workspace: Path
     prompt: str
@@ -19,8 +22,8 @@ class EvaluationJobRequest:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationJobResult:
-    evaluation_id: str
-    status: Literal["completed", "failed"]
+    evaluation_id: EvaluationId
+    status: EvaluationStatus
     report_markdown: str | None
     raw_output: str | None
     error_message: str | None

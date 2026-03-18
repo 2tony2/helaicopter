@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from helaicopter_api.ports.orchestration import (
     OatsRunStore,
@@ -14,7 +13,8 @@ from helaicopter_api.ports.orchestration import (
 )
 from oats.models import RunExecutionRecord, RunRuntimeState
 
-TModel = TypeVar("TModel", bound=BaseModel)
+_RUN_EXECUTION_RECORD_ADAPTER = TypeAdapter(RunExecutionRecord)
+_RUN_RUNTIME_STATE_ADAPTER = TypeAdapter(RunRuntimeState)
 
 
 class FileOatsRunStore(OatsRunStore):
@@ -28,7 +28,7 @@ class FileOatsRunStore(OatsRunStore):
         return [
             StoredOatsRuntimeState(path=path, state=state)
             for path, state in (
-                (path, self._load_model(path, RunRuntimeState))
+                (path, _load_json_model(path, _RUN_RUNTIME_STATE_ADAPTER))
                 for path in sorted(self._runtime_dir.glob("*/state.json"))
             )
             if state is not None
@@ -38,14 +38,15 @@ class FileOatsRunStore(OatsRunStore):
         return [
             StoredOatsRunRecord(path=path, record=record)
             for path, record in (
-                (path, self._load_model(path, RunExecutionRecord))
+                (path, _load_json_model(path, _RUN_EXECUTION_RECORD_ADAPTER))
                 for path in sorted(self._runs_dir.glob("*.json"))
             )
             if record is not None
         ]
 
-    def _load_model(self, path: Path, model_type: type[TModel]) -> TModel | None:
-        try:
-            return model_type.model_validate_json(path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, ValidationError, ValueError):
-            return None
+
+def _load_json_model[T](path: Path, adapter: TypeAdapter[T]) -> T | None:
+    try:
+        return adapter.validate_json(path.read_bytes())
+    except (FileNotFoundError, OSError, ValidationError, ValueError):
+        return None

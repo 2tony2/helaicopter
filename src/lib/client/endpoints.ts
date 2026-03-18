@@ -32,9 +32,9 @@ function api(path: string) {
     return path;
   }
 
-  const { protocol, hostname, port } = window.location;
-  if ((hostname === "localhost" || hostname === "127.0.0.1") && port === "3000") {
-    return `${protocol}//${hostname}:8000${path}`;
+  const { protocol, hostname } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return `${protocol}//${hostname}:30000${path}`;
   }
 
   return path;
