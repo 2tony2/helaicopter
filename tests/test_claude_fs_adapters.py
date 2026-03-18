@@ -11,6 +11,7 @@ from helaicopter_api.adapters.claude_fs import (
     FilePlanReader,
     FileTaskReader,
 )
+from helaicopter_api.ports.claude_fs import ClaudeTaskPayload
 
 
 def build_store(tmp_path: Path) -> ClaudeArtifactStore:
@@ -82,6 +83,7 @@ class TestFileHistoryReader:
         assert len(entries) == 1
         assert entries[0].display == "second"
         assert entries[0].timestamp == 2
+        assert entries[0].pasted_contents is None
 
 
 class TestFilePlanReader:
@@ -120,4 +122,6 @@ class TestFileTaskReader:
 
         reader = FileTaskReader(build_store(tmp_path))
 
-        assert reader.read_tasks("session-1") == [{"taskId": "T007", "title": "Conversation API"}]
+        assert reader.read_tasks("session-1") == [
+            ClaudeTaskPayload.model_validate({"taskId": "T007", "title": "Conversation API"})
+        ]

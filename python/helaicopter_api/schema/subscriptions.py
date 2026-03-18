@@ -2,66 +2,41 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from pydantic import BaseModel, Field
+from helaicopter_domain.vocab import ProviderName
+from helaicopter_api.schema.common import CamelCaseHttpResponseModel, camel_case_request_config
 
-from pydantic import BaseModel, ConfigDict, Field
-
-SupportedProvider = Literal["claude", "codex"]
-
-
-def _to_camel(value: str) -> str:
-    head, *tail = value.split("_")
-    return head + "".join(part.capitalize() for part in tail)
+SupportedProvider = ProviderName
 
 
-class SubscriptionCamelModel(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=_to_camel,
-        populate_by_name=True,
-        extra="forbid",
-    )
-
-
-class ProviderSubscriptionSettingUpdateRequest(SubscriptionCamelModel):
+class ProviderSubscriptionSettingUpdateRequest(BaseModel):
     """Mutable subscription-setting fields accepted by the PATCH endpoint."""
+
+    model_config = camel_case_request_config(extra="forbid")
 
     has_subscription: bool | None = None
     monthly_cost: float | None = Field(default=None, ge=0)
-    provider: SupportedProvider | None = None
+    provider: ProviderName | None = None
     updated_at: str | None = None
 
-    def to_store_update(self) -> dict[str, object]:
-        update: dict[str, object] = {}
-        if self.has_subscription is not None:
-            update["has_subscription"] = self.has_subscription
-        if self.monthly_cost is not None:
-            update["monthly_cost"] = self.monthly_cost
-        return update
 
-
-class SubscriptionSettingsUpdateRequest(SubscriptionCamelModel):
+class SubscriptionSettingsUpdateRequest(BaseModel):
     """Subscription-setting updates keyed by provider."""
+
+    model_config = camel_case_request_config(extra="forbid")
 
     claude: ProviderSubscriptionSettingUpdateRequest | None = None
     codex: ProviderSubscriptionSettingUpdateRequest | None = None
 
-    def to_store_updates(self) -> dict[SupportedProvider, dict[str, object]]:
-        updates: dict[SupportedProvider, dict[str, object]] = {}
-        if self.claude is not None:
-            updates["claude"] = self.claude.to_store_update()
-        if self.codex is not None:
-            updates["codex"] = self.codex.to_store_update()
-        return updates
 
-
-class ProviderSubscriptionSettingResponse(SubscriptionCamelModel):
-    provider: SupportedProvider
+class ProviderSubscriptionSettingResponse(CamelCaseHttpResponseModel):
+    provider: ProviderName
     has_subscription: bool = False
     monthly_cost: float = 0.0
     updated_at: str
 
 
-class SubscriptionSettingsResponse(SubscriptionCamelModel):
+class SubscriptionSettingsResponse(CamelCaseHttpResponseModel):
     """Current subscription configuration for all providers."""
 
     claude: ProviderSubscriptionSettingResponse

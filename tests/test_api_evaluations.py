@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterator
 from fastapi.testclient import TestClient
 
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
+from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -356,12 +357,19 @@ class FakeEvaluationRunner:
         )
 
 
+def _services_stub(**attrs: object) -> BackendServices:
+    services = object.__new__(BackendServices)
+    for name, value in attrs.items():
+        setattr(services, name, value)
+    return services
+
+
 @contextmanager
 def evaluation_client(db_path: Path) -> Iterator[tuple[TestClient, SqliteAppStore, FakeEvaluationRunner]]:
     store = SqliteAppStore(db_path=db_path)
     runner = FakeEvaluationRunner()
     application = create_app()
-    application.dependency_overrides[get_services] = lambda: SimpleNamespace(
+    application.dependency_overrides[get_services] = lambda: _services_stub(
         app_sqlite_store=store,
         evaluation_job_runner=runner,
         settings=Settings(project_root=db_path.parents[3]),
@@ -448,6 +456,27 @@ class TestConversationEvaluationEndpoints:
         assert listed[0]["reportMarkdown"] == "# Automated evaluation"
         assert listed[1]["evaluationId"] == "evaluation-existing"
 
+    def test_post_rejects_snake_case_payload_keys(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+        _create_evaluation_db(db_path)
+
+        with evaluation_client(db_path) as (client, _store, _runner):
+            response = client.post(
+                "/conversations/-Users-tony-Code-helaicopter/session-1/evaluations",
+                json={
+                    "provider": "codex",
+                    "model": "gpt-5",
+                    "scope": "failed_tool_calls",
+                    "prompt_id": "prompt-1",
+                    "selection_instruction": "Focus on the failing exec_command step only.",
+                },
+            )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any(error["loc"][-1] == "prompt_id" for error in detail)
+        assert any(error["loc"][-1] == "selection_instruction" for error in detail)
+
     def test_openapi_exposes_conversation_evaluation_models(self, tmp_path: Path) -> None:
         db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
         _create_evaluation_db(db_path)
@@ -468,3 +497,12 @@ class TestConversationEvaluationEndpoints:
         assert route["post"]["responses"]["202"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/ConversationEvaluationResponse"
         )
+
+        create_schema = schema["components"]["schemas"]["ConversationEvaluationCreateRequest"]
+        response_schema = schema["components"]["schemas"]["ConversationEvaluationResponse"]
+        assert "promptId" in create_schema["properties"]
+        assert "prompt_id" not in create_schema["properties"]
+        assert "selectionInstruction" in create_schema["properties"]
+        assert "selection_instruction" not in create_schema["properties"]
+        assert "evaluationId" in response_schema["properties"]
+        assert "evaluation_id" not in response_schema["properties"]

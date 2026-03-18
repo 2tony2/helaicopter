@@ -23,7 +23,7 @@ from helaicopter_api.server.dependencies import get_services
 evaluation_prompts_router = APIRouter(prefix="/evaluation-prompts", tags=["evaluations"])
 
 
-@evaluation_prompts_router.get("", response_model=list[EvaluationPromptResponse])
+@evaluation_prompts_router.get("", response_model=list[EvaluationPromptResponse], response_model_by_alias=True)
 async def evaluation_prompts_index(
     services: BackendServices = Depends(get_services),
 ) -> list[EvaluationPromptResponse]:
@@ -34,6 +34,7 @@ async def evaluation_prompts_index(
 @evaluation_prompts_router.post(
     "",
     response_model=EvaluationPromptResponse,
+    response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
 async def evaluation_prompts_create(
@@ -65,7 +66,11 @@ async def evaluation_prompts_delete(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@evaluation_prompts_router.patch("/{prompt_id}", response_model=EvaluationPromptResponse)
+@evaluation_prompts_router.patch(
+    "/{prompt_id}",
+    response_model=EvaluationPromptResponse,
+    response_model_by_alias=True,
+)
 async def evaluation_prompts_update(
     prompt_id: str,
     body: EvaluationPromptUpdateRequest,

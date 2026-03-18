@@ -20,6 +20,7 @@ database_router = APIRouter(prefix="/databases", tags=["databases"])
 @database_router.get(
     "/status",
     response_model=DatabaseStatusResponse,
+    response_model_by_alias=True,
     responses={500: {"model": DatabaseStatusResponse}},
 )
 async def database_status(
@@ -40,6 +41,7 @@ async def database_status(
 @database_router.post(
     "/refresh",
     response_model=DatabaseStatusResponse,
+    response_model_by_alias=True,
     responses={500: {"model": DatabaseStatusResponse}},
 )
 async def database_refresh(

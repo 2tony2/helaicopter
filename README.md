@@ -11,11 +11,8 @@ cd helaicopter
 npm install
 uv sync --group dev
 
-# Terminal 1: run the frontend
+# Start the frontend and FastAPI backend together
 npm run dev
-
-# Terminal 2: run the FastAPI backend
-npm run api:dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -44,20 +41,24 @@ The default repo policy lives in `.oats/config.toml`, sample run specs live in `
 
 ## Local Development
 
-Run the app as two local processes:
+The default local dev command starts both processes and cleans up stale Helaicopter dev servers first:
 
 ```bash
-# Terminal 1
 npm run dev
-
-# Terminal 2
-npm run api:dev
 ```
 
 - The Next.js frontend serves on `http://localhost:3000`.
-- The FastAPI backend serves on `http://127.0.0.1:8000`.
-- When the frontend runs on `localhost:3000` and `NEXT_PUBLIC_API_BASE_URL` is unset, [`src/lib/client/endpoints.ts`](/Users/tony/Code/helaicopter/src/lib/client/endpoints.ts) automatically targets `http://localhost:8000`.
+- The FastAPI backend serves on `http://127.0.0.1:30000`.
+- `npm run dev` starts both servers, kills stale repo-local `next dev` and `uvicorn` processes, and sets `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:30000` unless you override it yourself.
+- When `NEXT_PUBLIC_API_BASE_URL` is unset and the frontend runs on `localhost` or `127.0.0.1`, [`src/lib/client/endpoints.ts`](/Users/tony/Code/helaicopter/src/lib/client/endpoints.ts) automatically targets port `30000`.
 - If you want the frontend to use a different backend origin, set `NEXT_PUBLIC_API_BASE_URL` before starting `npm run dev`.
+
+If you want to run the processes separately:
+
+```bash
+npm run dev:web
+npm run api:dev
+```
 
 Backend settings are read from `HELA_*` environment variables in [`python/helaicopter_api/server/config.py`](/Users/tony/Code/helaicopter/python/helaicopter_api/server/config.py). The most useful local overrides are:
 
@@ -71,8 +72,8 @@ HELA_OATS_RUNTIME_DIR=/path/to/.oats/runtime
 Useful local checks:
 
 ```bash
-curl http://127.0.0.1:8000/health
-open http://127.0.0.1:8000/openapi.json
+curl http://127.0.0.1:30000/health
+open http://127.0.0.1:30000/openapi.json
 ```
 
 The migration runbook and validation checklist live in [`docs/fastapi-backend-rollout.md`](/Users/tony/Code/helaicopter/docs/fastapi-backend-rollout.md).
@@ -259,8 +260,9 @@ src/
 ## Scripts
 
 ```bash
-npm run dev              # Start the Next.js development server (port 3000)
-npm run api:dev          # Start the FastAPI backend with uvicorn (port 8000)
+npm run dev              # Start Next.js + FastAPI together
+npm run dev:web          # Start only the Next.js development server
+npm run api:dev          # Start only the FastAPI backend with uvicorn (port 30000)
 npm run build            # Production frontend build
 npm run start            # Start the production Next.js server
 npm run lint             # ESLint
@@ -283,9 +285,9 @@ uv run --group dev pytest -q
 
 ## Troubleshooting
 
-- If the frontend cannot reach the backend, confirm `npm run api:dev` is running and that `NEXT_PUBLIC_API_BASE_URL` points to the correct origin.
+- If the frontend cannot reach the backend, confirm `npm run dev` or `npm run api:dev` is running and that `NEXT_PUBLIC_API_BASE_URL` points to the correct origin.
 - If the backend cannot find local conversation data, set `HELA_CLAUDE_DIR`, `HELA_CODEX_DIR`, or `HELA_PROJECT_ROOT` explicitly.
-- If API behavior looks wrong, compare `http://127.0.0.1:8000/openapi.json` against the expected router surface under [`python/helaicopter_api/router/`](/Users/tony/Code/helaicopter/python/helaicopter_api/router).
+- If API behavior looks wrong, compare `http://127.0.0.1:30000/openapi.json` against the expected router surface under [`python/helaicopter_api/router/`](/Users/tony/Code/helaicopter/python/helaicopter_api/router).
 
 ## License
 

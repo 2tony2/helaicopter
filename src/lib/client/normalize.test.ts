@@ -32,7 +32,7 @@ test("endpoint builders target FastAPI routes without the Next /api prefix", () 
   );
 });
 
-test("endpoint builders infer the local FastAPI origin when the frontend runs on localhost:3000", () => {
+test("endpoint builders infer the local FastAPI origin when the frontend runs on localhost", () => {
   setBaseUrl("");
   const originalWindow = globalThis.window;
 
@@ -42,20 +42,20 @@ test("endpoint builders infer the local FastAPI origin when the frontend runs on
       location: {
         protocol: "http:",
         hostname: "localhost",
-        port: "3000",
+        port: "3001",
       },
     },
   });
 
   try {
-    assert.equal(projects(), "http://localhost:8000/projects");
+    assert.equal(projects(), "http://localhost:30000/projects");
     assert.equal(
       conversation("-Users-tony-Code-helaicopter", "session-123"),
-      "http://localhost:8000/conversations/-Users-tony-Code-helaicopter/session-123"
+      "http://localhost:30000/conversations/-Users-tony-Code-helaicopter/session-123"
     );
     assert.equal(
       conversationDags({ project: "repo", days: 7, provider: "all" }),
-      "http://localhost:8000/conversation-dags?project=repo&days=7"
+      "http://localhost:30000/conversation-dags?project=repo&days=7"
     );
   } finally {
     Object.defineProperty(globalThis, "window", {

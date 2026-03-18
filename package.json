@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "api:dev": "uv run uvicorn helaicopter_api.server.main:app --host 127.0.0.1 --port 8000",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "next dev",
+    "api:dev": "uv run uvicorn helaicopter_api.server.main:app --host 127.0.0.1 --port 30000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

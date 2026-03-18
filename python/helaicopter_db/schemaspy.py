@@ -5,7 +5,9 @@ import subprocess
 from pathlib import Path
 from urllib.request import urlretrieve
 
-from .settings import OLAP_ARTIFACT, OLTP_ARTIFACT, TOOLS_DIR
+from helaicopter_api.server.config import DatabaseArtifactSettings, Settings
+
+from .settings import get_database_settings
 
 
 SCHEMASPY_VERSION = "6.2.4"
@@ -13,13 +15,14 @@ DUCKDB_JDBC_VERSION = "1.4.4.0"
 SQLITE_JDBC_VERSION = "3.50.3.0"
 
 
-def ensure_schemaspy_tools() -> dict[str, Path]:
-    TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+def ensure_schemaspy_tools(settings: Settings | None = None) -> dict[str, Path]:
+    tools_dir = get_database_settings(settings).tools_dir
+    tools_dir.mkdir(parents=True, exist_ok=True)
 
-    schemaspy_jar = TOOLS_DIR / f"schemaspy-{SCHEMASPY_VERSION}.jar"
-    duckdb_jar = TOOLS_DIR / f"duckdb_jdbc-{DUCKDB_JDBC_VERSION}.jar"
-    sqlite_jar = TOOLS_DIR / f"sqlite-jdbc-{SQLITE_JDBC_VERSION}.jar"
-    duckdb_profile = TOOLS_DIR / "duckdb.properties"
+    schemaspy_jar = tools_dir / f"schemaspy-{SCHEMASPY_VERSION}.jar"
+    duckdb_jar = tools_dir / f"duckdb_jdbc-{DUCKDB_JDBC_VERSION}.jar"
+    sqlite_jar = tools_dir / f"sqlite-jdbc-{SQLITE_JDBC_VERSION}.jar"
+    duckdb_profile = tools_dir / "duckdb.properties"
 
     downloads = {
         schemaspy_jar: f"https://github.com/schemaspy/schemaspy/releases/download/v{SCHEMASPY_VERSION}/schemaspy-{SCHEMASPY_VERSION}.jar",
@@ -67,7 +70,7 @@ def _run(command: list[str]) -> None:
     subprocess.run(command, check=True, capture_output=True, text=True)
 
 
-def _sanitize_schema_docs(artifact) -> None:
+def _sanitize_schema_docs(artifact: DatabaseArtifactSettings) -> None:
     absolute_db_path = str(artifact.path)
     absolute_xml_path = f"{absolute_db_path}.main.xml"
     replacements = (
@@ -92,10 +95,13 @@ def _sanitize_schema_docs(artifact) -> None:
             file_path.write_text(updated, encoding="utf-8")
 
 
-def generate_schema_docs() -> None:
-    tools = ensure_schemaspy_tools()
+def generate_schema_docs(settings: Settings | None = None) -> None:
+    tools = ensure_schemaspy_tools(settings)
+    database_settings = get_database_settings(settings)
+    sqlite = database_settings.sqlite
+    legacy_duckdb = database_settings.legacy_duckdb
 
-    for docs_dir in (OLTP_ARTIFACT.docs_dir, OLAP_ARTIFACT.docs_dir):
+    for docs_dir in (sqlite.docs_dir, legacy_duckdb.docs_dir):
         if docs_dir.exists():
             shutil.rmtree(docs_dir)
         docs_dir.mkdir(parents=True, exist_ok=True)
@@ -110,7 +116,7 @@ def generate_schema_docs() -> None:
             "-dp",
             str(tools["sqlite_jar"]),
             "-db",
-            str(OLTP_ARTIFACT.path),
+            str(sqlite.path),
             "-s",
             "main",
             "-cat",
@@ -118,11 +124,11 @@ def generate_schema_docs() -> None:
             "-u",
             "schemaspy",
             "-o",
-            str(OLTP_ARTIFACT.docs_dir),
+            str(sqlite.docs_dir),
             "-vizjs",
         ]
     )
-    _sanitize_schema_docs(OLTP_ARTIFACT)
+    _sanitize_schema_docs(sqlite)
 
     _run(
         [
@@ -134,16 +140,16 @@ def generate_schema_docs() -> None:
             "-dp",
             str(tools["duckdb_jar"]),
             "-db",
-            str(OLAP_ARTIFACT.path),
+            str(legacy_duckdb.path),
             "-s",
             "main",
             "-cat",
-            OLAP_ARTIFACT.catalog_name,
+            legacy_duckdb.catalog_name,
             "-u",
             "schemaspy",
             "-o",
-            str(OLAP_ARTIFACT.docs_dir),
+            str(legacy_duckdb.docs_dir),
             "-vizjs",
         ]
     )
-    _sanitize_schema_docs(OLAP_ARTIFACT)
+    _sanitize_schema_docs(legacy_duckdb)

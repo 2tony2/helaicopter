@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
+from pydantic import ConfigDict, InstanceOf, validate_call
+
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.orchestration import StoredOatsRunRecord, StoredOatsRuntimeState
 from helaicopter_api.schema.orchestration import (
@@ -39,7 +41,8 @@ class _ShapedRun:
         return self.response.is_running
 
 
-def list_oats_runs(services: BackendServices) -> list[OrchestrationRunResponse]:
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationRunResponse]:
     """Return backend-owned OATS run summaries for the orchestration dashboard."""
     runs_by_id: dict[str, _ShapedRun] = {}
 

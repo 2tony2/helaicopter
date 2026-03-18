@@ -10,10 +10,13 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
+
+from helaicopter_api.server.config import Settings, load_settings
 
 from .db import create_olap_engine, create_oltp_engine
 from .export_pipeline import ExportMeta, iter_export_rows, read_export_meta
@@ -39,10 +42,7 @@ from .models import (
 )
 from .schemaspy import generate_schema_docs
 from .settings import (
-    LOCK_FILE,
-    OLAP_ARTIFACT,
-    OLTP_ARTIFACT,
-    REPO_ROOT,
+    get_database_settings,
     ensure_runtime_dirs,
 )
 from .status import build_status_payload, load_status, write_status
@@ -68,21 +68,22 @@ class RefreshCounters:
     plans: int = 0
 
 
-def _run_migrations(target: str) -> None:
+def _run_migrations(target: str, settings: Settings | None = None) -> None:
+    backend_settings = settings or load_settings()
     subprocess.run(
         [
             sys.executable,
             "-m",
             "alembic",
             "-c",
-            str(REPO_ROOT / "alembic.ini"),
+            str(backend_settings.project_root / "alembic.ini"),
             "-x",
             f"target={target}",
             "upgrade",
             "head",
         ],
         check=True,
-        cwd=REPO_ROOT,
+        cwd=backend_settings.project_root,
         capture_output=True,
         text=True,
     )
@@ -92,18 +93,19 @@ def _cost_as_text(cost: float) -> str:
     return f"{cost:.8f}"
 
 
-def _ensure_lock() -> None:
-    ensure_runtime_dirs()
+def _ensure_lock(settings: Settings | None = None) -> None:
+    ensure_runtime_dirs(settings)
+    lock_file = get_database_settings(settings).lock_file
     while True:
         try:
-            fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError as exc:
-            lock_pid = _read_lock_pid()
+            lock_pid = _read_lock_pid(lock_file)
             if lock_pid is not None and _pid_is_running(lock_pid):
                 raise RuntimeError("A database refresh is already in progress.") from exc
 
             with suppress(FileNotFoundError):
-                LOCK_FILE.unlink()
+                lock_file.unlink()
             continue
 
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -111,9 +113,9 @@ def _ensure_lock() -> None:
         return
 
 
-def _read_lock_pid() -> int | None:
+def _read_lock_pid(lock_file: Path) -> int | None:
     try:
-        raw_value = LOCK_FILE.read_text(encoding="utf-8").strip()
+        raw_value = lock_file.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         return None
 
@@ -139,15 +141,21 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
-def _release_lock() -> None:
+def _release_lock(settings: Settings | None = None) -> None:
+    lock_file = get_database_settings(settings).lock_file
     with suppress(FileNotFoundError):
-        LOCK_FILE.unlink()
+        lock_file.unlink()
 
 
-def _should_skip(force: bool, stale_after_seconds: int, export_meta: ExportMeta) -> dict[str, Any] | None:
+def _should_skip(
+    force: bool,
+    stale_after_seconds: int,
+    export_meta: ExportMeta,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
     if force:
         return None
-    existing = load_status()
+    existing = load_status(settings)
     if existing:
         last_success = existing.get("lastSuccessfulRefreshAt")
         if existing.get("status") == "completed" and existing.get("idempotencyKey") == export_meta.input_key:
@@ -157,7 +165,7 @@ def _should_skip(force: bool, stale_after_seconds: int, export_meta: ExportMeta)
             if elapsed < stale_after_seconds:
                 return existing
 
-    latest_completed = _load_latest_completed_refresh()
+    latest_completed = _load_latest_completed_refresh(settings)
     if latest_completed and latest_completed.idempotency_key == export_meta.input_key:
         finished_at = latest_completed.finished_at.isoformat() if latest_completed.finished_at else None
         started_at = latest_completed.started_at.isoformat()
@@ -175,6 +183,7 @@ def _should_skip(force: bool, stale_after_seconds: int, export_meta: ExportMeta)
             window_start=latest_completed.window_start.isoformat() if latest_completed.window_start else export_meta.window_start,
             window_end=latest_completed.window_end.isoformat() if latest_completed.window_end else export_meta.window_end,
             source_conversation_count=latest_completed.source_conversation_count or export_meta.conversation_count,
+            settings=settings,
         )
     return None
 
@@ -183,11 +192,12 @@ def datetime_from_iso(value: str):
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _load_latest_completed_refresh() -> RefreshRun | None:
-    if not OLTP_ARTIFACT.path.exists():
+def _load_latest_completed_refresh(settings: Settings | None = None) -> RefreshRun | None:
+    sqlite = get_database_settings(settings).sqlite
+    if not sqlite.path.exists():
         return None
 
-    engine = create_oltp_engine()
+    engine = create_oltp_engine(settings)
     try:
         with Session(engine) as session:
             return session.scalars(
@@ -216,9 +226,10 @@ def _reset_oltp_data(session: Session) -> None:
         session.execute(delete(model))
 
 
-def _reset_olap_artifact() -> None:
+def _reset_olap_artifact(settings: Settings | None = None) -> None:
+    legacy_duckdb = get_database_settings(settings).legacy_duckdb
     with suppress(FileNotFoundError):
-        OLAP_ARTIFACT.path.unlink()
+        legacy_duckdb.path.unlink()
 
 
 def _text_preview(blocks: list[dict[str, Any]]) -> str:
@@ -554,18 +565,24 @@ def _load_conversation(
         usage_row["subagent_count"] += count
 
 
-def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str, Any]:
-    export_meta = read_export_meta()
-    skip = _should_skip(force, stale_after_seconds, export_meta)
+def run_refresh(
+    force: bool,
+    trigger: str,
+    stale_after_seconds: int,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    backend_settings = settings or load_settings()
+    export_meta = read_export_meta(backend_settings)
+    skip = _should_skip(force, stale_after_seconds, export_meta, backend_settings)
     if skip is not None:
         return skip
 
-    _ensure_lock()
+    _ensure_lock(backend_settings)
     started_at = utc_now()
-    previous_status = load_status() or {}
+    previous_status = load_status(backend_settings) or {}
     last_successful_refresh_at = previous_status.get("lastSuccessfulRefreshAt")
 
-    _reset_olap_artifact()
+    _reset_olap_artifact(backend_settings)
 
     running_status = {
         **previous_status,
@@ -582,15 +599,15 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
         "windowEnd": export_meta.window_end,
         "sourceConversationCount": export_meta.conversation_count,
     }
-    write_status(running_status)
+    write_status(running_status, backend_settings)
 
-    oltp_engine = create_oltp_engine()
-    olap_engine = create_olap_engine()
+    oltp_engine = create_oltp_engine(backend_settings)
+    olap_engine = create_olap_engine(backend_settings)
     counters = RefreshCounters()
 
     try:
-        _run_migrations("oltp")
-        _run_migrations("olap")
+        _run_migrations("oltp", backend_settings)
+        _run_migrations("olap", backend_settings)
 
         with Session(oltp_engine) as oltp_session, Session(olap_engine) as olap_session:
             _reset_oltp_data(oltp_session)
@@ -621,7 +638,7 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
             tool_usage: dict[str, dict[str, Any]] = {}
             subagent_usage: dict[str, dict[str, Any]] = {}
 
-            for envelope in iter_export_rows():
+            for envelope in iter_export_rows(backend_settings):
                 _load_conversation(
                     oltp_session,
                     olap_session,
@@ -693,7 +710,7 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
         olap_engine.dispose()
 
         try:
-            generate_schema_docs()
+            generate_schema_docs(backend_settings)
         except Exception as exc:
             print(f"Schema docs generation failed: {exc}", file=sys.stderr)
 
@@ -715,8 +732,9 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
             window_start=export_meta.window_start,
             window_end=export_meta.window_end,
             source_conversation_count=export_meta.conversation_count,
+            settings=backend_settings,
         )
-        write_status(payload)
+        write_status(payload, backend_settings)
         return payload
     except Exception as exc:
         finished_at = utc_now()
@@ -737,12 +755,12 @@ def run_refresh(force: bool, trigger: str, stale_after_seconds: int) -> dict[str
             "windowEnd": export_meta.window_end,
             "sourceConversationCount": export_meta.conversation_count,
         }
-        write_status(payload)
+        write_status(payload, backend_settings)
         raise
     finally:
         oltp_engine.dispose()
         olap_engine.dispose()
-        _release_lock()
+        _release_lock(backend_settings)
 
 
 def main() -> None:

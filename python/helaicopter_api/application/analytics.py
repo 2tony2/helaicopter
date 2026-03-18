@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from pydantic import ConfigDict, InstanceOf, validate_call
+
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.pure.analytics import build_analytics, filter_analytics_conversations
 from helaicopter_api.schema.analytics import AnalyticsDataResponse
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_analytics(
-    services: BackendServices,
+    services: InstanceOf[BackendServices],
     *,
     days: int | None = None,
     provider: str | None = None,

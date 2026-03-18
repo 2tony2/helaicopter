@@ -5,8 +5,17 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
 from helaicopter_api.adapters.codex_sqlite import FileCodexStore
+from helaicopter_api.ports.app_sqlite import (
+    HistoricalConversationPlanStep,
+    HistoricalConversationSummary,
+    HistoricalConversationTask,
+    ProviderSubscriptionSettingUpdate,
+    SubscriptionSettingsUpdate,
+)
 
 
 def _create_codex_db(path: Path) -> None:
@@ -676,6 +685,44 @@ class TestSqliteAppStore:
         assert settings.claude.has_subscription is True
         assert settings.codex.monthly_cost == 200.0
 
+    def test_historical_detail_uses_validated_fast_paths_for_nested_payloads(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+        _create_app_db(db_path)
+        store = SqliteAppStore(db_path=db_path)
+
+        monkeypatch.setattr(
+            HistoricalConversationSummary,
+            "model_dump",
+            lambda self, *args, **kwargs: pytest.fail("validated summaries should not be dumped into records"),
+        )
+        monkeypatch.setattr(
+            HistoricalConversationPlanStep,
+            "model_validate",
+            classmethod(
+                lambda cls, *args, **kwargs: pytest.fail("plan steps should use cached adapters instead of per-item model_validate")
+            ),
+        )
+        monkeypatch.setattr(
+            HistoricalConversationTask,
+            "model_validate",
+            classmethod(
+                lambda cls, *args, **kwargs: pytest.fail("tasks should use cached adapters instead of per-item model_validate")
+            ),
+        )
+
+        conversation = store.get_historical_conversation(
+            project_path="codex:-Users-tony-Code-helaicopter",
+            session_id="019cdbff-dbb7-71d0-baaf-c669c55af628",
+        )
+
+        assert conversation is not None
+        assert conversation.plans[0].steps[0].step == "Build adapters"
+        assert conversation.tasks[0].task_id == "T006"
+
     def test_reads_historical_records_and_persists_settings(self, tmp_path: Path) -> None:
         db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
         _create_app_db(db_path)
@@ -694,9 +741,9 @@ class TestSqliteAppStore:
         )
         assert conversation is not None
         assert conversation.messages[0].blocks[0].text_content == "Added adapters."
-        assert conversation.plans[0].steps[0]["step"] == "Build adapters"
+        assert conversation.plans[0].steps[0].step == "Build adapters"
         assert conversation.subagents[0].nickname == "alpha"
-        assert conversation.tasks[0]["taskId"] == "T006"
+        assert conversation.tasks[0].task_id == "T006"
         assert conversation.context_buckets[0].total_tokens == 15
         assert conversation.context_steps[0].message_id == "msg-1"
 
@@ -752,7 +799,12 @@ class TestSqliteAppStore:
         assert finished_evaluation.report_markdown == "# Finished"
 
         settings = store.update_subscription_settings(
-            {"claude": {"has_subscription": False, "monthly_cost": 123.45}}
+            SubscriptionSettingsUpdate(
+                claude=ProviderSubscriptionSettingUpdate(
+                    has_subscription=False,
+                    monthly_cost=123.45,
+                )
+            )
         )
         assert settings.claude.has_subscription is False
         assert settings.claude.monthly_cost == 123.45

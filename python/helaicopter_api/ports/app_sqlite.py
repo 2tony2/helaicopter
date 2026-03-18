@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from helaicopter_domain.ids import ConversationId, EvaluationId, PromptId, SessionId
+from helaicopter_domain.paths import EncodedProjectKey, ProjectDisplayPath
+from helaicopter_domain.vocab import EvaluationScope, EvaluationStatus, ProviderName
 
-SupportedProvider = Literal["claude", "codex"]
-EvaluationStatus = Literal["running", "completed", "failed"]
-EvaluationScope = Literal["full", "failed_tool_calls", "guided_subset"]
+SupportedProvider = ProviderName
 
 
 class HistoricalConversationSummary(BaseModel):
-    conversation_id: str
-    provider: str
-    session_id: str
-    project_path: str
-    project_name: str
+    conversation_id: ConversationId
+    provider: ProviderName
+    session_id: SessionId
+    project_path: EncodedProjectKey
+    project_name: ProjectDisplayPath
     thread_type: str = "main"
     first_message: str
     started_at: str
@@ -33,9 +34,9 @@ class HistoricalConversationSummary(BaseModel):
     total_reasoning_tokens: int = 0
     tool_use_count: int = 0
     failed_tool_call_count: int = 0
-    tool_breakdown: dict[str, int] = Field(default_factory=dict)
+    tool_breakdown: dict[str, int] = {}
     subagent_count: int = 0
-    subagent_type_breakdown: dict[str, int] = Field(default_factory=dict)
+    subagent_type_breakdown: dict[str, int] = {}
     task_count: int = 0
 
 
@@ -63,7 +64,12 @@ class HistoricalConversationMessage(BaseModel):
     cache_write_tokens: int = 0
     cache_read_tokens: int = 0
     text_preview: str = ""
-    blocks: list[HistoricalMessageBlock] = Field(default_factory=list)
+    blocks: list[HistoricalMessageBlock] = []
+
+
+class HistoricalConversationPlanStep(BaseModel):
+    step: str
+    status: str
 
 
 class HistoricalConversationPlan(BaseModel):
@@ -73,11 +79,11 @@ class HistoricalConversationPlan(BaseModel):
     title: str
     preview: str
     content: str
-    provider: str
+    provider: ProviderName
     timestamp: str
     model: str | None = None
     explanation: str | None = None
-    steps: list[dict[str, Any]] = Field(default_factory=list)
+    steps: list[HistoricalConversationPlanStep] = []
 
 
 class HistoricalConversationSubagent(BaseModel):
@@ -116,17 +122,24 @@ class HistoricalContextStep(BaseModel):
     total_tokens: int = 0
 
 
+class HistoricalConversationTask(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    task_id: str | None = Field(default=None, alias="taskId")
+    title: str | None = None
+
+
 class HistoricalConversationRecord(HistoricalConversationSummary):
-    messages: list[HistoricalConversationMessage] = Field(default_factory=list)
-    plans: list[HistoricalConversationPlan] = Field(default_factory=list)
-    subagents: list[HistoricalConversationSubagent] = Field(default_factory=list)
-    tasks: list[dict[str, Any]] = Field(default_factory=list)
-    context_buckets: list[HistoricalContextBucket] = Field(default_factory=list)
-    context_steps: list[HistoricalContextStep] = Field(default_factory=list)
+    messages: list[HistoricalConversationMessage] = []
+    plans: list[HistoricalConversationPlan] = []
+    subagents: list[HistoricalConversationSubagent] = []
+    tasks: list[HistoricalConversationTask] = []
+    context_buckets: list[HistoricalContextBucket] = []
+    context_steps: list[HistoricalContextStep] = []
 
 
 class EvaluationPromptRecord(BaseModel):
-    prompt_id: str
+    prompt_id: PromptId
     name: str
     description: str | None = None
     prompt_text: str
@@ -136,10 +149,10 @@ class EvaluationPromptRecord(BaseModel):
 
 
 class ConversationEvaluationRecord(BaseModel):
-    evaluation_id: str
-    conversation_id: str
-    prompt_id: str | None = None
-    provider: SupportedProvider
+    evaluation_id: EvaluationId
+    conversation_id: ConversationId
+    prompt_id: PromptId | None = None
+    provider: ProviderName
     model: str
     status: EvaluationStatus
     scope: EvaluationScope
@@ -156,7 +169,7 @@ class ConversationEvaluationRecord(BaseModel):
 
 
 class ProviderSubscriptionSetting(BaseModel):
-    provider: SupportedProvider
+    provider: ProviderName
     has_subscription: bool
     monthly_cost: float
     updated_at: str
@@ -167,6 +180,16 @@ class SubscriptionSettings(BaseModel):
     codex: ProviderSubscriptionSetting
 
 
+class ProviderSubscriptionSettingUpdate(BaseModel):
+    has_subscription: bool | None = None
+    monthly_cost: float | None = None
+
+
+class SubscriptionSettingsUpdate(BaseModel):
+    claude: ProviderSubscriptionSettingUpdate | None = None
+    codex: ProviderSubscriptionSettingUpdate | None = None
+
+
 @runtime_checkable
 class AppSqliteStore(Protocol):
     """Read historical app-local data and persist mutable app settings."""
@@ -174,7 +197,7 @@ class AppSqliteStore(Protocol):
     def list_historical_conversations(
         self,
         *,
-        project_path: str | None = None,
+        project_path: EncodedProjectKey | None = None,
         days: int | None = None,
     ) -> list[HistoricalConversationSummary]:
         """Return persisted historical conversations from the OLTP SQLite DB."""
@@ -183,13 +206,15 @@ class AppSqliteStore(Protocol):
     def get_historical_conversation(
         self,
         *,
-        project_path: str,
-        session_id: str,
+        project_path: EncodedProjectKey,
+        session_id: SessionId,
     ) -> HistoricalConversationRecord | None:
         """Return one persisted historical conversation with nested detail tables."""
         ...
 
-    def get_historical_tasks_for_session(self, session_id: str) -> list[dict[str, Any]] | None:
+    def get_historical_tasks_for_session(
+        self, session_id: SessionId
+    ) -> list[HistoricalConversationTask] | None:
         """Return persisted task payloads for one session, or ``None`` if missing."""
         ...
 
@@ -201,7 +226,7 @@ class AppSqliteStore(Protocol):
         """Return evaluation prompts, including the built-in default prompt."""
         ...
 
-    def get_evaluation_prompt(self, prompt_id: str) -> EvaluationPromptRecord | None:
+    def get_evaluation_prompt(self, prompt_id: PromptId) -> EvaluationPromptRecord | None:
         """Return one prompt by id, resolving the built-in default explicitly."""
         ...
 
@@ -217,7 +242,7 @@ class AppSqliteStore(Protocol):
 
     def update_evaluation_prompt(
         self,
-        prompt_id: str,
+        prompt_id: PromptId,
         *,
         name: str,
         prompt_text: str,
@@ -226,26 +251,28 @@ class AppSqliteStore(Protocol):
         """Update and return one prompt."""
         ...
 
-    def delete_evaluation_prompt(self, prompt_id: str) -> None:
+    def delete_evaluation_prompt(self, prompt_id: PromptId) -> None:
         """Delete a non-default prompt."""
         ...
 
-    def list_conversation_evaluations(self, conversation_id: str) -> list[ConversationEvaluationRecord]:
+    def list_conversation_evaluations(
+        self, conversation_id: ConversationId
+    ) -> list[ConversationEvaluationRecord]:
         """Return evaluations for one conversation, newest first."""
         ...
 
     def create_conversation_evaluation(
         self,
         *,
-        conversation_id: str,
-        provider: SupportedProvider,
+        conversation_id: ConversationId,
+        provider: ProviderName,
         model: str,
         status: EvaluationStatus,
         scope: EvaluationScope,
         prompt_name: str,
         prompt_text: str,
         command: str,
-        prompt_id: str | None = None,
+        prompt_id: PromptId | None = None,
         selection_instruction: str | None = None,
         report_markdown: str | None = None,
         raw_output: str | None = None,
@@ -258,7 +285,7 @@ class AppSqliteStore(Protocol):
 
     def update_conversation_evaluation(
         self,
-        evaluation_id: str,
+        evaluation_id: EvaluationId,
         *,
         status: EvaluationStatus,
         command: str,
@@ -277,7 +304,7 @@ class AppSqliteStore(Protocol):
 
     def update_subscription_settings(
         self,
-        updates: dict[SupportedProvider, dict[str, Any]],
+        updates: SubscriptionSettingsUpdate,
     ) -> SubscriptionSettings:
         """Persist provider subscription settings and return the merged result."""
         ...

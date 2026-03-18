@@ -12,7 +12,7 @@ The backend split is complete enough for day-to-day development:
 
 - `src/app/api` route handlers are removed.
 - FastAPI owns health, OpenAPI, and application routers.
-- Frontend endpoint builders default to `http://localhost:8000` when the browser is on `http://localhost:3000`.
+- Frontend endpoint builders default to `http://localhost:30000` when the browser is on `localhost` or `127.0.0.1`.
 - [`src/lib/client/normalize.ts`](/Users/tony/Code/helaicopter/src/lib/client/normalize.ts) still accepts both legacy camelCase payloads and current snake_case FastAPI responses so cached fixtures continue to load during cleanup.
 
 ## Local Developer Runbook
@@ -24,25 +24,28 @@ npm install
 uv sync --group dev
 ```
 
-Run the local development pair in separate terminals:
+The default development command starts both processes together and cleans up stale repo-local dev servers first:
 
 ```bash
-# Terminal 1
 npm run dev
-
-# Terminal 2
-npm run api:dev
 ```
 
 Default local ports:
 
 - Frontend: `http://localhost:3000`
-- Backend: `http://127.0.0.1:8000`
+- Backend: `http://127.0.0.1:30000`
+
+If you want the split commands:
+
+```bash
+npm run dev:web
+npm run api:dev
+```
 
 Override the frontend target if the backend is not on the default origin:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:30000 npm run dev
 ```
 
 Useful backend environment overrides:
@@ -57,8 +60,8 @@ HELA_OATS_RUNTIME_DIR=/path/to/.oats/runtime
 Quick sanity checks:
 
 ```bash
-curl http://127.0.0.1:8000/health
-open http://127.0.0.1:8000/openapi.json
+curl http://127.0.0.1:30000/health
+open http://127.0.0.1:30000/openapi.json
 ```
 
 ## Verification Coverage
@@ -82,3 +85,8 @@ What these prove:
 - Keep the compatibility normalization path until cached fixtures and any persisted camelCase responses are retired.
 - README is the canonical onboarding doc for running Next.js plus FastAPI locally.
 - This document is the rollout record for the backend split and the required verification commands.
+- Database status contract debt still intentionally preserved after the type-system rollout:
+  - `legacyDuckdb`
+  - `analyticsReadBackend`
+  - `conversationSummaryReadBackend`
+- Retirement target for those database labels: `2026-06-30`. Do not add more aliases or helper shims around them before that cleanup lands.

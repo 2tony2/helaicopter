@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
 
+from pydantic import TypeAdapter, ValidationError
 from helaicopter_api.ports.app_sqlite import (
     AppSqliteStore,
     ConversationEvaluationRecord,
@@ -17,12 +18,15 @@ from helaicopter_api.ports.app_sqlite import (
     HistoricalContextStep,
     HistoricalConversationMessage,
     HistoricalConversationPlan,
+    HistoricalConversationPlanStep,
     HistoricalConversationRecord,
     HistoricalConversationSubagent,
     HistoricalConversationSummary,
+    HistoricalConversationTask,
     HistoricalMessageBlock,
     ProviderSubscriptionSetting,
     SubscriptionSettings,
+    SubscriptionSettingsUpdate,
     SupportedProvider,
 )
 
@@ -52,6 +56,8 @@ Return markdown with these sections:
 Every recommendation should be concrete, actionable, and tied to specific message ids or tool calls when possible."""
 DEFAULT_MONTHLY_COST = 200.0
 _PROVIDERS: tuple[SupportedProvider, SupportedProvider] = ("claude", "codex")
+_HISTORICAL_PLAN_STEP_ADAPTER = TypeAdapter(HistoricalConversationPlanStep)
+_HISTORICAL_TASK_ADAPTER = TypeAdapter(HistoricalConversationTask)
 
 
 class SqliteAppStore(AppSqliteStore):
@@ -177,10 +183,18 @@ class SqliteAppStore(AppSqliteStore):
                 return None
 
             conversation_id = row["conversation_id"]
-            messages = self._load_messages(connection, conversation_id)
-            return HistoricalConversationRecord(
-                **_map_historical_summary(row).model_dump(),
-                messages=messages,
+            summary = _map_historical_summary(row)
+            return HistoricalConversationRecord.model_construct(
+                **summary.__dict__,
+                _fields_set=set(summary.__dict__) | {
+                    "messages",
+                    "plans",
+                    "subagents",
+                    "tasks",
+                    "context_buckets",
+                    "context_steps",
+                },
+                messages=self._load_messages(connection, conversation_id),
                 plans=self._load_plans(connection, conversation_id),
                 subagents=self._load_subagents(connection, conversation_id),
                 tasks=self._load_tasks(connection, conversation_id),
@@ -190,7 +204,7 @@ class SqliteAppStore(AppSqliteStore):
         finally:
             connection.close()
 
-    def get_historical_tasks_for_session(self, session_id: str) -> list[dict] | None:
+    def get_historical_tasks_for_session(self, session_id: str) -> list[HistoricalConversationTask] | None:
         connection = self._connect_readonly()
         if connection is None or not _table_exists(connection, "conversations"):
             if connection is not None:
@@ -671,7 +685,7 @@ class SqliteAppStore(AppSqliteStore):
 
     def update_subscription_settings(
         self,
-        updates: dict[SupportedProvider, dict[str, object]],
+        updates: SubscriptionSettingsUpdate,
     ) -> SubscriptionSettings:
         connection = self._connect_writable()
         try:
@@ -681,12 +695,12 @@ class SqliteAppStore(AppSqliteStore):
             current = self.get_subscription_settings()
             now = _now_iso()
             for provider in _PROVIDERS:
-                update = updates.get(provider)
+                update = getattr(updates, provider)
                 if update is None:
                     continue
                 existing = getattr(current, provider)
-                has_subscription = bool(update.get("has_subscription", existing.has_subscription))
-                monthly_cost = float(update.get("monthly_cost", existing.monthly_cost))
+                has_subscription = update.has_subscription
+                monthly_cost = update.monthly_cost
                 connection.execute(
                     """
                     INSERT INTO subscription_settings (
@@ -700,7 +714,12 @@ class SqliteAppStore(AppSqliteStore):
                       monthly_cost = excluded.monthly_cost,
                       updated_at = excluded.updated_at
                     """,
-                    (provider, int(has_subscription), monthly_cost, now),
+                    (
+                        provider,
+                        int(existing.has_subscription if has_subscription is None else has_subscription),
+                        existing.monthly_cost if monthly_cost is None else float(monthly_cost),
+                        now,
+                    ),
                 )
             connection.commit()
         finally:
@@ -836,7 +855,7 @@ class SqliteAppStore(AppSqliteStore):
                 timestamp=row["timestamp"],
                 model=row["model"],
                 explanation=row["explanation"],
-                steps=_parse_json_list(row["steps_json"]),
+                steps=_parse_plan_steps(row["steps_json"]),
             )
             for row in rows
         ]
@@ -879,7 +898,7 @@ class SqliteAppStore(AppSqliteStore):
         self,
         connection: sqlite3.Connection,
         conversation_id: str,
-    ) -> list[dict]:
+    ) -> list[HistoricalConversationTask]:
         if not _table_exists(connection, "conversation_tasks"):
             return []
         rows = connection.execute(
@@ -892,9 +911,9 @@ class SqliteAppStore(AppSqliteStore):
             (conversation_id,),
         ).fetchall()
         return [
-            parsed
+            task
             for row in rows
-            if isinstance((parsed := _parse_json_value(row["task_json"])), dict)
+            if (task := _parse_conversation_task(row["task_json"])) is not None
         ]
 
     def _load_context_buckets(
@@ -1233,8 +1252,32 @@ def _placeholders(count: int) -> str:
     return ",".join("?" for _ in range(count))
 
 
-def _parse_json_list(raw: str | None) -> list[dict]:
+def _parse_json_list(raw: str | None) -> list[dict[str, object]]:
     parsed = _parse_json_value(raw)
     if not isinstance(parsed, list):
         return []
     return [entry for entry in parsed if isinstance(entry, dict)]
+
+
+def _parse_plan_steps(raw: str | None) -> list[HistoricalConversationPlanStep]:
+    return _validate_json_objects(raw, _HISTORICAL_PLAN_STEP_ADAPTER)
+
+
+def _parse_conversation_task(raw: str | None) -> HistoricalConversationTask | None:
+    parsed = _parse_json_value(raw)
+    if not isinstance(parsed, dict):
+        return None
+    try:
+        return _HISTORICAL_TASK_ADAPTER.validate_python(parsed)
+    except ValidationError:
+        return None
+
+
+def _validate_json_objects[T](raw: str | None, adapter: TypeAdapter[T]) -> list[T]:
+    results: list[T] = []
+    for entry in _parse_json_list(raw):
+        try:
+            results.append(adapter.validate_python(entry))
+        except ValidationError:
+            continue
+    return results

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from pydantic import BaseModel
+from helaicopter_domain.ids import PlanId, SessionId
+from helaicopter_domain.paths import EncodedProjectKey
+from helaicopter_domain.vocab import ProviderName
 
-from pydantic import BaseModel, Field
-
-PlanProvider = Literal["claude", "codex"]
+PlanProvider = ProviderName
 
 
 class PlanStepResponse(BaseModel):
@@ -17,30 +18,30 @@ class PlanStepResponse(BaseModel):
 class PlanSummaryResponse(BaseModel):
     """Lightweight plan listing item."""
 
-    id: str
+    id: PlanId
     slug: str
     title: str
     preview: str
-    provider: PlanProvider
+    provider: ProviderName
     timestamp: float
     model: str | None = None
     source_path: str | None = None
-    session_id: str | None = None
-    project_path: str | None = None
+    session_id: SessionId | None = None
+    project_path: EncodedProjectKey | None = None
 
 
 class PlanDetailResponse(BaseModel):
     """Full plan content."""
 
-    id: str
+    id: PlanId
     slug: str
     title: str
     content: str
-    provider: PlanProvider
+    provider: ProviderName
     timestamp: float
     model: str | None = None
     source_path: str | None = None
-    session_id: str | None = None
-    project_path: str | None = None
+    session_id: SessionId | None = None
+    project_path: EncodedProjectKey | None = None
     explanation: str | None = None
-    steps: list[PlanStepResponse] = Field(default_factory=list)
+    steps: list[PlanStepResponse] = []

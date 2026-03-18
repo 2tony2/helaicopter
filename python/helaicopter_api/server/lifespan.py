@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ..bootstrap.services import BackendServices, build_services
+from ..bootstrap.services import build_services
 from .config import Settings
 
 

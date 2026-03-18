@@ -228,6 +228,7 @@ def build_analytics(
     time_series_maps: dict[TimeSeriesKey, dict[str, AnalyticsTimeSeriesPoint]] = {
         key: {} for key in TIME_SERIES_KEYS
     }
+    total_subagents = 0
 
     for conversation in conversations:
         provider = provider_for_summary(conversation)
@@ -272,6 +273,7 @@ def build_analytics(
         data.total_reasoning_tokens += reasoning_tokens
         data.total_tool_calls += conversation.tool_use_count
         data.total_failed_tool_calls += conversation.failed_tool_call_count
+        total_subagents += conversation.subagent_count
         _add_cost_breakdown(data.cost_breakdown, conversation_cost)
 
         provider_cost = data.cost_breakdown_by_provider.setdefault(provider, AnalyticsCostBreakdown())
@@ -392,7 +394,7 @@ def build_analytics(
         conversations=data.total_conversations,
         tool_calls=data.total_tool_calls,
         failed_tool_calls=data.total_failed_tool_calls,
-        subagents=sum(conversation.subagent_count for conversation in conversations),
+        subagents=total_subagents,
     )
     data.time_series = AnalyticsTimeSeries(
         hourly=_materialize_time_series(time_series_maps["hourly"], "hourly"),

@@ -36,6 +36,10 @@ def client():
 
 
 class TestBuildServices:
+    def test_requires_explicit_settings(self):
+        with pytest.raises(TypeError):
+            build_services()
+
     def test_returns_backend_services(self, tmp_path):
         settings = Settings(project_root=tmp_path)
         svc = build_services(settings)

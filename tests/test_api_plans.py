@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from helaicopter_api.application import plans as plans_module
 from helaicopter_api.bootstrap.services import build_services
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
@@ -196,6 +197,67 @@ def plans_client(tmp_path: Path):
 
 
 class TestPlansEndpoints:
+    def test_list_plans_summarizes_each_claude_plan_once(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        settings = _seed_plan_sources(tmp_path)
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+        summarize_calls = 0
+        original = plans_module._summarize_plan_content
+
+        def count_calls(content: str, fallback_slug: str) -> dict[str, str]:
+            nonlocal summarize_calls
+            summarize_calls += 1
+            return original(content, fallback_slug)
+
+        monkeypatch.setattr(plans_module, "_summarize_plan_content", count_calls)
+
+        try:
+            with TestClient(application) as client:
+                response = client.get("/plans")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert response.status_code == 200
+        assert summarize_calls == 2
+
+    def test_list_plans_ignores_codex_lines_with_non_object_payloads(self, tmp_path: Path) -> None:
+        settings = _seed_plan_sources(tmp_path)
+        codex_session = next(settings.codex_dir.glob("sessions/**/*.jsonl"))
+        codex_session.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "timestamp": "2026-03-16T10:00:01.500Z",
+                            "type": "response_item",
+                            "payload": "malformed",
+                        }
+                    ),
+                    codex_session.read_text(encoding="utf-8"),
+                ]
+            ),
+            encoding="utf-8",
+        )
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                response = client.get("/plans")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert response.status_code == 200
+        assert [plan["provider"] for plan in response.json()] == ["codex", "claude", "claude"]
+
     def test_list_plans_includes_claude_and_codex_sources(self, plans_client: TestClient) -> None:
         response = plans_client.get("/plans")
 

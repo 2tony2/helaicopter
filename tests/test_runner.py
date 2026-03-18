@@ -184,6 +184,17 @@ def test_handle_codex_progress_line_emits_thread_id() -> None:
     assert progress == [{"session_id": "thread-xyz", "session_id_field": "thread_id"}]
 
 
+def test_handle_codex_progress_line_ignores_malformed_completed_items() -> None:
+    progress: list[dict[str, str]] = []
+
+    _handle_codex_progress_line(
+        '{"type":"item.completed","item":"oops"}',
+        progress.append,
+    )
+
+    assert progress == []
+
+
 def test_stream_collector_ignores_callback_errors(tmp_path: Path) -> None:
     file_path = tmp_path / "out.txt"
     file_path.write_text("line one\nline two\n", encoding="utf-8")

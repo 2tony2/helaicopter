@@ -136,14 +136,12 @@ def _build_sqlite_engine(settings: Settings) -> Engine:
     )
 
 
-def build_services(settings: Settings | None = None) -> BackendServices:
+def build_services(settings: Settings) -> BackendServices:
     """Construct the full service bag from *settings*.
 
     This is the single entry-point for wiring – nothing else should
     call ``create_engine`` or instantiate caches directly.
     """
-    if settings is None:
-        settings = Settings()
     engine = _build_sqlite_engine(settings)
     claude_artifacts = ClaudeArtifactStore(
         projects_dir=settings.claude_projects_dir,

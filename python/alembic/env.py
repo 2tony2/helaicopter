@@ -7,7 +7,7 @@ from alembic.ddl.impl import DefaultImpl
 from sqlalchemy import engine_from_config, pool
 
 from helaicopter_db.models import OlapBase, OltpBase
-from helaicopter_db.settings import OLAP_ARTIFACT, OLTP_ARTIFACT, ensure_runtime_dirs
+from helaicopter_db.settings import ensure_runtime_dirs, get_database_settings
 
 
 class AlembicDuckDBImpl(DefaultImpl):
@@ -15,6 +15,7 @@ class AlembicDuckDBImpl(DefaultImpl):
 
 
 config = context.config
+database_settings = get_database_settings()
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -23,7 +24,11 @@ ensure_runtime_dirs()
 
 target_name = context.get_x_argument(as_dictionary=True).get("target", "oltp")
 target_metadata = OltpBase.metadata if target_name == "oltp" else OlapBase.metadata
-target_url = OLTP_ARTIFACT.sqlalchemy_url if target_name == "oltp" else OLAP_ARTIFACT.sqlalchemy_url
+target_url = (
+    database_settings.sqlite.sqlalchemy_url
+    if target_name == "oltp"
+    else database_settings.legacy_duckdb.sqlalchemy_url
+)
 config.set_main_option("sqlalchemy.url", target_url)
 
 

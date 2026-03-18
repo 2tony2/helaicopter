@@ -18,7 +18,7 @@ from helaicopter_api.server.dependencies import get_services
 subscriptions_router = APIRouter(prefix="/subscription-settings", tags=["subscriptions"])
 
 
-@subscriptions_router.get("", response_model=SubscriptionSettingsResponse)
+@subscriptions_router.get("", response_model=SubscriptionSettingsResponse, response_model_by_alias=True)
 async def subscriptions_index(
     services: BackendServices = Depends(get_services),
 ) -> SubscriptionSettingsResponse:
@@ -26,7 +26,7 @@ async def subscriptions_index(
     return get_subscription_settings(services)
 
 
-@subscriptions_router.patch("", response_model=SubscriptionSettingsResponse)
+@subscriptions_router.patch("", response_model=SubscriptionSettingsResponse, response_model_by_alias=True)
 async def subscriptions_update(
     body: SubscriptionSettingsUpdateRequest = Body(default_factory=SubscriptionSettingsUpdateRequest),
     services: BackendServices = Depends(get_services),

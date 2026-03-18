@@ -4,21 +4,28 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Iterator
 
 from fastapi.testclient import TestClient
 
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
+from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
+
+
+def _services_stub(**attrs: object) -> BackendServices:
+    services = object.__new__(BackendServices)
+    for name, value in attrs.items():
+        setattr(services, name, value)
+    return services
 
 
 @contextmanager
 def subscription_client(db_path: Path) -> Iterator[tuple[TestClient, SqliteAppStore]]:
     store = SqliteAppStore(db_path=db_path)
     application = create_app()
-    application.dependency_overrides[get_services] = lambda: SimpleNamespace(app_sqlite_store=store)
+    application.dependency_overrides[get_services] = lambda: _services_stub(app_sqlite_store=store)
     try:
         with TestClient(application) as client:
             yield client, store
@@ -84,6 +91,18 @@ class TestSubscriptionSettingsEndpoint:
         assert negative_cost.status_code == 422
         assert unknown_field.status_code == 422
 
+    def test_patch_rejects_snake_case_payload_keys(self, tmp_path: Path) -> None:
+        with subscription_client(tmp_path / "subscription-settings.sqlite") as (client, _store):
+            response = client.patch(
+                "/subscription-settings",
+                json={"claude": {"has_subscription": False, "monthly_cost": 123.45}},
+            )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any(error["loc"][-1] == "has_subscription" for error in detail)
+        assert any(error["loc"][-1] == "monthly_cost" for error in detail)
+
     def test_openapi_exposes_explicit_subscription_request_and_response_models(self, tmp_path: Path) -> None:
         with subscription_client(tmp_path / "subscription-settings.sqlite") as (client, _store):
             response = client.get("/openapi.json")
@@ -102,3 +121,12 @@ class TestSubscriptionSettingsEndpoint:
         assert subscription_patch["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/SubscriptionSettingsResponse"
         )
+
+        update_schema = schema["components"]["schemas"]["ProviderSubscriptionSettingUpdateRequest"]
+        response_schema = schema["components"]["schemas"]["ProviderSubscriptionSettingResponse"]
+        assert "hasSubscription" in update_schema["properties"]
+        assert "has_subscription" not in update_schema["properties"]
+        assert "monthlyCost" in update_schema["properties"]
+        assert "monthly_cost" not in update_schema["properties"]
+        assert "updatedAt" in response_schema["properties"]
+        assert "updated_at" not in response_schema["properties"]

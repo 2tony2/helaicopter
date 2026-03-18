@@ -3,8 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+from typing import Literal, cast
 import uuid
 
+from helaicopter_domain.ids import RunId, SessionId, TaskId
+from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus
 from oats.models import (
     AgentInvocationResult,
     ExecutionPlan,
@@ -16,23 +19,23 @@ from oats.models import (
 )
 
 
-def build_run_id(run_spec_path: Path) -> str:
+def build_run_id(run_spec_path: Path) -> RunId:
     stem = re.sub(r"[^a-z0-9]+", "-", run_spec_path.stem.lower()).strip("-")
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"{stem or 'run'}-{timestamp}"
+    return RunId(f"{stem or 'run'}-{timestamp}")
 
 
 def build_initial_runtime_state(
     execution_plan: ExecutionPlan,
     *,
-    mode: str,
-    run_id: str,
-    executor_agent: str,
+    mode: Literal["read-only", "writable"],
+    run_id: RunId,
+    executor_agent: ProviderName,
 ) -> RunRuntimeState:
     runtime_dir = execution_plan.repo_root / ".oats" / "runtime" / run_id
     tasks = [
         TaskRuntimeRecord(
-            task_id=task.id,
+            task_id=TaskId(task.id),
             title=task.title,
             depends_on=task.depends_on,
             branch_name=task.branch_name,
@@ -124,6 +127,10 @@ def append_progress_event(
     event_type: str,
     task_id: str | None = None,
     message: str | None = None,
+    agent: str | None = None,
+    session_id: str | None = None,
+    heartbeat_at: datetime | None = None,
+    output_text: str | None = None,
 ) -> Path:
     state.runtime_dir.mkdir(parents=True, exist_ok=True)
     path = state.runtime_dir / "events.jsonl"
@@ -131,8 +138,12 @@ def append_progress_event(
         run_id=state.run_id,
         event_type=event_type,
         run_status=state.status,
-        task_id=task_id,
+        task_id=TaskId(task_id) if task_id is not None else None,
         message=message,
+        agent=cast("ProviderName | None", agent),
+        session_id=SessionId(session_id) if session_id is not None else None,
+        heartbeat_at=heartbeat_at,
+        output_text=output_text,
     )
     with path.open("a", encoding="utf-8") as handle:
         handle.write(event.model_dump_json())
@@ -161,7 +172,7 @@ def mark_run_resumed(state: RunRuntimeState) -> None:
 def mark_run_finished(
     state: RunRuntimeState,
     *,
-    status: str,
+    status: RunRuntimeStatus,
     final_record_path: Path | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
@@ -175,8 +186,8 @@ def mark_run_finished(
 
 def prepare_invocation_runtime(
     *,
-    agent: str,
-    role: str,
+    agent: ProviderName,
+    role: Literal["planner", "executor", "conflict_resolver", "merge_operator"],
     cwd: Path,
     prompt: str,
 ) -> InvocationRuntimeRecord:
@@ -208,14 +219,93 @@ def update_invocation_progress(
     if invocation is None:
         return
     if session_id:
-        invocation.session_id = session_id
+        invocation.session_id = SessionId(session_id)
     if session_id_field:
         invocation.session_id_field = session_id_field
     if requested_session_id:
-        invocation.requested_session_id = requested_session_id
+        invocation.requested_session_id = SessionId(requested_session_id)
     if output_text:
         invocation.output_text = output_text
     invocation.last_heartbeat_at = datetime.now(timezone.utc)
+
+
+def record_invocation_progress(
+    state: RunRuntimeState,
+    invocation: InvocationRuntimeRecord | None,
+    *,
+    event_type: str,
+    task_id: str | None = None,
+    session_id: str | None = None,
+    session_id_field: str | None = None,
+    requested_session_id: str | None = None,
+    output_text: str | None = None,
+) -> bool:
+    if invocation is None:
+        return False
+
+    previous_output = invocation.output_text
+    update_invocation_progress(
+        invocation,
+        session_id=session_id,
+        session_id_field=session_id_field,
+        requested_session_id=requested_session_id,
+        output_text=output_text,
+    )
+    state.heartbeat_at = invocation.last_heartbeat_at or datetime.now(timezone.utc)
+
+    normalized_output = (output_text or "").strip()
+    changed = bool(normalized_output and normalized_output != previous_output.strip())
+    if changed:
+        append_progress_event(
+            state,
+            event_type=event_type,
+            task_id=task_id,
+            message=_summarize_output_text(normalized_output),
+            agent=invocation.agent,
+            session_id=invocation.session_id,
+            heartbeat_at=invocation.last_heartbeat_at,
+            output_text=normalized_output,
+        )
+        invocation.last_progress_event_at = invocation.last_heartbeat_at
+
+    write_runtime_state(state)
+    return changed
+
+
+def record_invocation_heartbeat(
+    state: RunRuntimeState,
+    invocation: InvocationRuntimeRecord | None,
+    *,
+    event_type: str,
+    task_id: str | None = None,
+    min_interval_seconds: float = 30.0,
+) -> bool:
+    if invocation is None:
+        return False
+
+    refresh_invocation_heartbeat(invocation)
+    state.heartbeat_at = invocation.last_heartbeat_at or datetime.now(timezone.utc)
+    last_event_at = invocation.last_progress_event_at or invocation.started_at
+    should_emit = (
+        last_event_at is None
+        or invocation.last_heartbeat_at is None
+        or (invocation.last_heartbeat_at - last_event_at).total_seconds() >= min_interval_seconds
+    )
+    if should_emit:
+        append_progress_event(
+            state,
+            event_type=event_type,
+            task_id=task_id,
+            message="heartbeat",
+            agent=invocation.agent,
+            session_id=invocation.session_id,
+            heartbeat_at=invocation.last_heartbeat_at,
+            output_text=invocation.output_text or None,
+        )
+        invocation.last_progress_event_at = invocation.last_heartbeat_at
+
+    write_runtime_state(state)
+    return should_emit
 
 
 def apply_agent_result(
@@ -235,6 +325,13 @@ def apply_agent_result(
     invocation.last_heartbeat_at = result.finished_at
     invocation.finished_at = result.finished_at
     return invocation
+
+
+def _summarize_output_text(output_text: str, *, limit: int = 240) -> str:
+    compact = " ".join(output_text.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 3].rstrip()}..."
 
 
 def _atomic_write_text(path: Path, content: str) -> None:

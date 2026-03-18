@@ -1,0 +1,63 @@
+name: backend-quality
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backend-quality.yml"
+      - "docs/python-backend-type-system-baseline.md"
+      - "docs/superpowers/baselines/2026-03-18-python-backend-pyright-baseline.json"
+      - "pyproject.toml"
+      - "python/**"
+      - "tests/**"
+      - "uv.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/backend-quality.yml"
+      - "docs/python-backend-type-system-baseline.md"
+      - "docs/superpowers/baselines/2026-03-18-python-backend-pyright-baseline.json"
+      - "pyproject.toml"
+      - "python/**"
+      - "tests/**"
+      - "uv.lock"
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+      - name: Sync dev environment
+        run: uv sync --group dev
+      - name: Ruff
+        run: uv run --group dev ruff check python tests
+
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+      - name: Sync dev environment
+        run: uv sync --group dev
+      - name: Pytest
+        run: uv run --group dev pytest -q
+
+  pyright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+      - name: Sync dev environment
+        run: uv sync --group dev
+      - name: Pyright
+        run: uv run --group dev pyright

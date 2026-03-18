@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from typing import Literal, cast
 from pathlib import Path
 import shlex
 import time
 
 import typer
+from helaicopter_domain.ids import TaskId
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -14,6 +17,7 @@ from oats.planner import PlanError, build_execution_plan
 from oats.repo_config import RepoConfigError, find_repo_config, load_repo_config
 from oats.runner import (
     AgentInvocationError,
+    InvocationProgress,
     build_planner_prompt,
     build_task_prompt,
     invoke_agent,
@@ -21,6 +25,7 @@ from oats.runner import (
 from oats.models import (
     AgentInvocationResult,
     ExecutionPlan,
+    InvocationRuntimeRecord,
     RepoConfig,
     RunExecutionRecord,
     RunRuntimeState,
@@ -43,9 +48,9 @@ from oats.runtime_state import (
     mark_run_resumed,
     mark_run_started,
     prepare_invocation_runtime,
-    refresh_invocation_heartbeat,
+    record_invocation_heartbeat,
+    record_invocation_progress,
     resolve_runtime_state,
-    update_invocation_progress,
     write_plan_snapshot,
     write_runtime_state,
 )
@@ -53,6 +58,8 @@ from oats.runtime_state import (
 
 app = typer.Typer(help="Overnight Oats CLI")
 console = Console()
+DEFAULT_STALE_AFTER_SECONDS = 300
+DEFAULT_PROGRESS_HEARTBEAT_INTERVAL_SECONDS = 30.0
 
 
 def _load_execution_plan(
@@ -72,7 +79,9 @@ def _load_execution_plan(
     return config, config_path, execution_plan
 
 
-def _invocation_runtime_to_result(invocation) -> AgentInvocationResult | None:
+def _invocation_runtime_to_result(
+    invocation: InvocationRuntimeRecord | None,
+) -> AgentInvocationResult | None:
     if invocation is None or invocation.started_at is None or invocation.finished_at is None:
         return None
     return AgentInvocationResult(
@@ -173,6 +182,127 @@ def _resolve_terminal_status(state: RunRuntimeState) -> str:
     return state.status
 
 
+def _active_invocation(state: RunRuntimeState):
+    if state.active_task_id:
+        task = _find_runtime_task(state, state.active_task_id)
+        return task.invocation, f"task:{task.task_id}", task.task_id
+    if state.planner is not None and state.status in {"planning", "running"}:
+        return state.planner, "planner", None
+    return None, None, None
+
+
+def _runtime_health(
+    state: RunRuntimeState,
+    *,
+    stale_after_seconds: int = DEFAULT_STALE_AFTER_SECONDS,
+    now: datetime | None = None,
+) -> str:
+    if state.finished_at is not None or state.status in {"completed", "failed", "timed_out"}:
+        return state.status
+    if state.status not in {"pending", "planning", "running"}:
+        return state.status
+
+    reference_time = now or datetime.now(timezone.utc)
+    heartbeat_age = (reference_time - state.heartbeat_at).total_seconds()
+    if (state.active_task_id is not None or _has_unfinished_tasks(state)) and heartbeat_age > stale_after_seconds:
+        return "stale"
+    return "healthy"
+
+
+def _format_duration(seconds: float) -> str:
+    total_seconds = max(int(seconds), 0)
+    minutes, seconds_part = divmod(total_seconds, 60)
+    hours, minutes_part = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes_part}m {seconds_part}s"
+    if minutes:
+        return f"{minutes}m {seconds_part}s"
+    return f"{seconds_part}s"
+
+
+def _build_runtime_status_text(
+    state: RunRuntimeState,
+    *,
+    state_path: Path,
+    stale_after_seconds: int = DEFAULT_STALE_AFTER_SECONDS,
+) -> str:
+    now = datetime.now(timezone.utc)
+    health = _runtime_health(state, stale_after_seconds=stale_after_seconds, now=now)
+    heartbeat_age = _format_duration((now - state.heartbeat_at).total_seconds())
+    invocation, invocation_label, task_id = _active_invocation(state)
+    latest_note = "-"
+    session_id = "-"
+    if invocation is not None:
+        session_id = invocation.session_id or "-"
+        latest_note = " ".join(invocation.output_text.split())[:240] or "-"
+
+    lines = [
+        f"Run: [bold]{state.run_title}[/bold]",
+        f"Run ID: {state.run_id}",
+        f"Status: {state.status}",
+        f"Health: {health}",
+        f"Active task: {task_id or '-'}",
+        f"Heartbeat age: {heartbeat_age}",
+        f"Runtime state: {state_path}",
+    ]
+    if invocation_label is not None:
+        lines.append(f"Active invocation: {invocation_label}")
+        lines.append(f"Session ID: {session_id}")
+    lines.append(f"Latest note: {latest_note}")
+    return "\n".join(lines)
+
+
+def _print_runtime_status(
+    state: RunRuntimeState,
+    *,
+    state_path: Path,
+    stale_after_seconds: int = DEFAULT_STALE_AFTER_SECONDS,
+) -> None:
+    console.print(
+        Panel.fit(
+            _build_runtime_status_text(
+                state,
+                state_path=state_path,
+                stale_after_seconds=stale_after_seconds,
+            ),
+            title="Runtime Status",
+        )
+    )
+
+
+def _handle_runtime_heartbeat(
+    state: RunRuntimeState,
+    invocation: InvocationRuntimeRecord | None,
+    *,
+    event_type: str,
+    task_id: str | None = None,
+) -> None:
+    record_invocation_heartbeat(
+        state,
+        invocation,
+        event_type=event_type,
+        task_id=task_id,
+        min_interval_seconds=DEFAULT_PROGRESS_HEARTBEAT_INTERVAL_SECONDS,
+    )
+
+
+def _handle_runtime_progress(
+    state: RunRuntimeState,
+    invocation: InvocationRuntimeRecord | None,
+    *,
+    event_type: str,
+    task_id: str | None = None,
+    progress: InvocationProgress,
+) -> None:
+    record_invocation_progress(
+        state,
+        invocation,
+        event_type=event_type,
+        task_id=task_id,
+        **progress,
+    )
+
+
 def _prepare_retryable_tasks(state: RunRuntimeState) -> bool:
     reset_any = False
     for task in state.tasks:
@@ -269,7 +399,7 @@ def _execute_run(
     skip_planner: bool,
     runtime_state: RunRuntimeState | None = None,
 ) -> tuple[RunExecutionRecord, RunRuntimeState]:
-    mode = "read-only" if read_only else "writable"
+    mode: Literal["read-only", "writable"] = "read-only" if read_only else "writable"
     state = runtime_state or build_initial_runtime_state(
         execution_plan,
         mode=mode,
@@ -320,21 +450,25 @@ def _execute_run(
             timeout_seconds=timeout_seconds,
             dangerous_bypass=dangerous_bypass,
             raise_on_nonzero=False,
-            on_heartbeat=lambda: (
-                refresh_invocation_heartbeat(state.planner),
-                setattr(state, "heartbeat_at", state.planner.last_heartbeat_at),
-                write_runtime_state(state),
+            on_heartbeat=lambda: _handle_runtime_heartbeat(
+                state,
+                state.planner,
+                event_type="planner_heartbeat",
             ),
-            on_progress=lambda progress: (
-                update_invocation_progress(state.planner, **progress),
-                setattr(state, "heartbeat_at", state.planner.last_heartbeat_at),
-                write_runtime_state(state),
+            on_progress=lambda progress: _handle_runtime_progress(
+                state,
+                state.planner,
+                event_type="planner_progress",
+                progress=progress,
             ),
         )
         apply_agent_result(state.planner, planner_result)
-        state.status = "running" if planner_result.exit_code == 0 and not planner_result.timed_out else (
-            "timed_out" if planner_result.timed_out else "failed"
-        )
+        if planner_result.exit_code == 0 and not planner_result.timed_out:
+            state.status = "running"
+        elif planner_result.timed_out:
+            state.status = "timed_out"
+        else:
+            state.status = "failed"
         append_progress_event(
             state,
             event_type="planner_finished",
@@ -376,7 +510,7 @@ def _execute_run(
             while runtime_task.attempts < config.execution.max_task_attempts:
                 runtime_task.status = "running"
                 state.status = "running"
-                state.active_task_id = task.id
+                state.active_task_id = cast(TaskId, task.id)
                 runtime_task.attempts += 1
                 runtime_task.invocation = prepare_invocation_runtime(
                     agent=config.agents.executor,
@@ -401,15 +535,18 @@ def _execute_run(
                     timeout_seconds=timeout_seconds,
                     dangerous_bypass=dangerous_bypass,
                     raise_on_nonzero=False,
-                    on_heartbeat=lambda inv=runtime_task.invocation: (
-                        refresh_invocation_heartbeat(inv),
-                        setattr(state, "heartbeat_at", inv.last_heartbeat_at),
-                        write_runtime_state(state),
+                    on_heartbeat=lambda inv=runtime_task.invocation, task_id=task.id: _handle_runtime_heartbeat(
+                        state,
+                        inv,
+                        event_type="task_heartbeat",
+                        task_id=task_id,
                     ),
-                    on_progress=lambda progress, inv=runtime_task.invocation: (
-                        update_invocation_progress(inv, **progress),
-                        setattr(state, "heartbeat_at", inv.last_heartbeat_at),
-                        write_runtime_state(state),
+                    on_progress=lambda progress, inv=runtime_task.invocation, task_id=task.id: _handle_runtime_progress(
+                        state,
+                        inv,
+                        event_type="task_progress",
+                        task_id=task_id,
+                        progress=progress,
                     ),
                 )
                 apply_agent_result(runtime_task.invocation, result)
@@ -860,6 +997,140 @@ def resume(
         runtime_state=updated_state,
     )
     _print_execution_record(record, updated_state)
+
+
+@app.command()
+def status(
+    run_id: str | None = typer.Argument(
+        None,
+        help="Run id to inspect. If omitted, the most recent runtime state is used.",
+    ),
+    state_file: Path | None = typer.Option(
+        None,
+        "--state-file",
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Explicit path to a .oats/runtime/<run-id>/state.json file.",
+    ),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+    stale_after_seconds: int = typer.Option(
+        DEFAULT_STALE_AFTER_SECONDS,
+        "--stale-after-seconds",
+        min=1,
+        help="Mark active runs stale when heartbeat age exceeds this threshold.",
+    ),
+) -> None:
+    """Print the current runtime status for an OATS run."""
+
+    try:
+        if state_file is not None:
+            resolved_state_path = state_file.resolve()
+            runtime_state = resolve_runtime_state(Path.cwd(), state_path=resolved_state_path)
+        else:
+            search_root = repo.resolve() if repo else Path.cwd()
+            config_path = find_repo_config(search_root)
+            runtime_state = resolve_runtime_state(config_path.parent.parent, run_id=run_id)
+            resolved_state_path = runtime_state.runtime_dir / "state.json"
+    except (RepoConfigError, FileNotFoundError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    _print_runtime_status(
+        runtime_state,
+        state_path=resolved_state_path,
+        stale_after_seconds=stale_after_seconds,
+    )
+
+
+@app.command()
+def watch(
+    run_id: str | None = typer.Argument(
+        None,
+        help="Run id to inspect. If omitted, the most recent runtime state is used.",
+    ),
+    state_file: Path | None = typer.Option(
+        None,
+        "--state-file",
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Explicit path to a .oats/runtime/<run-id>/state.json file.",
+    ),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+    interval_seconds: float = typer.Option(
+        5.0,
+        "--interval-seconds",
+        min=0.0,
+        help="Polling interval between runtime state refreshes.",
+    ),
+    iterations: int | None = typer.Option(
+        None,
+        "--iterations",
+        min=1,
+        help="Maximum number of snapshots to print before exiting.",
+    ),
+    stale_after_seconds: int = typer.Option(
+        DEFAULT_STALE_AFTER_SECONDS,
+        "--stale-after-seconds",
+        min=1,
+        help="Mark active runs stale when heartbeat age exceeds this threshold.",
+    ),
+) -> None:
+    """Continuously print runtime status snapshots while a run is active."""
+
+    try:
+        if state_file is not None:
+            resolved_state_path = state_file.resolve()
+        else:
+            search_root = repo.resolve() if repo else Path.cwd()
+            config_path = find_repo_config(search_root)
+            runtime_state = resolve_runtime_state(config_path.parent.parent, run_id=run_id)
+            resolved_state_path = runtime_state.runtime_dir / "state.json"
+    except (RepoConfigError, FileNotFoundError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    snapshots_printed = 0
+    last_snapshot: str | None = None
+    while True:
+        try:
+            runtime_state = resolve_runtime_state(Path.cwd(), state_path=resolved_state_path)
+        except FileNotFoundError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+
+        snapshot = _build_runtime_status_text(
+            runtime_state,
+            state_path=resolved_state_path,
+            stale_after_seconds=stale_after_seconds,
+        )
+        if snapshot != last_snapshot:
+            console.print(Panel.fit(snapshot, title="Runtime Status"))
+            last_snapshot = snapshot
+            snapshots_printed += 1
+
+        if iterations is not None and snapshots_printed >= iterations:
+            break
+        if runtime_state.finished_at is not None or runtime_state.status in {
+            "completed",
+            "failed",
+            "timed_out",
+        }:
+            break
+        time.sleep(interval_seconds)
 
 
 def main() -> None:

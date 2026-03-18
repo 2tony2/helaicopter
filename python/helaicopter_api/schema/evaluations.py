@@ -2,26 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
-
-
-def _to_camel(value: str) -> str:
-    head, *tail = value.split("_")
-    return head + "".join(part.capitalize() for part in tail)
+from pydantic import BaseModel, field_validator, model_validator
+from helaicopter_domain.vocab import EvaluationScope, EvaluationStatus, ProviderName
+from helaicopter_api.schema.common import CamelCaseHttpResponseModel, camel_case_request_config
 
 
-class EvaluationCamelModel(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=_to_camel,
-        populate_by_name=True,
-        extra="forbid",
-    )
-
-
-class EvaluationPromptWriteRequest(EvaluationCamelModel):
+class EvaluationPromptWriteRequest(BaseModel):
     """Shared validation for prompt create/update payloads."""
+
+    model_config = camel_case_request_config(extra="forbid")
 
     name: str
     description: str | None = None
@@ -58,7 +47,7 @@ class EvaluationPromptUpdateRequest(EvaluationPromptWriteRequest):
     """Payload accepted by the prompt update endpoint."""
 
 
-class EvaluationPromptResponse(EvaluationCamelModel):
+class EvaluationPromptResponse(CamelCaseHttpResponseModel):
     """An evaluation prompt template."""
 
     prompt_id: str
@@ -70,16 +59,16 @@ class EvaluationPromptResponse(EvaluationCamelModel):
     updated_at: str
 
 
-class ConversationEvaluationResponse(EvaluationCamelModel):
+class ConversationEvaluationResponse(CamelCaseHttpResponseModel):
     """Result of running an evaluation against a conversation."""
 
     evaluation_id: str
     conversation_id: str
     prompt_id: str | None = None
-    provider: Literal["claude", "codex"]
+    provider: ProviderName
     model: str
-    status: Literal["running", "completed", "failed"]
-    scope: Literal["full", "failed_tool_calls", "guided_subset"]
+    status: EvaluationStatus
+    scope: EvaluationScope
     selection_instruction: str | None = None
     prompt_name: str
     prompt_text: str
@@ -92,12 +81,14 @@ class ConversationEvaluationResponse(EvaluationCamelModel):
     duration_ms: float | None = None
 
 
-class ConversationEvaluationCreateRequest(EvaluationCamelModel):
+class ConversationEvaluationCreateRequest(BaseModel):
     """Payload accepted by the conversation evaluation create endpoint."""
 
-    provider: Literal["claude", "codex"]
+    model_config = camel_case_request_config(extra="forbid")
+
+    provider: ProviderName
     model: str
-    scope: Literal["full", "failed_tool_calls", "guided_subset"]
+    scope: EvaluationScope
     prompt_id: str | None = None
     prompt_name: str | None = None
     prompt_text: str | None = None

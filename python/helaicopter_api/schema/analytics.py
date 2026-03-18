@@ -1,12 +1,11 @@
-"""Schemas for usage analytics and cost data."""
+"""legacy `snake_case` schemas for analytics; Wave 7 keeps this deferred."""
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field
+from helaicopter_domain.vocab import ProviderSelection
 
-AnalyticsProviderParam = Literal["all", "claude", "codex"]
+AnalyticsProviderParam = ProviderSelection
 
 
 class AnalyticsQueryParams(BaseModel):
@@ -19,7 +18,7 @@ class AnalyticsQueryParams(BaseModel):
         ge=1,
         description="Restrict analytics to the trailing number of days.",
     )
-    provider: AnalyticsProviderParam | None = Field(
+    provider: ProviderSelection | None = Field(
         default=None,
         description="Optional provider filter. Use `all` or omit for combined analytics.",
     )
@@ -105,10 +104,10 @@ class AnalyticsTimeSeriesPointResponse(BaseModel):
 
 
 class AnalyticsTimeSeriesResponse(BaseModel):
-    hourly: list[AnalyticsTimeSeriesPointResponse] = Field(default_factory=list)
-    daily: list[AnalyticsTimeSeriesPointResponse] = Field(default_factory=list)
-    weekly: list[AnalyticsTimeSeriesPointResponse] = Field(default_factory=list)
-    monthly: list[AnalyticsTimeSeriesPointResponse] = Field(default_factory=list)
+    hourly: list[AnalyticsTimeSeriesPointResponse] = []
+    daily: list[AnalyticsTimeSeriesPointResponse] = []
+    weekly: list[AnalyticsTimeSeriesPointResponse] = []
+    monthly: list[AnalyticsTimeSeriesPointResponse] = []
 
 
 class DailyUsageResponse(BaseModel):
@@ -144,16 +143,16 @@ class AnalyticsDataResponse(BaseModel):
     total_reasoning_tokens: int = 0
     total_tool_calls: int = 0
     total_failed_tool_calls: int = 0
-    model_breakdown: dict[str, int] = Field(default_factory=dict)
-    tool_breakdown: dict[str, int] = Field(default_factory=dict)
-    subagent_type_breakdown: dict[str, int] = Field(default_factory=dict)
-    model_breakdown_by_provider: dict[str, ProviderBreakdownResponse] = Field(default_factory=dict)
-    tool_breakdown_by_provider: dict[str, ProviderBreakdownResponse] = Field(default_factory=dict)
-    subagent_type_breakdown_by_provider: dict[str, ProviderBreakdownResponse] = Field(default_factory=dict)
-    daily_usage: list[DailyUsageResponse] = Field(default_factory=list)
+    model_breakdown: dict[str, int] = {}
+    tool_breakdown: dict[str, int] = {}
+    subagent_type_breakdown: dict[str, int] = {}
+    model_breakdown_by_provider: dict[str, ProviderBreakdownResponse] = {}
+    tool_breakdown_by_provider: dict[str, ProviderBreakdownResponse] = {}
+    subagent_type_breakdown_by_provider: dict[str, ProviderBreakdownResponse] = {}
+    daily_usage: list[DailyUsageResponse] = []
     rates: AnalyticsRatesResponse | None = None
     time_series: AnalyticsTimeSeriesResponse | None = None
     estimated_cost: float = 0.0
     cost_breakdown: AnalyticsCostBreakdownResponse | None = None
-    cost_breakdown_by_provider: dict[str, AnalyticsCostBreakdownResponse] = Field(default_factory=dict)
-    cost_breakdown_by_model: dict[str, AnalyticsCostBreakdownResponse] = Field(default_factory=dict)
+    cost_breakdown_by_provider: dict[str, AnalyticsCostBreakdownResponse] = {}
+    cost_breakdown_by_model: dict[str, AnalyticsCostBreakdownResponse] = {}

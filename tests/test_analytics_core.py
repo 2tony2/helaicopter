@@ -8,12 +8,20 @@ from types import SimpleNamespace
 import pytest
 
 from helaicopter_api.application.analytics import get_analytics
+from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.pure.analytics import (
     build_analytics,
     build_time_window,
     filter_analytics_conversations,
 )
+
+
+def _services_stub(**attrs: object) -> BackendServices:
+    services = object.__new__(BackendServices)
+    for name, value in attrs.items():
+        setattr(services, name, value)
+    return services
 
 
 def _summary(
@@ -133,6 +141,45 @@ class TestPureAnalyticsFiltering:
 
 
 class TestPureAnalyticsAggregation:
+    def test_build_analytics_keeps_day_scoped_aggregation_to_one_main_pass(self) -> None:
+        now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
+
+        class SinglePassConversationList(list[HistoricalConversationSummary]):
+            def __init__(self, items: list[HistoricalConversationSummary]) -> None:
+                super().__init__(items)
+                self.iterations = 0
+
+            def __iter__(self):  # type: ignore[override]
+                self.iterations += 1
+                if self.iterations > 1:
+                    raise AssertionError("day-scoped analytics should not re-iterate conversations after the main loop")
+                return super().__iter__()
+
+        conversations = SinglePassConversationList(
+            [
+                _summary(
+                    "claude-1",
+                    started_at="2026-03-17T09:15:00Z",
+                    ended_at="2026-03-17T09:45:00Z",
+                    model="claude-sonnet-4-5-20250929",
+                    subagent_count=1,
+                ),
+                _summary(
+                    "codex-1",
+                    provider="codex",
+                    project_path="codex:-Users-tony-Code-helaicopter",
+                    started_at="2026-03-17T11:00:00Z",
+                    ended_at="2026-03-17T11:30:00Z",
+                    model="gpt-5",
+                    subagent_count=2,
+                ),
+            ]
+        )
+
+        analytics = build_analytics(conversations, days=1, now=now)
+
+        assert analytics.rates["subagents"].per_day == pytest.approx(3.0)
+
     def test_build_analytics_preserves_provider_splits_and_bucketing(self) -> None:
         now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
         claude = _summary(
@@ -293,7 +340,7 @@ class TestApplicationAnalytics:
                 return list(self.rows)
 
         store = StubStore(conversations)
-        services = SimpleNamespace(app_sqlite_store=store)
+        services = _services_stub(app_sqlite_store=store)
 
         response = get_analytics(services, days=1, provider="codex", now=now)
 
@@ -304,7 +351,9 @@ class TestApplicationAnalytics:
         assert "claude" not in response.cost_breakdown_by_provider
 
     def test_application_layer_rejects_unknown_provider(self) -> None:
-        services = SimpleNamespace(app_sqlite_store=SimpleNamespace(list_historical_conversations=lambda: []))
+        services = _services_stub(
+            app_sqlite_store=SimpleNamespace(list_historical_conversations=lambda: [])
+        )
 
         with pytest.raises(ValueError, match="Unsupported analytics provider"):
             get_analytics(services, provider="openai")

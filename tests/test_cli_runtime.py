@@ -1,7 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import json
 
-from oats.cli import _execute_run, _prepare_retryable_tasks
+from typer.testing import CliRunner
+
+from oats.cli import _execute_run, _prepare_retryable_tasks, _runtime_health, app
 from oats.models import AgentInvocationResult
 from oats.parser import parse_run_spec
 from oats.planner import build_execution_plan
@@ -223,3 +226,159 @@ def test_execute_run_revisits_blocked_tasks_when_dependencies_finish(monkeypatch
     assert dashboard_task.status == "succeeded"
     assert calls == ["auth", "dashboard_api"]
     assert state.status == "completed"
+
+
+def test_execute_run_records_task_progress_events(monkeypatch, tmp_path: Path) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=tmp_path,
+        config_path=tmp_path / ".oats" / "config.toml",
+    )
+
+    def fake_invoke_agent(**kwargs):
+        if kwargs["role"] == "executor":
+            kwargs["on_progress"]({"output_text": "Implementing the active task."})
+        return AgentInvocationResult(
+            agent=kwargs["agent_name"],
+            role=kwargs["role"],
+            command=[kwargs["agent_name"]],
+            cwd=kwargs["cwd"],
+            prompt=kwargs["prompt"],
+            exit_code=0,
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        )
+
+    monkeypatch.setattr("oats.cli.invoke_agent", fake_invoke_agent)
+
+    _, state = _execute_run(
+        config=config,
+        execution_plan=execution_plan,
+        read_only=True,
+        timeout_seconds=1,
+        dangerous_bypass=False,
+        skip_planner=True,
+    )
+
+    events = [
+        json.loads(line)
+        for line in (state.runtime_dir / "events.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+
+    assert any(event["event_type"] == "task_progress" for event in events)
+
+
+def test_runtime_health_marks_running_state_stale_when_heartbeat_old(tmp_path: Path) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=tmp_path,
+        config_path=tmp_path / ".oats" / "config.toml",
+    )
+    _, state = _execute_run(
+        config=config,
+        execution_plan=execution_plan,
+        read_only=True,
+        timeout_seconds=1,
+        dangerous_bypass=False,
+        skip_planner=True,
+    )
+    state.status = "running"
+    state.active_task_id = "auth"
+    state.finished_at = None
+    state.heartbeat_at = datetime.now(timezone.utc) - timedelta(seconds=301)
+
+    assert _runtime_health(state, stale_after_seconds=300) == "stale"
+
+
+def test_status_command_reports_stale_runtime_state(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=tmp_path,
+        config_path=tmp_path / ".oats" / "config.toml",
+    )
+    _, state = _execute_run(
+        config=config,
+        execution_plan=execution_plan,
+        read_only=True,
+        timeout_seconds=1,
+        dangerous_bypass=False,
+        skip_planner=True,
+    )
+    state.status = "running"
+    state.active_task_id = "auth"
+    state.finished_at = None
+    state.heartbeat_at = datetime.now(timezone.utc) - timedelta(seconds=301)
+    state_path = state.runtime_dir / "state.json"
+    state_path.write_text(state.model_dump_json(indent=2))
+
+    result = runner.invoke(
+        app,
+        [
+            "status",
+            "--state-file",
+            str(state_path),
+            "--stale-after-seconds",
+            "300",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Health: stale" in result.stdout
+    assert "Active task: auth" in result.stdout
+
+
+def test_watch_command_prints_single_snapshot(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=tmp_path,
+        config_path=tmp_path / ".oats" / "config.toml",
+    )
+    _, state = _execute_run(
+        config=config,
+        execution_plan=execution_plan,
+        read_only=True,
+        timeout_seconds=1,
+        dangerous_bypass=False,
+        skip_planner=True,
+    )
+    state.status = "running"
+    state.active_task_id = "auth"
+    state.finished_at = None
+    state_path = state.runtime_dir / "state.json"
+    state_path.write_text(state.model_dump_json(indent=2))
+
+    result = runner.invoke(
+        app,
+        [
+            "watch",
+            "--state-file",
+            str(state_path),
+            "--interval-seconds",
+            "0",
+            "--iterations",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Run ID:" in result.stdout
+    assert "Active task: auth" in result.stdout
