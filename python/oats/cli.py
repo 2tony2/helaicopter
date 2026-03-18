@@ -1,0 +1,870 @@
+from __future__ import annotations
+
+from pathlib import Path
+import shlex
+import time
+
+import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+from oats.parser import RunSpecParseError, parse_run_spec
+from oats.planner import PlanError, build_execution_plan
+from oats.repo_config import RepoConfigError, find_repo_config, load_repo_config
+from oats.runner import (
+    AgentInvocationError,
+    build_planner_prompt,
+    build_task_prompt,
+    invoke_agent,
+)
+from oats.models import (
+    AgentInvocationResult,
+    ExecutionPlan,
+    RepoConfig,
+    RunExecutionRecord,
+    RunRuntimeState,
+    TaskExecutionRecord,
+)
+from oats.pr import (
+    build_final_pr_plan,
+    build_integration_branch_commands,
+    build_pr_create_command,
+    build_task_pr_plans,
+    execute_pr_plan,
+)
+from oats.runtime_state import (
+    append_progress_event,
+    apply_agent_result,
+    build_initial_runtime_state,
+    build_plan_snapshot,
+    build_run_id,
+    mark_run_finished,
+    mark_run_resumed,
+    mark_run_started,
+    prepare_invocation_runtime,
+    refresh_invocation_heartbeat,
+    resolve_runtime_state,
+    update_invocation_progress,
+    write_plan_snapshot,
+    write_runtime_state,
+)
+
+
+app = typer.Typer(help="Overnight Oats CLI")
+console = Console()
+
+
+def _load_execution_plan(
+    run_spec: Path,
+    repo: Path | None,
+) -> tuple[RepoConfig, Path, ExecutionPlan]:
+    search_root = repo.resolve() if repo else run_spec.resolve().parent
+    config_path = find_repo_config(search_root)
+    config = load_repo_config(config_path)
+    run_model = parse_run_spec(run_spec.resolve())
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run_model,
+        repo_root=config_path.parent.parent,
+        config_path=config_path,
+    )
+    return config, config_path, execution_plan
+
+
+def _invocation_runtime_to_result(invocation) -> AgentInvocationResult | None:
+    if invocation is None or invocation.started_at is None or invocation.finished_at is None:
+        return None
+    return AgentInvocationResult(
+        agent=invocation.agent,
+        role=invocation.role,
+        command=invocation.command,
+        cwd=invocation.cwd,
+        prompt=invocation.prompt,
+        session_id=invocation.session_id,
+        session_id_field=invocation.session_id_field,
+        requested_session_id=invocation.requested_session_id,
+        output_text=invocation.output_text,
+        raw_stdout=invocation.raw_stdout,
+        raw_stderr=invocation.raw_stderr,
+        exit_code=invocation.exit_code or 0,
+        timed_out=invocation.timed_out,
+        started_at=invocation.started_at,
+        finished_at=invocation.finished_at,
+    )
+
+
+def _build_task_records_from_runtime(state: RunRuntimeState) -> list[TaskExecutionRecord]:
+    task_records: list[TaskExecutionRecord] = []
+    for task in state.tasks:
+        invocation = _invocation_runtime_to_result(task.invocation)
+        if invocation is None:
+            continue
+        task_records.append(
+            TaskExecutionRecord(
+                task_id=task.task_id,
+                title=task.title,
+                depends_on=task.depends_on,
+                invocation=invocation,
+            )
+        )
+    return task_records
+
+
+def _print_execution_record(record: RunExecutionRecord, runtime_state: RunRuntimeState) -> None:
+    console.print(
+        Panel.fit(
+            f"Run: [bold]{record.run_title}[/bold]\n"
+            f"Run ID: {record.run_id}\n"
+            f"Repo: {record.repo_root}\n"
+            f"Integration branch: {record.integration_branch}\n"
+            f"Task PR target: {record.task_pr_target}\n"
+            f"Final PR target: {record.final_pr_target}\n"
+            f"Runtime state: {runtime_state.runtime_dir / 'state.json'}\n"
+            f"Record: {record.record_path}",
+            title="Execution Record",
+        )
+    )
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Role")
+    table.add_column("Agent")
+    table.add_column("Session Field")
+    table.add_column("Session ID")
+    table.add_column("Exit")
+    table.add_column("Timed Out")
+
+    if record.planner:
+        table.add_row(
+            "planner",
+            record.planner.agent,
+            record.planner.session_id_field or "-",
+            record.planner.session_id or "-",
+            str(record.planner.exit_code),
+            "yes" if record.planner.timed_out else "no",
+        )
+    for task in record.tasks:
+        table.add_row(
+            f"executor:{task.task_id}",
+            task.invocation.agent,
+            task.invocation.session_id_field or "-",
+            task.invocation.session_id or "-",
+            str(task.invocation.exit_code),
+            "yes" if task.invocation.timed_out else "no",
+        )
+
+    console.print(table)
+
+
+def _resolve_terminal_status(state: RunRuntimeState) -> str:
+    task_statuses = {task.status for task in state.tasks}
+    if state.status in {"failed", "timed_out"}:
+        return state.status
+    if "running" in task_statuses:
+        return "running"
+    if "timed_out" in task_statuses:
+        return "timed_out"
+    if "failed" in task_statuses:
+        return "failed"
+    if task_statuses and task_statuses.issubset({"succeeded", "skipped"}):
+        return "completed"
+    if {"pending", "blocked"} & task_statuses:
+        return "pending"
+    return state.status
+
+
+def _prepare_retryable_tasks(state: RunRuntimeState) -> bool:
+    reset_any = False
+    for task in state.tasks:
+        if task.status in {"failed", "timed_out", "blocked"} or (
+            task.status == "pending" and task.attempts > 0
+        ):
+            task.status = "pending"
+            task.attempts = 0
+            reset_any = True
+    if reset_any:
+        state.status = "pending"
+        state.active_task_id = None
+        state.finished_at = None
+        state.final_record_path = None
+    return reset_any
+
+
+def _find_runtime_task(state: RunRuntimeState, task_id: str):
+    return next(item for item in state.tasks if item.task_id == task_id)
+
+
+def _refresh_task_readiness(state: RunRuntimeState) -> bool:
+    progressed = False
+    for runtime_task in state.tasks:
+        if runtime_task.status in {"succeeded", "failed", "timed_out", "skipped", "running"}:
+            continue
+        deps_satisfied = all(
+            _find_runtime_task(state, dep).status == "succeeded"
+            for dep in runtime_task.depends_on
+        )
+        desired_status = "pending" if deps_satisfied else "blocked"
+        if runtime_task.status != desired_status:
+            runtime_task.status = desired_status
+            progressed = True
+    return progressed
+
+
+def _has_unfinished_tasks(state: RunRuntimeState) -> bool:
+    return any(task.status in {"pending", "blocked", "running"} for task in state.tasks)
+
+
+def _is_transient_failure(result: AgentInvocationResult) -> bool:
+    haystacks = [
+        result.output_text.lower(),
+        result.raw_stdout.lower(),
+        result.raw_stderr.lower(),
+    ]
+    transient_markers = (
+        "internal server error",
+        '"type":"api_error"',
+        '"type":"rate_limit_error"',
+        "rate limit",
+        "temporarily unavailable",
+        "connection reset",
+        "connection aborted",
+        "upstream connect error",
+        "timeout",
+    )
+    return result.timed_out or any(
+        marker in haystack for haystack in haystacks for marker in transient_markers
+    )
+
+
+def _persist_run_record_and_state(
+    *,
+    execution_plan: ExecutionPlan,
+    record: RunExecutionRecord,
+    runtime_state: RunRuntimeState,
+) -> None:
+    runs_dir = execution_plan.repo_root / ".oats" / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    record_name = f"{execution_plan.run_spec_path.stem}-{record.recorded_at.strftime('%Y%m%dT%H%M%SZ')}.json"
+    record_path = runs_dir / record_name
+    record.record_path = record_path
+    record_path.write_text(record.model_dump_json(indent=2))
+    status = _resolve_terminal_status(runtime_state)
+    if status in {"completed", "failed", "timed_out"}:
+        mark_run_finished(runtime_state, status=status, final_record_path=record_path)
+        append_progress_event(runtime_state, event_type="run_finished", message=status)
+    else:
+        runtime_state.status = status
+        runtime_state.updated_at = record.recorded_at
+        runtime_state.final_record_path = record_path
+    write_runtime_state(runtime_state)
+
+
+def _execute_run(
+    *,
+    config: RepoConfig,
+    execution_plan: ExecutionPlan,
+    read_only: bool,
+    timeout_seconds: int,
+    dangerous_bypass: bool,
+    skip_planner: bool,
+    runtime_state: RunRuntimeState | None = None,
+) -> tuple[RunExecutionRecord, RunRuntimeState]:
+    mode = "read-only" if read_only else "writable"
+    state = runtime_state or build_initial_runtime_state(
+        execution_plan,
+        mode=mode,
+        run_id=build_run_id(execution_plan.run_spec_path),
+        executor_agent=config.agents.executor,
+    )
+    state.mode = mode
+
+    write_plan_snapshot(build_plan_snapshot(state, execution_plan), state.runtime_dir)
+    if runtime_state is None:
+        mark_run_started(state)
+        append_progress_event(state, event_type="run_started")
+    else:
+        mark_run_resumed(state)
+        append_progress_event(state, event_type="run_resumed")
+    write_runtime_state(state)
+
+    planner_result: AgentInvocationResult | None = _invocation_runtime_to_result(state.planner)
+    if skip_planner and planner_result is None:
+        state.status = "running"
+        append_progress_event(
+            state,
+            event_type="planner_skipped",
+            message="Execution used the persisted plan directly.",
+        )
+        write_runtime_state(state)
+    elif planner_result is None:
+        planner_prompt = build_planner_prompt(
+            execution_plan.run_title,
+            execution_plan.tasks,
+            read_only=read_only,
+        )
+        state.planner = prepare_invocation_runtime(
+            agent=config.agents.planner,
+            role="planner",
+            cwd=execution_plan.repo_root,
+            prompt=planner_prompt,
+        )
+        append_progress_event(state, event_type="planner_started")
+        write_runtime_state(state)
+        planner_result = invoke_agent(
+            agent_name=config.agents.planner,
+            agent_command=config.agent[config.agents.planner],
+            role="planner",
+            cwd=execution_plan.repo_root,
+            prompt=planner_prompt,
+            read_only=read_only,
+            timeout_seconds=timeout_seconds,
+            dangerous_bypass=dangerous_bypass,
+            raise_on_nonzero=False,
+            on_heartbeat=lambda: (
+                refresh_invocation_heartbeat(state.planner),
+                setattr(state, "heartbeat_at", state.planner.last_heartbeat_at),
+                write_runtime_state(state),
+            ),
+            on_progress=lambda progress: (
+                update_invocation_progress(state.planner, **progress),
+                setattr(state, "heartbeat_at", state.planner.last_heartbeat_at),
+                write_runtime_state(state),
+            ),
+        )
+        apply_agent_result(state.planner, planner_result)
+        state.status = "running" if planner_result.exit_code == 0 and not planner_result.timed_out else (
+            "timed_out" if planner_result.timed_out else "failed"
+        )
+        append_progress_event(
+            state,
+            event_type="planner_finished",
+            message=(
+                "timed out"
+                if planner_result.timed_out
+                else f"exit_code={planner_result.exit_code}"
+            ),
+        )
+        write_runtime_state(state)
+        if state.status in {"failed", "timed_out"}:
+            record = RunExecutionRecord(
+                run_id=state.run_id,
+                run_title=execution_plan.run_title,
+                repo_root=execution_plan.repo_root,
+                config_path=execution_plan.config_path,
+                run_spec_path=execution_plan.run_spec_path,
+                mode=mode,
+                planner=planner_result,
+                integration_branch=execution_plan.integration_branch,
+                task_pr_target=execution_plan.task_pr_target,
+                final_pr_target=execution_plan.final_pr_target,
+                tasks=[],
+            )
+            return record, state
+
+    while True:
+        progress_made = _refresh_task_readiness(state)
+        runnable_tasks = [
+            task for task in execution_plan.tasks
+            if _find_runtime_task(state, task.id).status == "pending"
+        ]
+        if not runnable_tasks:
+            break
+
+        for task in runnable_tasks:
+            runtime_task = _find_runtime_task(state, task.id)
+            task_prompt = build_task_prompt(task, execution_plan.run_title, read_only=read_only)
+            while runtime_task.attempts < config.execution.max_task_attempts:
+                runtime_task.status = "running"
+                state.status = "running"
+                state.active_task_id = task.id
+                runtime_task.attempts += 1
+                runtime_task.invocation = prepare_invocation_runtime(
+                    agent=config.agents.executor,
+                    role="executor",
+                    cwd=execution_plan.repo_root,
+                    prompt=task_prompt,
+                )
+                append_progress_event(
+                    state,
+                    event_type="task_started",
+                    task_id=task.id,
+                    message=f"attempt={runtime_task.attempts}",
+                )
+                write_runtime_state(state)
+                result = invoke_agent(
+                    agent_name=config.agents.executor,
+                    agent_command=config.agent[config.agents.executor],
+                    role="executor",
+                    cwd=execution_plan.repo_root,
+                    prompt=task_prompt,
+                    read_only=read_only,
+                    timeout_seconds=timeout_seconds,
+                    dangerous_bypass=dangerous_bypass,
+                    raise_on_nonzero=False,
+                    on_heartbeat=lambda inv=runtime_task.invocation: (
+                        refresh_invocation_heartbeat(inv),
+                        setattr(state, "heartbeat_at", inv.last_heartbeat_at),
+                        write_runtime_state(state),
+                    ),
+                    on_progress=lambda progress, inv=runtime_task.invocation: (
+                        update_invocation_progress(inv, **progress),
+                        setattr(state, "heartbeat_at", inv.last_heartbeat_at),
+                        write_runtime_state(state),
+                    ),
+                )
+                apply_agent_result(runtime_task.invocation, result)
+                if result.exit_code == 0 and not result.timed_out:
+                    runtime_task.status = "succeeded"
+                    append_progress_event(
+                        state,
+                        event_type="task_finished",
+                        task_id=task.id,
+                        message=f"exit_code={result.exit_code}",
+                    )
+                    write_runtime_state(state)
+                    state.active_task_id = None
+                    progress_made = True
+                    break
+
+                transient = _is_transient_failure(result)
+                attempts_left = config.execution.max_task_attempts - runtime_task.attempts
+                if transient and attempts_left > 0:
+                    runtime_task.status = "pending"
+                    append_progress_event(
+                        state,
+                        event_type="task_retry_scheduled",
+                        task_id=task.id,
+                        message=(
+                            f"attempt={runtime_task.attempts} retrying after transient failure"
+                        ),
+                    )
+                    write_runtime_state(state)
+                    time.sleep(config.execution.retry_backoff_seconds)
+                    continue
+
+                if result.timed_out:
+                    runtime_task.status = "timed_out"
+                    state.status = "timed_out"
+                else:
+                    runtime_task.status = "failed"
+                    state.status = "failed"
+                append_progress_event(
+                    state,
+                    event_type="task_finished",
+                    task_id=task.id,
+                    message=(
+                        "timed out" if result.timed_out else f"exit_code={result.exit_code}"
+                    ),
+                )
+                write_runtime_state(state)
+                break
+
+            if runtime_task.status in {"timed_out", "failed"}:
+                break
+        if state.status in {"timed_out", "failed"}:
+            break
+        if not progress_made and not any(
+            _find_runtime_task(state, task.id).status == "pending"
+            for task in execution_plan.tasks
+        ):
+            break
+
+    if state.status not in {"failed", "timed_out"} and _has_unfinished_tasks(state):
+        state.status = "pending"
+    elif state.status not in {"failed", "timed_out"}:
+        state.status = "completed"
+
+    task_records = _build_task_records_from_runtime(state)
+    record = RunExecutionRecord(
+        run_id=state.run_id,
+        run_title=execution_plan.run_title,
+        repo_root=execution_plan.repo_root,
+        config_path=execution_plan.config_path,
+        run_spec_path=execution_plan.run_spec_path,
+        mode=mode,
+        planner=planner_result,
+        integration_branch=execution_plan.integration_branch,
+        task_pr_target=execution_plan.task_pr_target,
+        final_pr_target=execution_plan.final_pr_target,
+        tasks=task_records,
+    )
+    return record, state
+
+
+@app.callback()
+def callback() -> None:
+    """Overnight Oats CLI."""
+
+
+@app.command()
+def plan(
+    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+) -> None:
+    """Parse a Markdown run spec and print the resolved plan."""
+
+    search_root = repo.resolve() if repo else run_spec.resolve().parent
+
+    try:
+        config_path = find_repo_config(search_root)
+        config = load_repo_config(config_path)
+        run = parse_run_spec(run_spec.resolve())
+        execution_plan = build_execution_plan(
+            config=config,
+            run_spec=run,
+            repo_root=config_path.parent.parent,
+            config_path=config_path,
+        )
+    except (RepoConfigError, RunSpecParseError, PlanError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        Panel.fit(
+            f"Run: [bold]{execution_plan.run_title}[/bold]\n"
+            f"Repo: {execution_plan.repo_root}\n"
+            f"Config: {execution_plan.config_path}\n"
+            f"Spec: {execution_plan.run_spec_path}\n"
+            f"Integration branch: {execution_plan.integration_branch}\n"
+            f"Task PR target: {execution_plan.task_pr_target}\n"
+            f"Final PR target: {execution_plan.final_pr_target}",
+            title="Execution Plan",
+        )
+    )
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Task")
+    table.add_column("Branch")
+    table.add_column("PR Base")
+    table.add_column("Depends On")
+    table.add_column("Validation")
+    table.add_column("Prompt")
+
+    for task in execution_plan.tasks:
+        depends_on = ", ".join(task.depends_on) if task.depends_on else "-"
+        validation = ", ".join(task.validation_commands) if task.validation_commands else "-"
+        table.add_row(
+            f"{task.id} ({task.title})",
+            task.branch_name,
+            task.pr_base,
+            depends_on,
+            validation,
+            task.prompt,
+        )
+
+    console.print(table)
+
+
+@app.command("pr-plan")
+def pr_plan(
+    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+) -> None:
+    """Print the Git and gh commands for task PRs into the integration branch and the final PR to main."""
+
+    search_root = repo.resolve() if repo else run_spec.resolve().parent
+
+    try:
+        config_path = find_repo_config(search_root)
+        config = load_repo_config(config_path)
+        run = parse_run_spec(run_spec.resolve())
+        execution_plan = build_execution_plan(
+            config=config,
+            run_spec=run,
+            repo_root=config_path.parent.parent,
+            config_path=config_path,
+        )
+    except (RepoConfigError, RunSpecParseError, PlanError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        Panel.fit(
+            f"Integration branch: {execution_plan.integration_branch}\n"
+            f"Task PR target: {execution_plan.task_pr_target}\n"
+            f"Final PR target: {execution_plan.final_pr_target}\n"
+            f"Auto-merge task PRs: {'yes' if config.git.auto_merge_task_prs_into_integration else 'no'}\n"
+            f"Merge operator: {config.agents.merge_operator}",
+            title="PR Workflow",
+        )
+    )
+
+    console.print("[bold]Integration branch setup[/bold]")
+    for command in build_integration_branch_commands(execution_plan):
+        console.print(shlex.join(command), markup=False)
+
+    task_prs = build_task_pr_plans(execution_plan)
+    console.print("\n[bold]Task PR sequence[/bold]")
+    for task_pr in task_prs:
+        console.print(f"# {task_pr.task_id}")
+        console.print(shlex.join(build_pr_create_command(task_pr)), markup=False)
+        if config.git.auto_merge_task_prs_into_integration:
+            console.print(
+                f"{config.agents.merge_operator} will merge {task_pr.head_branch} into {execution_plan.integration_branch}",
+                markup=False,
+            )
+
+    if config.git.auto_merge_task_prs_into_integration and config.git.auto_create_final_pr:
+        final_pr = build_final_pr_plan(execution_plan)
+        console.print("\n[bold]Final PR[/bold]")
+        console.print(shlex.join(build_pr_create_command(final_pr)), markup=False)
+    else:
+        console.print("\n[bold]Final PR[/bold]")
+        console.print("Skipped until task PRs are merged into the integration branch.", markup=False)
+
+
+@app.command("pr-apply")
+def pr_apply(
+    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute/--dry-run",
+        help="Run git and gh commands instead of only recording them.",
+    ),
+) -> None:
+    """Apply the PR workflow: create task PRs into the integration branch, merge them, then create the final PR."""
+
+    search_root = repo.resolve() if repo else run_spec.resolve().parent
+
+    try:
+        config_path = find_repo_config(search_root)
+        config = load_repo_config(config_path)
+        run = parse_run_spec(run_spec.resolve())
+        execution_plan = build_execution_plan(
+            config=config,
+            run_spec=run,
+            repo_root=config_path.parent.parent,
+            config_path=config_path,
+        )
+        apply_record = execute_pr_plan(
+            execution_plan,
+            config,
+            execute=execute,
+        )
+    except (RepoConfigError, RunSpecParseError, PlanError, RuntimeError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    runs_dir = execution_plan.repo_root / ".oats" / "pr-runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    record_name = f"{execution_plan.run_spec_path.stem}-{apply_record.recorded_at.strftime('%Y%m%dT%H%M%SZ')}.json"
+    record_path = runs_dir / record_name
+    apply_record.record_path = record_path
+    record_path.write_text(apply_record.model_dump_json(indent=2))
+
+    console.print(
+        Panel.fit(
+            f"Run: [bold]{apply_record.run_title}[/bold]\n"
+            f"Repo: {apply_record.repo_root}\n"
+            f"Integration branch: {apply_record.integration_branch}\n"
+            f"Final PR target: {apply_record.final_pr_target}\n"
+            f"Auto-merge task PRs: {'yes' if apply_record.auto_merge_enabled else 'no'}\n"
+            f"Final PR created: {'yes' if apply_record.final_pr_created else 'no'}\n"
+            f"Mode: {'execute' if apply_record.executed else 'dry-run'}\n"
+            f"Record: {apply_record.record_path}",
+            title="PR Apply",
+        )
+    )
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Label")
+    table.add_column("Executed")
+    table.add_column("Exit")
+    table.add_column("Agent")
+    table.add_column("Session")
+    table.add_column("Command")
+
+    for command_record in apply_record.commands:
+        table.add_row(
+            command_record.label,
+            "yes" if command_record.executed else "no",
+            str(command_record.exit_code),
+            command_record.agent or "-",
+            command_record.session_id or "-",
+            shlex.join(command_record.command),
+        )
+
+    console.print(table)
+
+
+@app.command()
+def run(
+    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+    read_only: bool = typer.Option(
+        True,
+        "--read-only/--allow-writes",
+        help="Invoke agents in non-destructive mode.",
+    ),
+    timeout_seconds: int = typer.Option(
+        20,
+        "--timeout-seconds",
+        min=1,
+        help="Maximum time to wait for each provider call before returning partial session metadata.",
+    ),
+    dangerous_bypass: bool = typer.Option(
+        False,
+        "--dangerous-bypass",
+        help="When writes are allowed, invoke Codex/Claude with permission-bypass flags.",
+    ),
+    skip_planner: bool = typer.Option(
+        True,
+        "--skip-planner/--run-planner",
+        help="Use the persisted execution plan directly instead of waiting on a separate planner agent step.",
+    ),
+) -> None:
+    """Execute an OATS run and persist intermediary runtime state."""
+
+    try:
+        config, _, execution_plan = _load_execution_plan(run_spec, repo)
+    except (RepoConfigError, RunSpecParseError, PlanError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    try:
+        record, runtime_state = _execute_run(
+            config=config,
+            execution_plan=execution_plan,
+            read_only=read_only,
+            timeout_seconds=timeout_seconds,
+            dangerous_bypass=dangerous_bypass,
+            skip_planner=skip_planner,
+        )
+    except AgentInvocationError as exc:
+        console.print(f"[red]Execution error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    _persist_run_record_and_state(
+        execution_plan=execution_plan,
+        record=record,
+        runtime_state=runtime_state,
+    )
+    _print_execution_record(record, runtime_state)
+
+
+@app.command()
+def resume(
+    run_id: str | None = typer.Argument(
+        None,
+        help="Run id to resume. If omitted, the most recent runtime state is used.",
+    ),
+    state_file: Path | None = typer.Option(
+        None,
+        "--state-file",
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Explicit path to a .oats/runtime/<run-id>/state.json file.",
+    ),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+    read_only: bool = typer.Option(
+        True,
+        "--read-only/--allow-writes",
+        help="Invoke agents in non-destructive mode.",
+    ),
+    timeout_seconds: int = typer.Option(
+        20,
+        "--timeout-seconds",
+        min=1,
+        help="Maximum time to wait for each provider call before returning partial session metadata.",
+    ),
+    dangerous_bypass: bool = typer.Option(
+        False,
+        "--dangerous-bypass",
+        help="When writes are allowed, invoke Codex/Claude with permission-bypass flags.",
+    ),
+    retry_failed: bool = typer.Option(
+        False,
+        "--retry-failed",
+        help="Reset failed/timed-out tasks back to pending before resuming.",
+    ),
+    skip_planner: bool = typer.Option(
+        True,
+        "--skip-planner/--run-planner",
+        help="Use the persisted execution plan directly instead of waiting on a separate planner agent step.",
+    ),
+) -> None:
+    """Resume an interrupted OATS run from its persisted runtime state."""
+
+    search_root = repo.resolve() if repo else Path.cwd()
+
+    try:
+        config_path = find_repo_config(search_root)
+        config = load_repo_config(config_path)
+        runtime_state = resolve_runtime_state(
+            config_path.parent.parent,
+            run_id=run_id,
+            state_path=state_file.resolve() if state_file else None,
+        )
+        if retry_failed:
+            _prepare_retryable_tasks(runtime_state)
+            write_runtime_state(runtime_state)
+        if runtime_state.status == "completed":
+            console.print(
+                f"[yellow]Run {runtime_state.run_id} is already completed.[/yellow]"
+            )
+            raise typer.Exit(code=0)
+        execution_plan = build_execution_plan(
+            config=config,
+            run_spec=parse_run_spec(runtime_state.run_spec_path),
+            repo_root=config_path.parent.parent,
+            config_path=config_path,
+        )
+        record, updated_state = _execute_run(
+            config=config,
+            execution_plan=execution_plan,
+            read_only=read_only,
+            timeout_seconds=timeout_seconds,
+            dangerous_bypass=dangerous_bypass,
+            skip_planner=skip_planner,
+            runtime_state=runtime_state,
+        )
+    except (RepoConfigError, RunSpecParseError, PlanError, FileNotFoundError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    _persist_run_record_and_state(
+        execution_plan=execution_plan,
+        record=record,
+        runtime_state=updated_state,
+    )
+    _print_execution_record(record, updated_state)
+
+
+def main() -> None:
+    app()
+
+
+if __name__ == "__main__":
+    main()

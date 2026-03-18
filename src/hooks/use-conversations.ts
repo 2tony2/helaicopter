@@ -11,10 +11,24 @@ import type {
   ConversationDagSummary,
   DatabaseStatus,
   EvaluationPrompt,
+  OvernightOatsRunRecord,
   SubscriptionSettings,
 } from "@/lib/types";
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+import * as endpoints from "@/lib/client/endpoints";
+import { requestJson } from "@/lib/client/fetcher";
+import {
+  normalizeAnalytics,
+  normalizeConversationEvaluations,
+  normalizeConversationDag,
+  normalizeConversationDagSummaries,
+  normalizeConversationDetail,
+  normalizeConversations,
+  normalizeDatabaseStatus,
+  normalizeEvaluationPrompts,
+  normalizeProjects,
+  normalizeSubscriptionSettings,
+  normalizeTasks,
+} from "@/lib/client/normalize";
 
 const swrOptions = {
   revalidateOnFocus: false,
@@ -37,32 +51,43 @@ const projectsSwrOptions = {
 };
 
 export function useProjects() {
-  return useSWR<ProjectInfo[]>("/api/projects", fetcher, projectsSwrOptions);
+  return useSWR<ProjectInfo[]>(
+    endpoints.projects(),
+    (url: string) => requestJson(url, undefined, normalizeProjects),
+    projectsSwrOptions
+  );
 }
 
 export function useConversations(project?: string, days?: number) {
-  const params = new URLSearchParams();
-  if (project) params.set("project", project);
-  if (days) params.set("days", String(days));
-  const qs = params.toString();
-  const url = `/api/conversations${qs ? `?${qs}` : ""}`;
-  return useSWR<ConversationSummary[]>(url, fetcher, conversationSwrOptions);
+  return useSWR<ConversationSummary[]>(
+    endpoints.conversations({ project, days }),
+    (url: string) => requestJson(url, undefined, normalizeConversations),
+    conversationSwrOptions
+  );
 }
 
 export function useConversation(projectPath?: string, sessionId?: string) {
   const url =
     projectPath && sessionId
-      ? `/api/conversations/${encodeURIComponent(projectPath)}/${sessionId}`
+      ? endpoints.conversation(projectPath, sessionId)
       : null;
-  return useSWR<ProcessedConversation>(url, fetcher, conversationSwrOptions);
+  return useSWR<ProcessedConversation>(
+    url,
+    (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationDetail),
+    conversationSwrOptions
+  );
 }
 
 export function useConversationDag(projectPath?: string, sessionId?: string) {
   const url =
     projectPath && sessionId
-      ? `/api/conversations/${encodeURIComponent(projectPath)}/${sessionId}/dag`
+      ? endpoints.conversationDag(projectPath, sessionId)
       : null;
-  return useSWR<ConversationDag>(url, fetcher, conversationSwrOptions);
+  return useSWR<ConversationDag>(
+    url,
+    (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationDag),
+    conversationSwrOptions
+  );
 }
 
 export function useConversationDagSummaries(
@@ -70,33 +95,36 @@ export function useConversationDagSummaries(
   days?: number,
   provider?: string
 ) {
-  const params = new URLSearchParams();
-  if (project) params.set("project", project);
-  if (days) params.set("days", String(days));
-  if (provider && provider !== "all") params.set("provider", provider);
-  const qs = params.toString();
   return useSWR<ConversationDagSummary[]>(
-    `/api/conversation-dags${qs ? `?${qs}` : ""}`,
-    fetcher,
+    endpoints.conversationDags({ project, days, provider }),
+    (url: string) => requestJson(url, undefined, normalizeConversationDagSummaries),
+    conversationSwrOptions
+  );
+}
+
+export function useOvernightOatsRuns() {
+  return useSWR<OvernightOatsRunRecord[]>(
+    endpoints.orchestrationOats(),
+    (url: string) => requestJson<OvernightOatsRunRecord[]>(url),
     conversationSwrOptions
   );
 }
 
 export function useAnalytics(days?: number, provider?: string) {
-  const params = new URLSearchParams();
-  if (days) params.set("days", String(days));
-  if (provider && provider !== "all") params.set("provider", provider);
-  const qs = params.toString();
   return useSWR<AnalyticsData>(
-    `/api/analytics${qs ? `?${qs}` : ""}`,
-    fetcher,
+    endpoints.analytics({ days, provider }),
+    (url: string) => requestJson(url, undefined, normalizeAnalytics),
     analyticsSwrOptions
   );
 }
 
 export function useTasks(sessionId?: string) {
-  const url = sessionId ? `/api/tasks/${sessionId}` : null;
-  return useSWR<unknown[]>(url, fetcher, conversationSwrOptions);
+  const url = sessionId ? endpoints.tasks(sessionId) : null;
+  return useSWR<unknown[]>(
+    url,
+    (readUrl: string) => requestJson(readUrl, undefined, normalizeTasks),
+    conversationSwrOptions
+  );
 }
 
 export function useSubagentConversation(
@@ -106,34 +134,54 @@ export function useSubagentConversation(
 ) {
   const url =
     projectPath && sessionId && agentId
-      ? `/api/subagents/${encodeURIComponent(projectPath)}/${sessionId}/${agentId}`
+      ? endpoints.subagent(projectPath, sessionId, agentId)
       : null;
-  return useSWR<ProcessedConversation>(url, fetcher, conversationSwrOptions);
+  return useSWR<ProcessedConversation>(
+    url,
+    (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationDetail),
+    conversationSwrOptions
+  );
 }
 
 export function useDatabaseStatus() {
-  return useSWR<DatabaseStatus>("/api/databases/status", fetcher, {
+  return useSWR<DatabaseStatus>(
+    endpoints.databaseStatus(),
+    (url: string) => requestJson(url, undefined, normalizeDatabaseStatus),
+    {
     ...swrOptions,
     refreshInterval: 300_000,
-  });
+    }
+  );
 }
 
 export function useEvaluationPrompts() {
-  return useSWR<EvaluationPrompt[]>("/api/evaluation-prompts", fetcher, swrOptions);
+  return useSWR<EvaluationPrompt[]>(
+    endpoints.evaluationPrompts(),
+    (url: string) => requestJson(url, undefined, normalizeEvaluationPrompts),
+    swrOptions
+  );
 }
 
 export function useConversationEvaluations(projectPath?: string, sessionId?: string) {
   const url =
     projectPath && sessionId
-      ? `/api/conversations/${encodeURIComponent(projectPath)}/${sessionId}/evaluations`
+      ? endpoints.conversationEvaluations(projectPath, sessionId)
       : null;
-  return useSWR<ConversationEvaluation[]>(url, fetcher, {
+  return useSWR<ConversationEvaluation[]>(
+    url,
+    (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationEvaluations),
+    {
     ...swrOptions,
     refreshInterval: (evaluations) =>
       evaluations?.some((evaluation) => evaluation.status === "running") ? 3_000 : 0,
-  });
+    }
+  );
 }
 
 export function useSubscriptionSettings() {
-  return useSWR<SubscriptionSettings>("/api/subscription-settings", fetcher, swrOptions);
+  return useSWR<SubscriptionSettings>(
+    endpoints.subscriptionSettings(),
+    (url: string) => requestJson(url, undefined, normalizeSubscriptionSettings),
+    swrOptions
+  );
 }

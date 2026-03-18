@@ -7,7 +7,22 @@ dependencies = [
   "alembic>=1.14.1",
   "duckdb>=1.4.0",
   "duckdb-engine>=0.17.0",
+  "fastapi>=0.115.0",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.6.0",
+  "rich>=13.7.0",
   "sqlalchemy>=2.0.38",
+  "typer>=0.12.3",
+  "uvicorn>=0.34.0",
+]
+
+[project.scripts]
+oats = "oats.cli:app"
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28.0",
+  "pytest>=8.0.0",
 ]
 
 [build-system]
@@ -19,6 +34,9 @@ package-dir = {"" = "python"}
 
 [tool.setuptools.packages.find]
 where = ["python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.uv]
 package = true

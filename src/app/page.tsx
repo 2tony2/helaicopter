@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAnalytics, useSubscriptionSettings } from "@/hooks/use-conversations";
+import { saveSubscriptionSettings as persistSubscriptionSettings } from "@/lib/client/mutations";
 import { StatsCard } from "@/components/analytics/stats-card";
 import {
   DailyUsageChart,
@@ -69,14 +70,7 @@ export default function AnalyticsPage() {
 
     setIsSavingSubscriptions(true);
     try {
-      const response = await fetch("/api/subscription-settings", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(draftSettings),
-      });
-      const body = (await response.json()) as SubscriptionSettings;
+      const body = await persistSubscriptionSettings(draftSettings);
       await mutateSubscriptionSettings(body, false);
     } finally {
       setIsSavingSubscriptions(false);

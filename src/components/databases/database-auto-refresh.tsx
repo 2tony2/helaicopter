@@ -1,19 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { refreshDatabase } from "@/lib/client/mutations";
 
 export function DatabaseAutoRefresh() {
   useEffect(() => {
     const refresh = () => {
-      void fetch("/api/databases/refresh", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          force: false,
-          trigger: "auto",
-        }),
+      void refreshDatabase({
+        force: false,
+        trigger: "auto",
       }).catch(() => {
         // Background refresh failures surface through the status endpoint.
       });

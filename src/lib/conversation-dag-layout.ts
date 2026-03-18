@@ -1,27 +1,35 @@
 import dagre from "@dagrejs/dagre";
 import { Position, type Edge, type Node } from "@xyflow/react";
 
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 128;
+const DEFAULT_NODE_WIDTH = 260;
+const DEFAULT_NODE_HEIGHT = 128;
 
 export function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
-  direction: "TB" | "LR" = "TB"
+  direction: "TB" | "LR" = "TB",
+  options?: {
+    nodeWidth?: number;
+    nodeHeight?: number;
+  }
 ): { nodes: Node[]; edges: Edge[] } {
+  const nodeWidth = options?.nodeWidth ?? DEFAULT_NODE_WIDTH;
+  const nodeHeight = options?.nodeHeight ?? DEFAULT_NODE_HEIGHT;
   const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: direction,
-    nodesep: direction === "LR" ? 48 : 28,
+    nodesep: direction === "LR" ? 48 : 40,
     ranksep: direction === "LR" ? 92 : 96,
     marginx: 24,
     marginy: 24,
+    ranker: "longest-path",
+    align: "UL",
   });
 
   nodes.forEach((node) => {
     graph.setNode(node.id, {
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
+      width: nodeWidth,
+      height: nodeHeight,
     });
   });
 
@@ -39,8 +47,8 @@ export function getLayoutedElements(
         targetPosition: direction === "LR" ? Position.Left : Position.Top,
         sourcePosition: direction === "LR" ? Position.Right : Position.Bottom,
         position: {
-          x: position.x - NODE_WIDTH / 2,
-          y: position.y - NODE_HEIGHT / 2,
+          x: position.x - nodeWidth / 2,
+          y: position.y - nodeHeight / 2,
         },
       };
     }),

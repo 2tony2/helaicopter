@@ -1,0 +1,54 @@
+[repo]
+base_branch = "main"
+worktree_dir = ".oats-worktrees"
+default_concurrency = 3
+
+[agents]
+planner = "codex"
+executor = "codex"
+conflict_resolver = "claude"
+merge_operator = "codex"
+
+[agent.codex]
+command = "codex"
+args = ["exec"]
+
+[agent.claude]
+command = "claude"
+args = []
+
+[validation]
+commands = [
+  "npm run lint",
+  "uv run --group dev pytest -q",
+]
+fail_fast = true
+
+[git]
+task_branch_prefix = "oats/task/"
+integration_branch_prefix = "oats/overnight/"
+integration_branch_base = "main"
+final_pr_target = "main"
+auto_push = true
+auto_create_task_prs = true
+auto_merge_task_prs_into_integration = false
+auto_create_final_pr = true
+require_manual_final_review = true
+delete_worktree_on_success = true
+
+[conflicts]
+enabled = true
+max_resolution_attempts = 2
+revalidate_after_resolution = true
+
+[planner]
+allow_inferred_dependencies = true
+prefer_explicit_dependencies = true
+
+[logging]
+session_dir = "~/.overnightoats/sessions"
+persist_format = "sqlite"
+write_markdown_report = true
+
+[context]
+instruction_files = ["AGENTS.md"]

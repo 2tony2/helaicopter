@@ -2,17 +2,26 @@
 
 import useSWR from "swr";
 import type { PlanSummary, PlanDetail } from "@/lib/types";
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+import * as endpoints from "@/lib/client/endpoints";
+import { requestJson } from "@/lib/client/fetcher";
+import { normalizePlan, normalizePlans } from "@/lib/client/normalize";
 
 const swrOptions = {
   revalidateOnFocus: false,
 };
 
 export function usePlans() {
-  return useSWR<PlanSummary[]>("/api/plans", fetcher, swrOptions);
+  return useSWR<PlanSummary[]>(
+    endpoints.plans(),
+    (url: string) => requestJson(url, undefined, normalizePlans),
+    swrOptions
+  );
 }
 
 export function usePlan(slug?: string) {
-  return useSWR<PlanDetail>(slug ? `/api/plans/${slug}` : null, fetcher, swrOptions);
+  return useSWR<PlanDetail>(
+    slug ? endpoints.plan(slug) : null,
+    (url: string) => requestJson(url, undefined, normalizePlan),
+    swrOptions
+  );
 }

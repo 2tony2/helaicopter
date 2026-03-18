@@ -98,6 +98,9 @@ export interface ConversationSummary {
   threadType: "main" | "subagent";
   firstMessage: string;
   timestamp: number;
+  createdAt: number;
+  lastUpdatedAt: number;
+  isRunning: boolean;
   messageCount: number;
   model?: string;
   totalInputTokens: number;
@@ -176,6 +179,124 @@ export interface ConversationDagSummary extends ConversationSummary {
   dag: ConversationDagStats;
 }
 
+export interface OrchestrationInvocation {
+  agent: string;
+  role: string;
+  command: string[];
+  cwd: string;
+  prompt: string;
+  sessionId?: string | null;
+  sessionIdField?: string | null;
+  requestedSessionId?: string | null;
+  outputText: string;
+  rawStdout: string;
+  rawStderr: string;
+  exitCode: number;
+  timedOut: boolean;
+  startedAt: string;
+  finishedAt: string;
+  projectPath?: string;
+  conversationPath?: string;
+}
+
+export type OrchestrationTaskStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "timed_out"
+  | "skipped"
+  | "blocked";
+
+export type OrchestrationRunStatus =
+  | "pending"
+  | "planning"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timed_out";
+
+export interface OrchestrationTaskRecord {
+  taskId: string;
+  title: string;
+  dependsOn: string[];
+  status: OrchestrationTaskStatus;
+  attempts: number;
+  invocation: OrchestrationInvocation;
+}
+
+export interface OrchestrationDagNode {
+  id: string;
+  kind: "planner" | "task";
+  label: string;
+  description?: string;
+  role: string;
+  agent: string;
+  sessionId?: string | null;
+  projectPath?: string;
+  conversationPath?: string;
+  status: OrchestrationTaskStatus | OrchestrationRunStatus;
+  isActive: boolean;
+  attempts?: number;
+  lastHeartbeatAt?: string | null;
+  exitCode: number;
+  timedOut: boolean;
+  depth: number;
+}
+
+export interface OrchestrationDagEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+}
+
+export interface OrchestrationDagStats {
+  totalNodes: number;
+  totalEdges: number;
+  maxDepth: number;
+  maxBreadth: number;
+  rootCount: number;
+  providerBreakdown: Record<string, number>;
+  timedOutCount: number;
+  activeCount: number;
+  pendingCount: number;
+  failedCount: number;
+  succeededCount: number;
+}
+
+export interface OrchestrationDag {
+  nodes: OrchestrationDagNode[];
+  edges: OrchestrationDagEdge[];
+  stats: OrchestrationDagStats;
+}
+
+export interface OvernightOatsRunRecord {
+  source: "overnight-oats";
+  contractVersion: "oats-run-v1" | "oats-runtime-v1";
+  runId: string;
+  runTitle: string;
+  repoRoot: string;
+  configPath: string;
+  runSpecPath: string;
+  mode: string;
+  integrationBranch: string;
+  taskPrTarget: string;
+  finalPrTarget: string;
+  status: OrchestrationRunStatus;
+  activeTaskId?: string | null;
+  heartbeatAt?: string | null;
+  finishedAt?: string | null;
+  planner: OrchestrationInvocation | null;
+  tasks: OrchestrationTaskRecord[];
+  createdAt: string;
+  lastUpdatedAt: string;
+  isRunning: boolean;
+  recordedAt: string;
+  recordPath: string;
+  dag: OrchestrationDag;
+}
+
 /** Per-tool or per-category context breakdown */
 export interface ContextBucket {
   label: string;
@@ -243,6 +364,9 @@ export interface ConversationPlan {
 export interface ProcessedConversation {
   sessionId: string;
   projectPath: string;
+  createdAt: number;
+  lastUpdatedAt: number;
+  isRunning: boolean;
   messages: ProcessedMessage[];
   plans: ConversationPlan[];
   totalUsage: TokenUsage;

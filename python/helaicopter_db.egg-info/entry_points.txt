@@ -1,0 +1,2 @@
+[console_scripts]
+oats = oats.cli:app

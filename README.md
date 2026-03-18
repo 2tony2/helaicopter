@@ -9,19 +9,73 @@ A local Next.js app for browsing your [Claude Code](https://docs.anthropic.com/e
 git clone https://github.com/curative/helaicopter.git
 cd helaicopter
 npm install
+uv sync --group dev
 
-# Run
+# Terminal 1: run the frontend
 npm run dev
+
+# Terminal 2: run the FastAPI backend
+npm run api:dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+## Integrated Tooling
+
+This repo now also vendors the `overnight-oats` orchestration CLI as the `oats` Python package. That keeps the repo-local agent workflow tooling next to the app and database code instead of split across multiple repositories.
+
+```bash
+# inspect a run spec
+uv run oats plan examples/sample_run.md
+
+# or through npm
+npm run oats -- plan examples/sample_run.md
+```
+
+The default repo policy lives in `.oats/config.toml`, sample run specs live in `examples/`, and the Python implementation lives in `python/oats/`.
 
 ## Requirements
 
 - **Node.js** 20+ (22+ recommended)
 - **npm** 10+
+- **Python** 3.13+
+- **uv** 0.6+
 - **Claude Code** and/or **Codex** installed (the app reads from `~/.claude/` and `~/.codex/`)
-- **Go** 1.26+ if you want to run the live ingestion service
+
+## Local Development
+
+Run the app as two local processes:
+
+```bash
+# Terminal 1
+npm run dev
+
+# Terminal 2
+npm run api:dev
+```
+
+- The Next.js frontend serves on `http://localhost:3000`.
+- The FastAPI backend serves on `http://127.0.0.1:8000`.
+- When the frontend runs on `localhost:3000` and `NEXT_PUBLIC_API_BASE_URL` is unset, [`src/lib/client/endpoints.ts`](/Users/tony/Code/helaicopter/src/lib/client/endpoints.ts) automatically targets `http://localhost:8000`.
+- If you want the frontend to use a different backend origin, set `NEXT_PUBLIC_API_BASE_URL` before starting `npm run dev`.
+
+Backend settings are read from `HELA_*` environment variables in [`python/helaicopter_api/server/config.py`](/Users/tony/Code/helaicopter/python/helaicopter_api/server/config.py). The most useful local overrides are:
+
+```bash
+HELA_PROJECT_ROOT=/path/to/helaicopter
+HELA_CLAUDE_DIR=/path/to/.claude
+HELA_CODEX_DIR=/path/to/.codex
+HELA_OATS_RUNTIME_DIR=/path/to/.oats/runtime
+```
+
+Useful local checks:
+
+```bash
+curl http://127.0.0.1:8000/health
+open http://127.0.0.1:8000/openapi.json
+```
+
+The migration runbook and validation checklist live in [`docs/fastapi-backend-rollout.md`](/Users/tony/Code/helaicopter/docs/fastapi-backend-rollout.md).
 
 ## Features
 
@@ -85,6 +139,13 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 - **ClickHouse** is the primary analytics and event store for warehouse-style reads.
 - **DuckDB** is no longer on the primary serving path. If present, it is only a legacy/local inspection artifact surfaced on the Databases page.
 
+## Frontend/Backend Split
+
+- [`src/`](/Users/tony/Code/helaicopter/src) is frontend-only code: App Router pages, React components, hooks, and HTTP clients.
+- [`python/helaicopter_api/`](/Users/tony/Code/helaicopter/python/helaicopter_api) owns the backend surface: FastAPI app creation, dependency wiring, routers, and application services.
+- [`python/oats/`](/Users/tony/Code/helaicopter/python/oats) contains the orchestration CLI packaged alongside the backend code.
+- The removed Next.js route-handler layer is no longer part of the runtime. Frontend callers now hit FastAPI routes directly.
+
 ## How It Works
 
 ### Data Sources
@@ -138,59 +199,49 @@ Costs are estimated per-conversation using the actual model from the conversatio
 ## Project Structure
 
 ```
+python/
+├── helaicopter_api/               # FastAPI backend and application services
+└── oats/                          # Orchestration CLI package
 src/
-├── app/
-│   ├── layout.tsx                  # Root layout with sidebar
-│   ├── page.tsx                    # Analytics homepage
+├── app/                           # Frontend routes and layouts only
+│   ├── layout.tsx                 # Root layout with sidebar
+│   ├── page.tsx                   # Analytics homepage
 │   ├── conversations/
-│   │   ├── page.tsx                # Conversation list
+│   │   ├── page.tsx               # Conversation list
 │   │   └── [projectPath]/[sessionId]/page.tsx
 │   ├── plans/
-│   │   ├── page.tsx                # Plans list
-│   │   └── [slug]/page.tsx         # Plan viewer
-│   ├── pricing/page.tsx            # Pricing reference
-│   └── api/                        # Server-side API routes
-│       ├── conversations/          # List + detail
-│       ├── subagents/              # Sub-agent conversation
-│       ├── plans/                  # Plans list + detail
-│       ├── analytics/              # Aggregated analytics
-│       ├── projects/               # Project list
-│       ├── history/                # Command history
-│       └── tasks/                  # Session tasks
-├── lib/
-│   ├── types.ts                    # All TypeScript types
-│   ├── constants.ts                # Paths, Claude + OpenAI pricing tables
-│   ├── pricing.ts                  # Cost calculation utilities
-│   ├── jsonl-parser.ts             # Streaming Claude JSONL parser
-│   ├── codex-types.ts              # Codex JSONL event types
-│   ├── codex-jsonl-parser.ts       # Streaming Codex JSONL parser
-│   ├── codex-conversation-processor.ts  # Codex events → display model
-│   ├── codex-data.ts               # Codex data access (sessions + SQLite)
-│   ├── claude-data.ts              # Unified data access layer (Claude + Codex)
-│   ├── conversation-processor.ts   # Claude events → display model + context analytics
-│   ├── path-encoding.ts            # Project path encoding
-│   ├── cache.ts                    # In-memory LRU cache
-│   └── utils.ts                    # cn(), model badge helpers
-├── hooks/
-│   ├── use-conversations.ts        # SWR hooks
-│   └── use-plans.ts
-└── components/
-    ├── ui/                         # shadcn-style primitives + provider filter
-    ├── layout/app-sidebar.tsx      # Sidebar navigation
-    ├── conversation/
-    │   ├── conversation-list.tsx    # With provider filter + model badges
-    │   ├── conversation-viewer.tsx  # Tabs: messages, context, subagents, tasks, raw
-    │   ├── message-card.tsx
-    │   ├── thinking-block.tsx
-    │   ├── tool-call-block.tsx
-    │   ├── token-usage-badge.tsx    # 4-badge split with cost
-    │   └── context-tab.tsx          # Per-tool/step context analytics
-    ├── plans/plan-viewer.tsx
-    └── analytics/
-        ├── stats-card.tsx
-        └── charts.tsx
+│   │   ├── page.tsx               # Plans list
+│   │   └── [slug]/page.tsx        # Plan viewer
+│   └── pricing/page.tsx           # Pricing reference
+├── components/                    # React UI building blocks
+├── hooks/                         # SWR data hooks
+└── lib/
+    ├── client/                    # FastAPI endpoint builders, fetchers, mutations
+    ├── constants.ts               # Shared pricing tables
+    ├── evaluation-models.ts       # Frontend evaluation form options
+    ├── path-encoding.ts           # Project path display helpers
+    ├── pricing.ts                 # Cost calculation utilities
+    ├── types.ts                   # Frontend data contracts
+    └── utils.ts                   # UI helper utilities
 ```
 
+Compatibility shim: [`src/lib/client/normalize.ts`](/Users/tony/Code/helaicopter/src/lib/client/normalize.ts) still accepts the legacy camelCase Next.js payload shape as well as the FastAPI snake_case schema so cached fixtures and in-flight responses continue to normalize during rollout cleanup.
+
+## Legacy Runtime Structure
+
+The removed Next.js route handlers and their Node-side backend adapters previously lived in `src/`. They are superseded by the FastAPI backend under [`python/helaicopter_api/`](/Users/tony/Code/helaicopter/python/helaicopter_api), so `src/` now stays focused on frontend code.
+
+## Historical Layout
+
+The pre-cutover app structure looked like this:
+
+```
+src/
+├── app/                           # Frontend pages plus embedded Node API
+├── lib/                           # Shared frontend code plus Node data loaders
+├── hooks/
+└── components/
+```
 ## Tech Stack
 
 - [Next.js 16](https://nextjs.org/) (App Router, Turbopack)
@@ -208,72 +259,33 @@ src/
 ## Scripts
 
 ```bash
-npm run dev      # Start development server (port 3000)
-npm run build    # Production build
-npm run start    # Start production server
-npm run lint     # ESLint
-npm run go:live-ingestion              # Run the Go live ingestion service
-npm run db:bootstrap:clickhouse        # Apply the tracked ClickHouse schema to a running server
-npm run db:bootstrap:clickhouse:local  # Start/reuse a local ClickHouse container and initialize the schema
-npm run db:backfill:clickhouse         # Load the historical export window into ClickHouse
+npm run dev              # Start the Next.js development server (port 3000)
+npm run api:dev          # Start the FastAPI backend with uvicorn (port 8000)
+npm run build            # Production frontend build
+npm run start            # Start the production Next.js server
+npm run lint             # ESLint
+npm run oats -- ...      # Run the packaged orchestration CLI through uv
+npm run db:refresh       # Run the Python refresh pipeline
+npm run db:migrate:oltp  # Apply OLTP alembic migrations
+npm run db:migrate:olap  # Apply OLAP alembic migrations
+npm run db:export        # Export parsed data from the repo tooling
 ```
 
-## ClickHouse Bootstrap
+## Validation
 
-The kappa migration bootstrap assets live under `sql/clickhouse/` and can be applied to a local ClickHouse instance with:
+Run the full local validation set before merging FastAPI rollout work:
 
 ```bash
-npm run db:bootstrap:clickhouse:local
+npm run lint
+npm run build
+uv run --group dev pytest -q
 ```
-
-If you already have ClickHouse running, use:
-
-```bash
-npm run db:bootstrap:clickhouse
-```
-
-`npm run db:bootstrap:clickhouse:local` starts or reuses a local `clickhouse/clickhouse-server:25.3` container, connects on `127.0.0.1:8123`, defaults the local user/password to `helaicopter` / `helaicopter`, and creates the `helaicopter` database. Override connection settings with:
-
-```bash
-HELAICOPTER_CLICKHOUSE_HOST=127.0.0.1
-HELAICOPTER_CLICKHOUSE_PORT=8123
-HELAICOPTER_CLICKHOUSE_NATIVE_PORT=9000
-HELAICOPTER_CLICKHOUSE_DATABASE=helaicopter
-HELAICOPTER_CLICKHOUSE_USER=helaicopter
-HELAICOPTER_CLICKHOUSE_PASSWORD=helaicopter
-HELAICOPTER_CLICKHOUSE_SECURE=0
-```
-
-The detailed schema layout, partitions, and sort keys are documented in [`docs/clickhouse-schema.md`](docs/clickhouse-schema.md).
-
-ClickHouse-backed analytics and conversation-summary reads are enabled by default. To force a temporary fallback to the legacy parser/SQLite path, set:
-
-```bash
-HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=0
-HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=0
-```
-
-## Go Live Ingestion
-
-The live ingestion service lives in [`go/live-ingestion`](/Users/tony/Code/helaicopter/go/live-ingestion). It watches Claude and Codex session files, normalizes newly appended JSONL lines into ClickHouse, and exposes a persisted SSE fanout stream.
-
-Start it with:
-
-```bash
-npm run go:live-ingestion
-```
-
-When the Next.js app is running, the UI consumes live updates through its same-origin proxy at `/api/live-events`.
-That proxy forwards to the Go ingester's `/events` endpoint, emits analytics invalidation plus conversation update events for the browser, and keeps the existing polling path as a fallback.
-
-Detailed setup, environment variables, checkpoint behavior, and the event id / dedupe contract are documented in [`docs/go-live-ingestion.md`](/Users/tony/Code/helaicopter/docs/go-live-ingestion.md).
 
 ## Troubleshooting
 
-- If the Databases page shows ClickHouse as unreachable, start or bootstrap it with `npm run db:bootstrap:clickhouse:local`.
-- If historical analytics look empty, run `npm run db:backfill:clickhouse` to repopulate the ClickHouse tables.
-- If live data is stale, start `npm run go:live-ingestion` and set `HELAICOPTER_ENABLE_LIVE_INGESTION=1` for the app process.
-- If you need to compare against the legacy read path during rollout validation, set `HELAICOPTER_USE_CLICKHOUSE_ANALYTICS_READS=0` and `HELAICOPTER_USE_CLICKHOUSE_CONVERSATION_SUMMARIES=0`.
+- If the frontend cannot reach the backend, confirm `npm run api:dev` is running and that `NEXT_PUBLIC_API_BASE_URL` points to the correct origin.
+- If the backend cannot find local conversation data, set `HELA_CLAUDE_DIR`, `HELA_CODEX_DIR`, or `HELA_PROJECT_ROOT` explicitly.
+- If API behavior looks wrong, compare `http://127.0.0.1:8000/openapi.json` against the expected router surface under [`python/helaicopter_api/router/`](/Users/tony/Code/helaicopter/python/helaicopter_api/router).
 
 ## License
 
