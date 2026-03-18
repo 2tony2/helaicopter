@@ -4,13 +4,55 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 import subprocess
+import time
+import threading
 import uuid
+from typing import Any, Callable, TextIO
 
 from oats.models import AgentInvocationResult, AgentCommand, PlannedTask
 
 
 class AgentInvocationError(RuntimeError):
     """Raised when an agent CLI call fails."""
+
+
+class _StreamCollector:
+    def __init__(
+        self,
+        stream: TextIO | None,
+        *,
+        on_line: Callable[[str], None] | None = None,
+    ) -> None:
+        self._stream = stream
+        self._on_line = on_line
+        self._chunks: list[str] = []
+        self._thread: threading.Thread | None = None
+        self.callback_errors: list[Exception] = []
+
+    def start(self) -> None:
+        if self._stream is None:
+            return
+        self._thread = threading.Thread(target=self._collect, daemon=True)
+        self._thread.start()
+
+    def _collect(self) -> None:
+        if self._stream is None:
+            return
+        try:
+            for line in iter(self._stream.readline, ""):
+                self._chunks.append(line)
+                if self._on_line is not None:
+                    try:
+                        self._on_line(line)
+                    except Exception as exc:  # pragma: no cover - defensive guard
+                        self.callback_errors.append(exc)
+        finally:
+            self._stream.close()
+
+    def finish(self) -> str:
+        if self._thread is not None:
+            self._thread.join()
+        return "".join(self._chunks)
 
 
 def invoke_agent(
@@ -23,6 +65,9 @@ def invoke_agent(
     read_only: bool = True,
     timeout_seconds: int = 20,
     dangerous_bypass: bool = False,
+    raise_on_nonzero: bool = True,
+    on_heartbeat: Callable[[], None] | None = None,
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> AgentInvocationResult:
     started_at = datetime.now(timezone.utc)
 
@@ -39,6 +84,12 @@ def invoke_agent(
             cwd=cwd,
             prompt=None,
             timeout_seconds=timeout_seconds,
+            on_heartbeat=on_heartbeat,
+            on_stdout_line=(
+                (lambda line: _handle_codex_progress_line(line, on_progress))
+                if on_progress is not None
+                else None
+            ),
         )
         result = _parse_codex_result(
             command=command,
@@ -63,6 +114,12 @@ def invoke_agent(
             cwd=cwd,
             prompt=prompt,
             timeout_seconds=timeout_seconds,
+            on_heartbeat=on_heartbeat,
+            on_stdout_line=(
+                (lambda line: _handle_claude_progress_line(line, requested_session_id, on_progress))
+                if on_progress is not None
+                else None
+            ),
         )
         result = _parse_claude_result(
             command=command,
@@ -77,7 +134,7 @@ def invoke_agent(
     else:
         raise AgentInvocationError(f"Unsupported agent '{agent_name}'")
 
-    if result.exit_code != 0 and not result.timed_out:
+    if raise_on_nonzero and result.exit_code != 0 and not result.timed_out:
         raise AgentInvocationError(
             f"{agent_name} {role} invocation failed with exit code {result.exit_code}\n"
             f"stderr:\n{result.raw_stderr or '<empty>'}"
@@ -85,11 +142,27 @@ def invoke_agent(
     return result
 
 
-def build_planner_prompt(run_title: str, tasks: list[PlannedTask]) -> str:
+def build_planner_prompt(
+    run_title: str,
+    tasks: list[PlannedTask],
+    *,
+    read_only: bool,
+) -> str:
+    mode_lines = (
+        [
+            "Read-only planning run.",
+            "Do not modify files, create branches, or run write operations.",
+            "Summarize the execution order, dependencies, and likely implementation hotspots for these tasks.",
+        ]
+        if read_only
+        else [
+            "Writable planning run.",
+            "You may inspect the repo, propose sequencing, and make changes only if they are necessary to unblock execution.",
+            "Prefer concrete execution guidance over abstract architecture prose.",
+        ]
+    )
     lines = [
-        "Read-only planning run.",
-        "Do not modify files, create branches, or run write operations.",
-        "Summarize the execution order, dependencies, and likely implementation hotspots for these tasks.",
+        *mode_lines,
         f"Run title: {run_title}",
         "",
         "Tasks:",
@@ -120,11 +193,27 @@ def build_planner_prompt(run_title: str, tasks: list[PlannedTask]) -> str:
     return "\n".join(lines)
 
 
-def build_task_prompt(task: PlannedTask, run_title: str) -> str:
+def build_task_prompt(
+    task: PlannedTask,
+    run_title: str,
+    *,
+    read_only: bool,
+) -> str:
     depends_on = ", ".join(task.depends_on) if task.depends_on else "none"
+    mode_lines = (
+        [
+            "Read-only execution rehearsal.",
+            "Do not modify files, create commits, or apply patches.",
+        ]
+        if read_only
+        else [
+            "Writable execution run.",
+            "You may modify files, run validation commands, and create the implementation needed for this task.",
+            "Prefer small, reviewable changes that stay inside the task boundary.",
+        ]
+    )
     lines = [
-        "Read-only execution rehearsal.",
-        "Do not modify files, create commits, or apply patches.",
+        *mode_lines,
         f"Run title: {run_title}",
         f"Task id: {task.id}",
         f"Task title: {task.title}",
@@ -141,15 +230,27 @@ def build_task_prompt(task: PlannedTask, run_title: str) -> str:
         lines.extend(["", "Validation commands:"])
         for command in task.validation_commands:
             lines.append(f"- {command}")
-    lines.extend(
-        [
-            "",
-            "Return a concise implementation brief with:",
-            "1. Likely files or packages involved",
-            "2. Ordered implementation steps",
-            "3. Main risks or merge-conflict hotspots",
-        ]
-    )
+    if read_only:
+        lines.extend(
+            [
+                "",
+                "Return a concise implementation brief with:",
+                "1. Likely files or packages involved",
+                "2. Ordered implementation steps",
+                "3. Main risks or merge-conflict hotspots",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "Implement the task now in the current worktree.",
+                "After making changes, return a concise execution summary with:",
+                "1. Files changed",
+                "2. Validation commands run and outcomes",
+                "3. Remaining risks or follow-ups",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -274,6 +375,37 @@ def _parse_codex_result(
     )
 
 
+def _handle_codex_progress_line(
+    line: str,
+    on_progress: Callable[[dict[str, Any]], None] | None,
+) -> None:
+    if on_progress is None:
+        return
+    stripped = line.strip()
+    if not stripped:
+        return
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return
+    payload_type = payload.get("type")
+    if payload_type == "thread.started":
+        thread_id = payload.get("thread_id")
+        if isinstance(thread_id, str) and thread_id:
+            on_progress(
+                {
+                    "session_id": thread_id,
+                    "session_id_field": "thread_id",
+                }
+            )
+    elif payload_type == "item.completed":
+        item = payload.get("item", {})
+        if item.get("type") == "agent_message":
+            text = item.get("text")
+            if isinstance(text, str) and text:
+                on_progress({"output_text": text})
+
+
 def _parse_claude_result(
     *,
     command: list[str],
@@ -318,31 +450,95 @@ def _parse_claude_result(
     )
 
 
+def _handle_claude_progress_line(
+    line: str,
+    requested_session_id: str,
+    on_progress: Callable[[dict[str, Any]], None] | None,
+) -> None:
+    if on_progress is None:
+        return
+    stripped = line.strip()
+    if not stripped:
+        return
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return
+    progress: dict[str, Any] = {"requested_session_id": requested_session_id}
+    session_id = payload.get("session_id")
+    if isinstance(session_id, str) and session_id:
+        progress["session_id"] = session_id
+        progress["session_id_field"] = "session_id"
+    result = payload.get("result")
+    if isinstance(result, str) and result:
+        progress["output_text"] = result
+    on_progress(progress)
+
+
 def _run_command(
     *,
     command: list[str],
     cwd: Path,
     prompt: str | None,
     timeout_seconds: int,
+    on_heartbeat: Callable[[], None] | None = None,
+    on_stdout_line: Callable[[str], None] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], bool]:
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=cwd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout_seconds,
-        )
-        return completed, False
-    except subprocess.TimeoutExpired as exc:
-        return (
-            subprocess.CompletedProcess(
-                args=command,
-                returncode=124,
-                stdout=exc.stdout or "",
-                stderr=exc.stderr or "",
-            ),
-            True,
-        )
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdin=subprocess.PIPE if prompt is not None else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout_collector = _StreamCollector(process.stdout, on_line=on_stdout_line)
+    stderr_collector = _StreamCollector(process.stderr)
+    stdout_collector.start()
+    stderr_collector.start()
+
+    if process.stdin is not None:
+        process.stdin.write(prompt)
+        process.stdin.close()
+
+    start = time.monotonic()
+    next_heartbeat = start
+
+    while True:
+        if on_heartbeat is not None:
+            now = time.monotonic()
+            if now >= next_heartbeat:
+                on_heartbeat()
+                next_heartbeat = now + 1.0
+
+        return_code = process.poll()
+        if return_code is not None:
+            process.wait()
+            stdout = stdout_collector.finish()
+            stderr = stderr_collector.finish()
+            return (
+                subprocess.CompletedProcess(
+                    args=command,
+                    returncode=return_code,
+                    stdout=stdout,
+                    stderr=stderr,
+                ),
+                False,
+            )
+
+        if time.monotonic() - start >= timeout_seconds:
+            process.kill()
+            process.wait()
+            stdout = stdout_collector.finish()
+            stderr = stderr_collector.finish()
+            return (
+                subprocess.CompletedProcess(
+                    args=command,
+                    returncode=124,
+                    stdout=stdout,
+                    stderr=stderr,
+                ),
+                True,
+            )
+
+        time.sleep(0.1)

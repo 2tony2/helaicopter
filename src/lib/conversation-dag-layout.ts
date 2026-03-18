@@ -18,10 +18,12 @@ export function getLayoutedElements(
   const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: direction,
-    nodesep: direction === "LR" ? 48 : 28,
+    nodesep: direction === "LR" ? 48 : 40,
     ranksep: direction === "LR" ? 92 : 96,
     marginx: 24,
     marginy: 24,
+    ranker: "longest-path",
+    align: "UL",
   });
 
   nodes.forEach((node) => {

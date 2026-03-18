@@ -68,6 +68,11 @@ class PlannerSettings(BaseModel):
     prefer_explicit_dependencies: bool = True
 
 
+class ExecutionSettings(BaseModel):
+    max_task_attempts: int = Field(default=2, ge=1)
+    retry_backoff_seconds: float = Field(default=2.0, ge=0)
+
+
 class LoggingSettings(BaseModel):
     session_dir: str = "~/.overnightoats/sessions"
     persist_format: str = "sqlite"
@@ -86,6 +91,7 @@ class RepoConfig(BaseModel):
     git: GitSettings = Field(default_factory=GitSettings)
     conflicts: ConflictSettings = Field(default_factory=ConflictSettings)
     planner: PlannerSettings = Field(default_factory=PlannerSettings)
+    execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
 
@@ -232,11 +238,12 @@ class TaskExecutionRecord(BaseModel):
 
 
 class RunExecutionRecord(BaseModel):
+    run_id: str | None = None
     run_title: str
     repo_root: Path
     config_path: Path
     run_spec_path: Path
-    mode: Literal["read-only"] = "read-only"
+    mode: Literal["read-only", "writable"] = "read-only"
     integration_branch: str
     task_pr_target: str
     final_pr_target: str
@@ -244,3 +251,103 @@ class RunExecutionRecord(BaseModel):
     tasks: list[TaskExecutionRecord] = Field(default_factory=list)
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     record_path: Path | None = None
+
+
+TaskRuntimeStatus = Literal[
+    "pending",
+    "running",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "skipped",
+    "blocked",
+]
+
+RunRuntimeStatus = Literal[
+    "pending",
+    "planning",
+    "running",
+    "completed",
+    "failed",
+    "timed_out",
+]
+
+
+class InvocationRuntimeRecord(BaseModel):
+    agent: str
+    role: Literal["planner", "executor", "conflict_resolver", "merge_operator"]
+    command: list[str] = Field(default_factory=list)
+    cwd: Path
+    prompt: str
+    session_id: str | None = None
+    session_id_field: str | None = None
+    requested_session_id: str | None = None
+    output_text: str = ""
+    raw_stdout: str = ""
+    raw_stderr: str = ""
+    exit_code: int | None = None
+    timed_out: bool = False
+    started_at: datetime | None = None
+    last_heartbeat_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class TaskRuntimeRecord(BaseModel):
+    task_id: str
+    title: str
+    depends_on: list[str] = Field(default_factory=list)
+    branch_name: str
+    pr_base: str
+    agent: str
+    role: Literal["executor"] = "executor"
+    status: TaskRuntimeStatus = "pending"
+    attempts: int = 0
+    invocation: InvocationRuntimeRecord | None = None
+
+
+class RunPlanSnapshot(BaseModel):
+    contract_version: Literal["oats-plan-v1"] = "oats-plan-v1"
+    run_id: str
+    run_title: str
+    repo_root: Path
+    config_path: Path
+    run_spec_path: Path
+    mode: Literal["read-only", "writable"] = "read-only"
+    integration_branch: str
+    task_pr_target: str
+    final_pr_target: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    tasks: list[PlannedTask] = Field(default_factory=list)
+
+
+class RuntimeProgressEvent(BaseModel):
+    contract_version: Literal["oats-event-v1"] = "oats-event-v1"
+    run_id: str
+    recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    event_type: str
+    run_status: RunRuntimeStatus
+    task_id: str | None = None
+    message: str | None = None
+
+
+class RunRuntimeState(BaseModel):
+    contract_version: Literal["oats-runtime-v1"] = "oats-runtime-v1"
+    run_id: str
+    run_title: str
+    repo_root: Path
+    config_path: Path
+    run_spec_path: Path
+    mode: Literal["read-only", "writable"] = "read-only"
+    integration_branch: str
+    task_pr_target: str
+    final_pr_target: str
+    runtime_dir: Path
+    status: RunRuntimeStatus = "pending"
+    active_task_id: str | None = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime | None = None
+    planner: InvocationRuntimeRecord | None = None
+    tasks: list[TaskRuntimeRecord] = Field(default_factory=list)
+    final_record_path: Path | None = None

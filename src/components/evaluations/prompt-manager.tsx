@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useEvaluationPrompts } from "@/hooks/use-conversations";
+import {
+  createEvaluationPrompt,
+  deleteEvaluationPrompt,
+  updateEvaluationPrompt,
+} from "@/lib/client/mutations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -96,22 +101,14 @@ export function PromptManager() {
       return;
     }
 
-    const url = selectedPrompt
-      ? `/api/evaluation-prompts/${selectedPrompt.promptId}`
-      : "/api/evaluation-prompts";
-    const method = selectedPrompt ? "PATCH" : "POST";
+    let body: { promptId: string };
 
-    const response = await fetch(url, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const body = await response.json();
-    if (!response.ok) {
-      setError(body.error ?? "Failed to save prompt.");
+    try {
+      body = selectedPrompt
+        ? await updateEvaluationPrompt(selectedPrompt.promptId, payload)
+        : await createEvaluationPrompt(payload);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to save prompt.");
       return;
     }
 
@@ -129,12 +126,10 @@ export function PromptManager() {
     }
 
     setError(null);
-    const response = await fetch(`/api/evaluation-prompts/${selectedPrompt.promptId}`, {
-      method: "DELETE",
-    });
-    const body = await response.json();
-    if (!response.ok) {
-      setError(body.error ?? "Failed to delete prompt.");
+    try {
+      await deleteEvaluationPrompt(selectedPrompt.promptId);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to delete prompt.");
       return;
     }
 

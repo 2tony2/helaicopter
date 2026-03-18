@@ -1,0 +1,87 @@
+{
+  "contract_version": "oats-runtime-v1",
+  "run_id": "sample-run-20260317T192412Z",
+  "run_title": "Run: Auth And Dashboard",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "run_spec_path": "/Users/tony/Code/helaicopter/examples/sample_run.md",
+  "mode": "read-only",
+  "integration_branch": "oats/overnight/run-auth-and-dashboard",
+  "task_pr_target": "oats/overnight/run-auth-and-dashboard",
+  "final_pr_target": "main",
+  "runtime_dir": "/Users/tony/Code/helaicopter/.oats/runtime/sample-run-20260317T192412Z",
+  "status": "running",
+  "active_task_id": "dashboard_api",
+  "started_at": "2026-03-17T19:24:12.307122Z",
+  "updated_at": "2026-03-17T19:24:12.308552Z",
+  "heartbeat_at": "2026-03-17T19:24:12.307122Z",
+  "finished_at": null,
+  "planner": null,
+  "tasks": [
+    {
+      "task_id": "auth",
+      "title": "Add user authentication",
+      "depends_on": [],
+      "branch_name": "oats/task/auth",
+      "pr_base": "oats/overnight/run-auth-and-dashboard",
+      "agent": "claude",
+      "role": "executor",
+      "status": "succeeded",
+      "attempts": 1,
+      "invocation": {
+        "agent": "claude",
+        "role": "executor",
+        "command": [
+          "claude"
+        ],
+        "cwd": "/Users/tony/Code/helaicopter",
+        "prompt": "Read-only execution rehearsal.\nDo not modify files, create commits, or apply patches.\nRun title: Run: Auth And Dashboard\nTask id: auth\nTask title: Add user authentication\nDepends on: none\n\nImplementation request:\nImplement JWT-based auth with login/signup endpoints.\n\nAcceptance criteria:\n- signup endpoint exists\n- login returns JWT\n- auth middleware protects private routes\n\nValidation commands:\n- npm run lint\n- uv run --group dev pytest -q\n\nReturn a concise implementation brief with:\n1. Likely files or packages involved\n2. Ordered implementation steps\n3. Main risks or merge-conflict hotspots",
+        "session_id": null,
+        "session_id_field": null,
+        "requested_session_id": null,
+        "output_text": "",
+        "raw_stdout": "",
+        "raw_stderr": "",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-03-17T19:24:12.308044Z",
+        "last_heartbeat_at": "2026-03-17T19:24:12.308045Z",
+        "finished_at": "2026-03-17T19:24:12.308045Z"
+      }
+    },
+    {
+      "task_id": "dashboard_api",
+      "title": "Create dashboard API",
+      "depends_on": [
+        "auth"
+      ],
+      "branch_name": "oats/task/dashboard-api",
+      "pr_base": "oats/overnight/run-auth-and-dashboard",
+      "agent": "claude",
+      "role": "executor",
+      "status": "succeeded",
+      "attempts": 1,
+      "invocation": {
+        "agent": "claude",
+        "role": "executor",
+        "command": [
+          "claude"
+        ],
+        "cwd": "/Users/tony/Code/helaicopter",
+        "prompt": "Read-only execution rehearsal.\nDo not modify files, create commits, or apply patches.\nRun title: Run: Auth And Dashboard\nTask id: dashboard_api\nTask title: Create dashboard API\nDepends on: auth\n\nImplementation request:\nBuild REST endpoints for dashboard data aggregation.\n\nAcceptance criteria:\n- endpoint returns summary stats\n- integration test covers auth + response shape\n\nValidation commands:\n- npm run lint\n- uv run --group dev pytest -q\n\nReturn a concise implementation brief with:\n1. Likely files or packages involved\n2. Ordered implementation steps\n3. Main risks or merge-conflict hotspots",
+        "session_id": null,
+        "session_id_field": null,
+        "requested_session_id": null,
+        "output_text": "",
+        "raw_stdout": "",
+        "raw_stderr": "",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-03-17T19:24:12.308488Z",
+        "last_heartbeat_at": "2026-03-17T19:24:12.308488Z",
+        "finished_at": "2026-03-17T19:24:12.308488Z"
+      }
+    }
+  ],
+  "final_record_path": null
+}

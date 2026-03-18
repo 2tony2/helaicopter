@@ -1,0 +1,6 @@
+{"contract_version":"oats-event-v1","run_id":"sample-run-20260318T091000Z","recorded_at":"2026-03-18T09:10:00.354503Z","event_type":"run_started","run_status":"planning","task_id":null,"message":null}
+{"contract_version":"oats-event-v1","run_id":"sample-run-20260318T091000Z","recorded_at":"2026-03-18T09:10:00.354999Z","event_type":"planner_skipped","run_status":"running","task_id":null,"message":"Execution used the persisted plan directly."}
+{"contract_version":"oats-event-v1","run_id":"sample-run-20260318T091000Z","recorded_at":"2026-03-18T09:10:00.355233Z","event_type":"task_started","run_status":"running","task_id":"auth","message":"attempt=1"}
+{"contract_version":"oats-event-v1","run_id":"sample-run-20260318T091000Z","recorded_at":"2026-03-18T09:10:01.404783Z","event_type":"task_retry_scheduled","run_status":"running","task_id":"auth","message":"attempt=1 retrying after transient failure"}
+{"contract_version":"oats-event-v1","run_id":"sample-run-20260318T091000Z","recorded_at":"2026-03-18T09:10:03.410281Z","event_type":"task_started","run_status":"running","task_id":"auth","message":"attempt=2"}
+{"contract_version":"oats-event-v1","run_id":"sample-run-20260318T091000Z","recorded_at":"2026-03-18T09:10:04.454757Z","event_type":"task_finished","run_status":"timed_out","task_id":"auth","message":"timed out"}

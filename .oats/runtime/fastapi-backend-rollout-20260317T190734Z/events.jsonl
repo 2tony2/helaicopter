@@ -1,0 +1,2 @@
+{"contract_version":"oats-event-v1","run_id":"fastapi-backend-rollout-20260317T190734Z","recorded_at":"2026-03-17T19:07:34.368645Z","event_type":"run_started","run_status":"planning","task_id":null,"message":null}
+{"contract_version":"oats-event-v1","run_id":"fastapi-backend-rollout-20260317T190734Z","recorded_at":"2026-03-17T19:07:34.369012Z","event_type":"planner_started","run_status":"planning","task_id":null,"message":null}

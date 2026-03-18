@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { useState } from "react";
 import { Database, RefreshCw, TriangleAlert } from "lucide-react";
 import { useDatabaseStatus } from "@/hooks/use-conversations";
+import { refreshDatabase } from "@/lib/client/mutations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +21,6 @@ import type {
   DatabaseAvailability,
   DatabaseArtifactStatus,
   DatabaseColumnSchema,
-  DatabaseStatus,
 } from "@/lib/types";
 
 function formatTime(value?: string | null): string {
@@ -172,17 +172,10 @@ export function DatabaseDashboard() {
   async function refresh(force: boolean) {
     setIsRefreshing(true);
     try {
-      const response = await fetch("/api/databases/refresh", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          force,
-          trigger: "manual",
-        }),
+      const payload = await refreshDatabase({
+        force,
+        trigger: "manual",
       });
-      const payload = (await response.json()) as DatabaseStatus;
       await mutate(payload, false);
     } finally {
       setIsRefreshing(false);

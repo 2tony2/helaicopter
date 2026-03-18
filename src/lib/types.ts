@@ -199,10 +199,29 @@ export interface OrchestrationInvocation {
   conversationPath?: string;
 }
 
+export type OrchestrationTaskStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "timed_out"
+  | "skipped"
+  | "blocked";
+
+export type OrchestrationRunStatus =
+  | "pending"
+  | "planning"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timed_out";
+
 export interface OrchestrationTaskRecord {
   taskId: string;
   title: string;
   dependsOn: string[];
+  status: OrchestrationTaskStatus;
+  attempts: number;
   invocation: OrchestrationInvocation;
 }
 
@@ -216,6 +235,10 @@ export interface OrchestrationDagNode {
   sessionId?: string | null;
   projectPath?: string;
   conversationPath?: string;
+  status: OrchestrationTaskStatus | OrchestrationRunStatus;
+  isActive: boolean;
+  attempts?: number;
+  lastHeartbeatAt?: string | null;
   exitCode: number;
   timedOut: boolean;
   depth: number;
@@ -236,6 +259,10 @@ export interface OrchestrationDagStats {
   rootCount: number;
   providerBreakdown: Record<string, number>;
   timedOutCount: number;
+  activeCount: number;
+  pendingCount: number;
+  failedCount: number;
+  succeededCount: number;
 }
 
 export interface OrchestrationDag {
@@ -246,7 +273,8 @@ export interface OrchestrationDag {
 
 export interface OvernightOatsRunRecord {
   source: "overnight-oats";
-  contractVersion: "oats-run-v1";
+  contractVersion: "oats-run-v1" | "oats-runtime-v1";
+  runId: string;
   runTitle: string;
   repoRoot: string;
   configPath: string;
@@ -255,6 +283,10 @@ export interface OvernightOatsRunRecord {
   integrationBranch: string;
   taskPrTarget: string;
   finalPrTarget: string;
+  status: OrchestrationRunStatus;
+  activeTaskId?: string | null;
+  heartbeatAt?: string | null;
+  finishedAt?: string | null;
   planner: OrchestrationInvocation | null;
   tasks: OrchestrationTaskRecord[];
   createdAt: string;

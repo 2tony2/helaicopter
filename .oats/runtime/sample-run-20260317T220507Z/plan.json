@@ -1,0 +1,50 @@
+{
+  "contract_version": "oats-plan-v1",
+  "run_id": "sample-run-20260317T220507Z",
+  "run_title": "Run: Auth And Dashboard",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "run_spec_path": "/Users/tony/Code/helaicopter/examples/sample_run.md",
+  "mode": "read-only",
+  "integration_branch": "oats/overnight/run-auth-and-dashboard",
+  "task_pr_target": "oats/overnight/run-auth-and-dashboard",
+  "final_pr_target": "main",
+  "created_at": "2026-03-17T22:05:07.098528Z",
+  "tasks": [
+    {
+      "id": "auth",
+      "title": "Add user authentication",
+      "prompt": "Implement JWT-based auth with login/signup endpoints.",
+      "depends_on": [],
+      "acceptance_criteria": [
+        "signup endpoint exists",
+        "login returns JWT",
+        "auth middleware protects private routes"
+      ],
+      "validation_commands": [
+        "npm run lint",
+        "uv run --group dev pytest -q"
+      ],
+      "branch_name": "oats/task/auth",
+      "pr_base": "oats/overnight/run-auth-and-dashboard"
+    },
+    {
+      "id": "dashboard_api",
+      "title": "Create dashboard API",
+      "prompt": "Build REST endpoints for dashboard data aggregation.",
+      "depends_on": [
+        "auth"
+      ],
+      "acceptance_criteria": [
+        "endpoint returns summary stats",
+        "integration test covers auth + response shape"
+      ],
+      "validation_commands": [
+        "npm run lint",
+        "uv run --group dev pytest -q"
+      ],
+      "branch_name": "oats/task/dashboard-api",
+      "pr_base": "oats/overnight/run-auth-and-dashboard"
+    }
+  ]
+}

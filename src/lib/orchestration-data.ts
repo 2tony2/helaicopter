@@ -24,6 +24,10 @@ function readString(value: unknown, field: string): string {
   return value;
 }
 
+function readOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 function readStringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(`Expected string[] for ${field}`);
@@ -44,17 +48,34 @@ function normalizeRepoProjectPath(repoRoot: string, agent: string): string | und
 
 function normalizeInvocation(
   value: unknown,
-  repoRoot: string
+  repoRoot: string,
+  fallback?: { agent: string; role: string }
 ): OrchestrationInvocation {
   if (!isRecord(value)) {
-    throw new Error("Expected invocation object");
+    if (!fallback) {
+      throw new Error("Expected invocation object");
+    }
+    return {
+      agent: fallback.agent,
+      role: fallback.role,
+      command: [],
+      cwd: repoRoot,
+      prompt: "",
+      sessionId: null,
+      sessionIdField: null,
+      requestedSessionId: null,
+      outputText: "",
+      rawStdout: "",
+      rawStderr: "",
+      exitCode: 0,
+      timedOut: false,
+      startedAt: "",
+      finishedAt: "",
+    };
   }
 
   const agent = readString(value.agent, "invocation.agent");
-  const sessionId =
-    typeof value.session_id === "string" && value.session_id.trim()
-      ? value.session_id
-      : null;
+  const sessionId = readOptionalString(value.session_id);
   const projectPath = sessionId
     ? normalizeRepoProjectPath(repoRoot, agent)
     : undefined;
@@ -66,12 +87,8 @@ function normalizeInvocation(
     cwd: readString(value.cwd, "invocation.cwd"),
     prompt: readString(value.prompt, "invocation.prompt"),
     sessionId,
-    sessionIdField:
-      typeof value.session_id_field === "string" ? value.session_id_field : null,
-    requestedSessionId:
-      typeof value.requested_session_id === "string"
-        ? value.requested_session_id
-        : null,
+    sessionIdField: readOptionalString(value.session_id_field),
+    requestedSessionId: readOptionalString(value.requested_session_id),
     outputText: typeof value.output_text === "string" ? value.output_text : "",
     rawStdout: typeof value.raw_stdout === "string" ? value.raw_stdout : "",
     rawStderr: typeof value.raw_stderr === "string" ? value.raw_stderr : "",
@@ -80,8 +97,8 @@ function normalizeInvocation(
         ? value.exit_code
         : Number(value.exit_code ?? 0),
     timedOut: Boolean(value.timed_out),
-    startedAt: readString(value.started_at, "invocation.started_at"),
-    finishedAt: readString(value.finished_at, "invocation.finished_at"),
+    startedAt: readOptionalString(value.started_at) ?? "",
+    finishedAt: readOptionalString(value.finished_at) ?? "",
     projectPath,
     conversationPath:
       projectPath && sessionId
@@ -110,7 +127,27 @@ function normalizeTaskRecords(
         task.depends_on ?? [],
         `tasks[${index}].depends_on`
       ),
-      invocation: normalizeInvocation(task.invocation, repoRoot),
+      status:
+        (readOptionalString(task.status) as OrchestrationTaskRecord["status"]) ??
+        (isRecord(task.invocation)
+          ? Boolean(task.invocation.timed_out)
+            ? "timed_out"
+            : Number(task.invocation.exit_code ?? 0) === 0
+            ? "succeeded"
+            : "failed"
+          : "pending"),
+      attempts:
+        typeof task.attempts === "number"
+          ? task.attempts
+          : Number(task.attempts ?? 0),
+      invocation: normalizeInvocation(task.invocation, repoRoot, {
+        agent:
+          readOptionalString(task.agent) ??
+          (isRecord(task.invocation) ? readString(task.invocation.agent, "invocation.agent") : "executor"),
+        role:
+          readOptionalString(task.role) ??
+          (isRecord(task.invocation) ? readString(task.invocation.role, "invocation.role") : "executor"),
+      }),
     } satisfies OrchestrationTaskRecord;
   });
 
@@ -135,10 +172,18 @@ function normalizeTaskRecords(
 function buildOrchestrationDag(
   planner: OrchestrationInvocation | null,
   tasks: OrchestrationTaskRecord[],
-  runTitle: string
+  runTitle: string,
+  options?: {
+    runStatus?: OvernightOatsRunRecord["status"];
+    activeTaskId?: string | null;
+    heartbeatAt?: string | null;
+  }
 ): OrchestrationDag {
   const nodes = new Map<string, OrchestrationDagNode>();
   const edges = new Map<string, OrchestrationDagEdge>();
+  const activeTaskId = options?.activeTaskId ?? null;
+  const runStatus = options?.runStatus ?? "completed";
+  const heartbeatAt = options?.heartbeatAt ?? null;
 
   if (planner) {
     nodes.set("planner", {
@@ -151,6 +196,9 @@ function buildOrchestrationDag(
       sessionId: planner.sessionId,
       projectPath: planner.projectPath,
       conversationPath: planner.conversationPath,
+      status: runStatus === "planning" ? "running" : runStatus,
+      isActive: runStatus === "planning",
+      lastHeartbeatAt: heartbeatAt,
       exitCode: planner.exitCode,
       timedOut: planner.timedOut,
       depth: 0,
@@ -168,6 +216,10 @@ function buildOrchestrationDag(
       sessionId: task.invocation.sessionId,
       projectPath: task.invocation.projectPath,
       conversationPath: task.invocation.conversationPath,
+      status: task.status,
+      isActive: activeTaskId === task.taskId || task.status === "running",
+      attempts: task.attempts,
+      lastHeartbeatAt: heartbeatAt,
       exitCode: task.invocation.exitCode,
       timedOut: task.invocation.timedOut,
       depth: planner ? 1 : 0,
@@ -263,6 +315,10 @@ function buildOrchestrationDag(
       ).length,
       providerBreakdown,
       timedOutCount: orderedNodes.filter((node) => node.timedOut).length,
+      activeCount: orderedNodes.filter((node) => node.isActive).length,
+      pendingCount: orderedNodes.filter((node) => node.status === "pending").length,
+      failedCount: orderedNodes.filter((node) => node.status === "failed").length,
+      succeededCount: orderedNodes.filter((node) => node.status === "succeeded").length,
     },
   };
 }
@@ -287,6 +343,9 @@ function parseOvernightOatsRunRecord(
   return {
     source: "overnight-oats",
     contractVersion: "oats-run-v1",
+    runId:
+      readOptionalString(raw.run_id) ??
+      readString(raw.record_path ?? filePath, "record_path"),
     runTitle,
     repoRoot,
     configPath: readString(raw.config_path, "config_path"),
@@ -295,6 +354,10 @@ function parseOvernightOatsRunRecord(
     integrationBranch: readString(raw.integration_branch, "integration_branch"),
     taskPrTarget: readString(raw.task_pr_target, "task_pr_target"),
     finalPrTarget: readString(raw.final_pr_target, "final_pr_target"),
+    status: isLikelyActive(fileMtimeMs) ? "running" : "completed",
+    activeTaskId: null,
+    heartbeatAt: new Date(fileMtimeMs).toISOString(),
+    finishedAt: readString(raw.recorded_at, "recorded_at"),
     planner,
     tasks,
     createdAt: readString(raw.recorded_at, "recorded_at"),
@@ -305,7 +368,69 @@ function parseOvernightOatsRunRecord(
       typeof raw.record_path === "string" && raw.record_path.trim()
         ? raw.record_path
         : filePath,
-    dag: buildOrchestrationDag(planner, tasks, runTitle),
+    dag: buildOrchestrationDag(planner, tasks, runTitle, {
+      runStatus: isLikelyActive(fileMtimeMs) ? "running" : "completed",
+      heartbeatAt: new Date(fileMtimeMs).toISOString(),
+    }),
+  };
+}
+
+function parseOvernightOatsRuntimeState(
+  raw: unknown,
+  filePath: string,
+  fileMtimeMs: number
+): OvernightOatsRunRecord {
+  if (!isRecord(raw)) {
+    throw new Error("Expected Oats runtime state object");
+  }
+
+  const repoRoot = readString(raw.repo_root, "repo_root");
+  const planner =
+    raw.planner === null || raw.planner === undefined
+      ? null
+      : normalizeInvocation(raw.planner, repoRoot);
+  const tasks = normalizeTaskRecords(raw.tasks, repoRoot);
+  const runTitle = readString(raw.run_title, "run_title");
+  const status = readString(
+    raw.status,
+    "status"
+  ) as OvernightOatsRunRecord["status"];
+  const heartbeatAt =
+    readOptionalString(raw.heartbeat_at) ?? new Date(fileMtimeMs).toISOString();
+
+  return {
+    source: "overnight-oats",
+    contractVersion: "oats-runtime-v1",
+    runId: readString(raw.run_id, "run_id"),
+    runTitle,
+    repoRoot,
+    configPath: readString(raw.config_path, "config_path"),
+    runSpecPath: readString(raw.run_spec_path, "run_spec_path"),
+    mode: readString(raw.mode, "mode"),
+    integrationBranch: readString(raw.integration_branch, "integration_branch"),
+    taskPrTarget: readString(raw.task_pr_target, "task_pr_target"),
+    finalPrTarget: readString(raw.final_pr_target, "final_pr_target"),
+    status,
+    activeTaskId: readOptionalString(raw.active_task_id),
+    heartbeatAt,
+    finishedAt: readOptionalString(raw.finished_at),
+    planner,
+    tasks,
+    createdAt: readString(raw.started_at, "started_at"),
+    lastUpdatedAt:
+      readOptionalString(raw.updated_at) ?? new Date(fileMtimeMs).toISOString(),
+    isRunning:
+      status === "planning" ||
+      status === "running" ||
+      (status === "pending" && isLikelyActive(fileMtimeMs)),
+    recordedAt:
+      readOptionalString(raw.updated_at) ?? new Date(fileMtimeMs).toISOString(),
+    recordPath: filePath,
+    dag: buildOrchestrationDag(planner, tasks, runTitle, {
+      runStatus: status,
+      activeTaskId: readOptionalString(raw.active_task_id),
+      heartbeatAt,
+    }),
   };
 }
 
@@ -347,6 +472,7 @@ async function listOatsRunFiles(): Promise<string[]> {
     if (!entry.isDirectory()) continue;
     await collectJsonFiles(join(WORKSPACES_DIR, entry.name, ".oats", "runs"), 1);
     await collectJsonFiles(join(WORKSPACES_DIR, entry.name, ".oats", "pr-runs"), 1);
+    await collectJsonFiles(join(WORKSPACES_DIR, entry.name, ".oats", "runtime"), 2);
   }
 
   await collectJsonFiles(OATS_DIR, 4);
@@ -358,24 +484,40 @@ async function listOatsRunFiles(): Promise<string[]> {
 export async function listOvernightOatsRuns(): Promise<OvernightOatsRunRecord[]> {
   const runs = await orchestrationResponseCache.getOrLoad("oats-runs", 5_000, async () => {
     const files = await listOatsRunFiles();
-    const runs: OvernightOatsRunRecord[] = [];
+    const runsById = new Map<string, OvernightOatsRunRecord>();
 
     for (const filePath of files) {
       try {
         const content = await readFile(filePath, "utf-8");
         const fileStats = await stat(filePath).catch(() => null);
-        const parsed = parseOvernightOatsRunRecord(
-          JSON.parse(content),
-          filePath,
-          fileStats?.mtimeMs ?? Date.now()
-        );
-        runs.push(parsed);
+        const raw = JSON.parse(content);
+        const parsed =
+          isRecord(raw) && raw.contract_version === "oats-runtime-v1"
+            ? parseOvernightOatsRuntimeState(
+                raw,
+                filePath,
+                fileStats?.mtimeMs ?? Date.now()
+              )
+            : parseOvernightOatsRunRecord(
+                raw,
+                filePath,
+                fileStats?.mtimeMs ?? Date.now()
+              );
+        const existing = runsById.get(parsed.runId);
+        if (
+          !existing ||
+          (parsed.isRunning && !existing.isRunning) ||
+          new Date(parsed.lastUpdatedAt).getTime() >
+            new Date(existing.lastUpdatedAt).getTime()
+        ) {
+          runsById.set(parsed.runId, parsed);
+        }
       } catch {
         continue;
       }
     }
 
-    return runs.sort((a, b) =>
+    return Array.from(runsById.values()).sort((a, b) =>
       new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime()
     );
   });

@@ -8,6 +8,16 @@ python/alembic/versions/20260311_0004_subscription_settings.py
 python/alembic/versions/20260311_0005_conversation_thread_type.py
 python/alembic/versions/20260316_0006_clickhouse_backfill_bookkeeping.py
 python/alembic/versions/20260316_0007_remove_clickhouse_bookkeeping.py
+python/helaicopter_api/__init__.py
+python/helaicopter_api/router/__init__.py
+python/helaicopter_api/router/router.py
+python/helaicopter_api/server/__init__.py
+python/helaicopter_api/server/config.py
+python/helaicopter_api/server/dependencies.py
+python/helaicopter_api/server/lifespan.py
+python/helaicopter_api/server/main.py
+python/helaicopter_api/server/openapi.py
+python/helaicopter_api/server/route_classes.py
 python/helaicopter_db/__init__.py
 python/helaicopter_db/db.py
 python/helaicopter_db/export_pipeline.py
@@ -34,6 +44,10 @@ python/oats/planner.py
 python/oats/pr.py
 python/oats/repo_config.py
 python/oats/runner.py
+python/oats/runtime_state.py
+tests/test_api_smoke.py
+tests/test_cli_runtime.py
 tests/test_parser.py
 tests/test_repo_config.py
 tests/test_runner.py
+tests/test_runtime_state.py

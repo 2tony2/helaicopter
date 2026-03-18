@@ -29,7 +29,9 @@ import type {
   OvernightOatsRunRecord,
 } from "@/lib/types";
 import {
+  Activity,
   Bot,
+  CheckCircle2,
   Clock3,
   ExternalLink,
   GitBranch,
@@ -38,6 +40,7 @@ import {
   PlaySquare,
   Route,
   Database,
+  CircleAlert,
   TimerOff,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -49,9 +52,13 @@ interface OatsNodeData {
   description?: string;
   role: string;
   agent: string;
+  status: string;
+  isActive: boolean;
+  isStale: boolean;
   timedOut: boolean;
   exitCode: number;
   depth: number;
+  attempts?: number;
   clickable: boolean;
   onClick: () => void;
 }
@@ -59,17 +66,37 @@ interface OatsNodeData {
 const OATS_NODE_WIDTH = 280;
 const OATS_NODE_LAYOUT_HEIGHT = 212;
 
+function isStaleHeartbeat(timestamp?: string | null, active = false) {
+  if (!active || !timestamp) return false;
+  return Date.now() - new Date(timestamp).getTime() > 10_000;
+}
+
 const OatsNode = memo(function OatsNode({ data }: NodeProps) {
   const d = data as unknown as OatsNodeData;
   const isPlanner = d.role === "planner";
+  const statusTone = d.isStale
+    ? "border-amber-500/70 ring-2 ring-amber-500/30"
+    : d.isActive
+    ? "border-emerald-500/80 ring-4 ring-emerald-500/20 animate-pulse"
+    : d.status === "succeeded"
+    ? "border-emerald-500/40 ring-1 ring-emerald-500/10"
+    : d.status === "failed" || d.status === "timed_out"
+    ? "border-rose-500/50 ring-1 ring-rose-500/15"
+    : "border-sky-500/40 ring-1 ring-sky-500/10";
+  const statusLabel = d.isStale
+    ? "stale"
+    : d.isActive
+    ? "running"
+    : d.timedOut
+    ? "timed out"
+    : d.status;
 
   return (
     <div
       className={cn(
         "nodrag flex w-[280px] min-h-[212px] flex-col overflow-hidden rounded-2xl border-2 bg-card text-card-foreground shadow-lg transition-all hover:shadow-xl hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-        isPlanner
-          ? "border-slate-500/40 ring-1 ring-slate-500/10"
-          : "border-sky-500/40 ring-1 ring-sky-500/10"
+        isPlanner ? "bg-slate-50/70 dark:bg-slate-950/20" : "",
+        statusTone
       )}
       onClick={d.onClick}
       role={d.clickable ? "button" : undefined}
@@ -108,8 +135,17 @@ const OatsNode = memo(function OatsNode({ data }: NodeProps) {
           </div>
           <div className="rounded-lg border border-border/50 bg-muted/50 px-2.5 py-2">
             <div className="text-muted-foreground">Status</div>
-            <div className="mt-1 font-medium">
-              {d.timedOut ? "timed out" : d.exitCode === 0 ? "ok" : `exit ${d.exitCode}`}
+            <div className="mt-1 flex items-center gap-1 font-medium">
+              {d.isActive ? (
+                <Activity className="h-3 w-3 text-emerald-500" />
+              ) : d.status === "succeeded" ? (
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+              ) : d.status === "failed" || d.status === "timed_out" || d.isStale ? (
+                <CircleAlert className="h-3 w-3 text-amber-500" />
+              ) : (
+                <Clock3 className="h-3 w-3 text-muted-foreground" />
+              )}
+              {statusLabel}
             </div>
           </div>
           <div className="rounded-lg border border-border/50 bg-muted/50 px-2.5 py-2">
@@ -129,6 +165,10 @@ const OatsNode = memo(function OatsNode({ data }: NodeProps) {
               {d.clickable ? <ExternalLink className="h-3 w-3" /> : <Route className="h-3 w-3" />}
               {d.clickable ? "open thread" : "no link"}
             </div>
+          </div>
+          <div className="rounded-lg border border-border/50 bg-muted/50 px-2.5 py-2 col-span-2">
+            <div className="text-muted-foreground">Attempts</div>
+            <div className="mt-1 font-medium">{d.attempts ?? 0}</div>
           </div>
         </div>
       </div>
@@ -156,9 +196,13 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
         description: node.description,
         role: node.role,
         agent: node.agent,
+        status: node.status,
+        isActive: node.isActive,
+        isStale: isStaleHeartbeat(node.lastHeartbeatAt, node.isActive),
         timedOut: node.timedOut,
         exitCode: node.exitCode,
         depth: node.depth,
+        attempts: node.attempts,
         clickable: Boolean(node.conversationPath),
         onClick: () => {
           if (node.conversationPath) {
@@ -172,9 +216,15 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
       source: edge.source,
       target: edge.target,
       type: "smoothstep",
-      animated: true,
-      style: { strokeWidth: 2 },
-      className: "!stroke-muted-foreground/50",
+      animated: edge.label === "dispatches",
+      label: edge.label === "depends_on" ? undefined : edge.label,
+      style: {
+        strokeWidth: 2,
+        strokeDasharray: edge.label === "dispatches" ? "6 3" : undefined,
+      },
+      className: edge.label === "dispatches"
+        ? "!stroke-sky-500/50"
+        : "!stroke-muted-foreground/50",
     }));
 
     return getLayoutedElements(nodes, edges, "TB", {
@@ -214,6 +264,10 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
             <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400">
               <Clock3 className="h-3 w-3" />
               {run.dag.stats.timedOutCount} timed out
+            </Badge>
+            <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+              <Activity className="h-3 w-3" />
+              {run.dag.stats.activeCount} active
             </Badge>
           </div>
         </div>
@@ -303,6 +357,7 @@ export function OvernightOatsPanel() {
       tasks: filteredRuns.reduce((sum, run) => sum + run.tasks.length, 0),
       deepest: filteredRuns.reduce((max, run) => Math.max(max, run.dag.stats.maxDepth), 0),
       timedOut: filteredRuns.reduce((sum, run) => sum + run.dag.stats.timedOutCount, 0),
+      active: filteredRuns.reduce((sum, run) => sum + run.dag.stats.activeCount, 0),
       providerBreakdown,
     };
   }, [filteredRuns]);
@@ -401,6 +456,12 @@ export function OvernightOatsPanel() {
                   {aggregate.timedOut} timed out
                 </Badge>
               )}
+              {aggregate.active > 0 && (
+                <Badge variant="outline" className="gap-1 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
+                  <Activity className="h-3.5 w-3.5" />
+                  {aggregate.active} active
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -451,6 +512,7 @@ export function OvernightOatsPanel() {
                           <GitBranch className="h-3 w-3" />
                           breadth {run.dag.stats.maxBreadth}
                         </Badge>
+                        <Badge variant="outline">{run.status}</Badge>
                         {run.isRunning && (
                           <Badge variant="outline" className="gap-2 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
                             <span className="relative flex h-2.5 w-2.5">
@@ -494,6 +556,7 @@ export function OvernightOatsPanel() {
                         <Badge variant="secondary">Oats run</Badge>
                         <Badge variant="outline">{selectedRun.mode}</Badge>
                         <Badge variant="secondary">{selectedRun.integrationBranch}</Badge>
+                        <Badge variant="outline">{selectedRun.status}</Badge>
                         <Badge variant="outline">
                           spec: {selectedRun.runSpecPath.split("/").pop()}
                         </Badge>
@@ -511,6 +574,9 @@ export function OvernightOatsPanel() {
                     <div className="text-sm text-muted-foreground text-right">
                       <div>Created {new Date(selectedRun.createdAt).toLocaleString()}</div>
                       <div>Updated {new Date(selectedRun.lastUpdatedAt).toLocaleString()}</div>
+                      {selectedRun.heartbeatAt && (
+                        <div>Heartbeat {new Date(selectedRun.heartbeatAt).toLocaleString()}</div>
+                      )}
                       <div className="mt-1 flex items-center justify-end gap-2">
                         <Bot className="h-4 w-4" />
                         {selectedRun.dag.stats.totalNodes} nodes
