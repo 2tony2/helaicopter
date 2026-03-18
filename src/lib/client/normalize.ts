@@ -35,6 +35,11 @@ import type {
   TokenUsage,
 } from "@/lib/types";
 
+/**
+ * Compatibility shim for the FastAPI rollout: frontend callers now target the
+ * Python API directly, but normalization still accepts both snake_case FastAPI
+ * payloads and the legacy camelCase Next.js shapes during the transition.
+ */
 type JsonRecord = Record<string, unknown>;
 
 function snakeToCamel(value: string): string {

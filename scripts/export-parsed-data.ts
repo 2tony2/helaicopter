@@ -3,7 +3,7 @@ import {
   getRawConversation,
   getRawTasksForSession,
   listRawConversations,
-} from "../src/lib/claude-data";
+} from "./export-backend/claude-data";
 import { calculateCost } from "../src/lib/pricing";
 import { startOfTodayIso } from "../src/lib/time-windows";
 

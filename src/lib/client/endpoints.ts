@@ -23,21 +23,21 @@ export function getBaseUrl() {
   return _baseUrl;
 }
 
-function inferredBaseUrl() {
+function api(path: string) {
+  if (_baseUrl) {
+    return `${_baseUrl}${path}`;
+  }
+
   if (typeof window === "undefined") {
-    return "";
+    return path;
   }
 
   const { protocol, hostname, port } = window.location;
   if ((hostname === "localhost" || hostname === "127.0.0.1") && port === "3000") {
-    return `${protocol}//${hostname}:8000`;
+    return `${protocol}//${hostname}:8000${path}`;
   }
 
-  return "";
-}
-
-function api(path: string) {
-  return `${_baseUrl || inferredBaseUrl()}${path}`;
+  return path;
 }
 
 // ---------------------------------------------------------------------------

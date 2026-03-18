@@ -15,7 +15,7 @@ import type {
   SubscriptionSettings,
 } from "@/lib/types";
 import * as endpoints from "@/lib/client/endpoints";
-import { fetcher, requestJson } from "@/lib/client/fetcher";
+import { requestJson } from "@/lib/client/fetcher";
 import {
   normalizeAnalytics,
   normalizeConversationEvaluations,
@@ -105,7 +105,7 @@ export function useConversationDagSummaries(
 export function useOvernightOatsRuns() {
   return useSWR<OvernightOatsRunRecord[]>(
     endpoints.orchestrationOats(),
-    fetcher,
+    (url: string) => requestJson<OvernightOatsRunRecord[]>(url),
     conversationSwrOptions
   );
 }

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from helaicopter_api.application.conversations import _compact_dict
 from helaicopter_api.bootstrap.services import build_services
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
@@ -676,6 +677,21 @@ def conversations_client(tmp_path: Path):
 
     application.dependency_overrides.clear()
     services.sqlite_engine.dispose()
+
+
+def test_compact_dict_keeps_non_empty_lists_without_raising() -> None:
+    assert _compact_dict(
+        {
+            "type": "search",
+            "query": None,
+            "queries": ["alpha", "beta"],
+            "empty_queries": [],
+            "blank": "",
+        }
+    ) == {
+        "type": "search",
+        "queries": ["alpha", "beta"],
+    }
 
 
 class TestConversationEndpoints:

@@ -52,6 +52,7 @@ __pycache__/
 *.pyc
 .oats/runs/
 .oats/pr-runs/
+.oats/runtime/
 .oats-worktrees/
 
 # generated database artifacts

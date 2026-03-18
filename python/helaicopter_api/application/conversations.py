@@ -2057,7 +2057,11 @@ def _encode_plan_id(payload: dict[str, Any]) -> str:
 
 
 def _compact_dict(value: dict[str, Any]) -> dict[str, Any]:
-    return {key: item for key, item in value.items() if item not in {None, "", []}}
+    return {
+        key: item
+        for key, item in value.items()
+        if item is not None and item != "" and item != []
+    }
 
 
 class _UsageTotals:

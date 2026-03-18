@@ -32,6 +32,39 @@ test("endpoint builders target FastAPI routes without the Next /api prefix", () 
   );
 });
 
+test("endpoint builders infer the local FastAPI origin when the frontend runs on localhost:3000", () => {
+  setBaseUrl("");
+  const originalWindow = globalThis.window;
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      location: {
+        protocol: "http:",
+        hostname: "localhost",
+        port: "3000",
+      },
+    },
+  });
+
+  try {
+    assert.equal(projects(), "http://localhost:8000/projects");
+    assert.equal(
+      conversation("-Users-tony-Code-helaicopter", "session-123"),
+      "http://localhost:8000/conversations/-Users-tony-Code-helaicopter/session-123"
+    );
+    assert.equal(
+      conversationDags({ project: "repo", days: 7, provider: "all" }),
+      "http://localhost:8000/conversation-dags?project=repo&days=7"
+    );
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+});
+
 test("normalizeProjects maps FastAPI project payloads to frontend camelCase types", () => {
   const normalized = normalizeProjects([
     {

@@ -1,4 +1,0 @@
-{"contract_version":"oats-event-v1","run_id":"fastapi-backend-rollout-20260317T191718Z","recorded_at":"2026-03-17T19:17:18.667937Z","event_type":"run_started","run_status":"planning","task_id":null,"message":null}
-{"contract_version":"oats-event-v1","run_id":"fastapi-backend-rollout-20260317T191718Z","recorded_at":"2026-03-17T19:17:18.668396Z","event_type":"planner_started","run_status":"planning","task_id":null,"message":null}
-{"contract_version":"oats-event-v1","run_id":"fastapi-backend-rollout-20260317T191718Z","recorded_at":"2026-03-17T19:19:13.940714Z","event_type":"planner_finished","run_status":"running","task_id":null,"message":"exit_code=0"}
-{"contract_version":"oats-event-v1","run_id":"fastapi-backend-rollout-20260317T191718Z","recorded_at":"2026-03-17T19:19:13.942645Z","event_type":"task_started","run_status":"running","task_id":"api_scaffold","message":null}
