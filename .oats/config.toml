@@ -24,6 +24,16 @@ commands = [
 ]
 fail_fast = true
 
+[prefect]
+work_pool = "local-macos"
+default_queue = "scheduled"
+default_tags = ["oats", "prefect"]
+default_task_retry_count = 2
+default_task_timeout_seconds = 1800
+default_schedule_enabled = true
+default_schedule_cron = "0 6 * * *"
+default_schedule_timezone = "Europe/Amsterdam"
+
 [git]
 task_branch_prefix = "oats/task/"
 integration_branch_prefix = "oats/overnight/"

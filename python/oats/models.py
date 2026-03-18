@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
+from prefect.client.schemas.schedules import CronSchedule
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from helaicopter_domain.ids import RunId, SessionId, TaskId
 from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
@@ -30,6 +31,29 @@ class AgentCommand(BaseModel):
 class ValidationSettings(BaseModel):
     commands: list[str] = []
     fail_fast: bool = True
+
+
+class PrefectRepoSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    work_pool: str = "local-macos"
+    default_queue: str = "scheduled"
+    default_tags: list[str] = []
+    default_task_retry_count: int = Field(default=0, ge=0)
+    default_task_timeout_seconds: int | None = Field(default=None, ge=1)
+    default_schedule_enabled: bool = True
+    default_schedule_cron: str | None = None
+    default_schedule_timezone: str = "Europe/Amsterdam"
+
+    @model_validator(mode="after")
+    def validate_default_schedule(self) -> "PrefectRepoSettings":
+        if not self.default_schedule_enabled:
+            return self
+        CronSchedule(
+            cron=self.default_schedule_cron or "0 0 * * *",
+            timezone=self.default_schedule_timezone,
+        )
+        return self
 
 
 class GitSettings(BaseModel):
@@ -78,6 +102,7 @@ class RepoConfig(BaseModel):
     agents: AgentsSettings = Field(default_factory=AgentsSettings)
     agent: dict[str, AgentCommand] = {}
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
+    prefect: PrefectRepoSettings = Field(default_factory=PrefectRepoSettings)
     git: GitSettings = Field(default_factory=GitSettings)
     conflicts: ConflictSettings = Field(default_factory=ConflictSettings)
     planner: PlannerSettings = Field(default_factory=PlannerSettings)
