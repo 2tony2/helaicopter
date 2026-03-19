@@ -1,0 +1,28 @@
+---
+title: Prefect Integration
+description: Endpoints, settings, and data model for Prefect-backed orchestration.
+---
+
+Endpoints
+
+- `GET /orchestration/prefect/deployments`
+- `GET /orchestration/prefect/flow-runs`
+- `GET /orchestration/prefect/flow-runs/{id}`
+- `GET /orchestration/prefect/workers`
+- `GET /orchestration/prefect/work-pools`
+
+Settings
+
+- `HELA_PREFECT_API_URL` — backend → Prefect base URL (default `http://127.0.0.1:4200/api`).
+- `HELA_PREFECT_API_TIMEOUT_SECONDS` — request timeout (seconds).
+
+Shaping
+
+- The adapter at `python/helaicopter_api/adapters/prefect_http.py` fetches records and maps them into lightweight `Prefect*Record` shapes.
+- The application layer (`application/prefect_orchestration.py`) adds status tones (`running|success|error|pending|unknown`) and joins OATS metadata when available.
+
+Frontend
+
+- Hooks (`usePrefect*`) in `src/hooks/use-conversations.ts` poll these endpoints via SWR.
+- The orchestration hub renders counts, status chips, and links to repo-local artifacts when present.
+

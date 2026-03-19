@@ -21,9 +21,11 @@ class DatabaseColumnPayload(TypedDict):
     references: str | None
 
 
-class DatabaseTablePayload(TypedDict):
+class DatabaseTablePayload(TypedDict, total=False):
     name: str
     rowCount: int
+    sizeBytes: int | None
+    sizeDisplay: str | None
     columns: list[DatabaseColumnPayload]
 
 
@@ -32,7 +34,7 @@ class DatabaseRuntimePayload(TypedDict):
     conversationSummaryReadBackend: RuntimeReadBackend
 
 
-class DatabaseArtifactPayload(TypedDict):
+class DatabaseArtifactPayload(TypedDict, total=False):
     key: str
     label: str
     engine: str
@@ -40,7 +42,7 @@ class DatabaseArtifactPayload(TypedDict):
     availability: str
     note: str
     error: str | None
-    path: str
+    path: str | None
     target: str | None
     publicPath: str | None
     docsUrl: str | None
@@ -48,8 +50,10 @@ class DatabaseArtifactPayload(TypedDict):
     tables: list[DatabaseTablePayload]
 
 
-class DatabaseArtifactsPayload(TypedDict):
+class DatabaseArtifactsPayload(TypedDict, total=False):
+    frontendCache: dict[str, object]
     sqlite: DatabaseArtifactPayload
+    prefectPostgres: dict[str, object]
     duckdb: DatabaseArtifactPayload
 
 

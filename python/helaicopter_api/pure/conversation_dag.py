@@ -125,9 +125,28 @@ def _to_node(
         total_tokens=_conversation_total_tokens(conversation),
         timestamp=conversation.last_updated_at if conversation is not None else 0,
         depth=depth,
-        path=f"/conversations/{quote(project_path, safe='')}/{session_id}",
+        path=_conversation_node_path(
+            project_path=project_path,
+            parent_session_id=parent_session_id,
+            session_id=session_id,
+            is_root=is_root,
+        ),
         is_root=is_root,
     )
+
+
+def _conversation_node_path(
+    *,
+    project_path: str,
+    parent_session_id: str | None,
+    session_id: str,
+    is_root: bool,
+) -> str:
+    encoded_project_path = quote(project_path, safe="")
+    if is_root:
+        return f"/conversations/{encoded_project_path}/{session_id}"
+    assert parent_session_id is not None
+    return f"/conversations/{encoded_project_path}/{parent_session_id}/subagents/{session_id}"
 
 
 def _summarize_label(conversation: ConversationDetailResponse | None, fallback: str) -> str:

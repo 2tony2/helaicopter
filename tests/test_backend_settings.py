@@ -32,35 +32,62 @@ def _status_payload(path: str) -> dict[str, object]:
             "conversationSummaryReadBackend": "legacy",
         },
         "databases": {
+            "frontendCache": {
+                "key": "frontend_cache",
+                "label": "Frontend Short-Term Cache",
+                "engine": "In-process memory",
+                "role": "cache",
+                "availability": "ready",
+                "health": "healthy",
+                "operationalStatus": "Warm in-process response cache",
+                "note": "Short-lived backend read cache for dashboard and conversation views.",
+                "error": None,
+                "path": None,
+                "target": "BackendServices.cache",
+                "tableCount": 0,
+                "tables": [],
+                "sizeBytes": 64,
+                "sizeDisplay": "64 B",
+                "inventorySummary": "1 cached key",
+                "load": [],
+            },
             "sqlite": {
                 "key": "sqlite",
                 "label": "SQLite Metadata Store",
                 "engine": "SQLite",
                 "role": "metadata",
                 "availability": "ready",
+                "health": "healthy",
+                "operationalStatus": "Readable and serving historical conversations",
                 "note": "App-local metadata",
                 "error": None,
                 "path": path,
                 "target": None,
-                "publicPath": "/database-artifacts/oltp/helaicopter_oltp.sqlite",
-                "docsUrl": "/database-schemas/oltp/index.html",
                 "tableCount": 0,
                 "tables": [],
+                "sizeBytes": 0,
+                "sizeDisplay": "0 B",
+                "inventorySummary": "No tables recorded",
+                "load": [],
             },
-            "legacyDuckdb": {
-                "key": "duckdb",
-                "label": "DuckDB Inspection Snapshot",
-                "engine": "DuckDB",
-                "role": "inspection",
-                "availability": "missing",
-                "note": "DuckDB inspection snapshot",
+            "prefectPostgres": {
+                "key": "prefect_postgres",
+                "label": "Prefect Postgres",
+                "engine": "Postgres",
+                "role": "orchestration",
+                "availability": "ready",
+                "health": "healthy",
+                "operationalStatus": "Prefect API responding",
+                "note": "Backing store for the local Prefect control plane.",
                 "error": None,
-                "path": f"{path}.duckdb",
-                "target": None,
-                "publicPath": "/database-artifacts/olap/helaicopter_olap.duckdb",
-                "docsUrl": "/database-schemas/olap/index.html",
+                "path": None,
+                "target": "postgresql://prefect@127.0.0.1:5432/prefect",
                 "tableCount": 0,
                 "tables": [],
+                "sizeBytes": None,
+                "sizeDisplay": None,
+                "inventorySummary": "Catalog visibility not exposed by Prefect API",
+                "load": [],
             },
         },
     }
@@ -128,8 +155,8 @@ def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> 
     loaded = status_module.load_status()
 
     assert loaded is not None
-    assert loaded["databases"]["duckdb"]["key"] == "duckdb"
-    assert "legacyDuckdb" not in loaded["databases"]
+    assert loaded["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
+    assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
 
 
 def test_run_migrations_uses_shared_backend_project_root(monkeypatch, tmp_path) -> None:

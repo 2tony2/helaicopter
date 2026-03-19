@@ -51,6 +51,16 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
           conversationSummaryReadBackend: "legacy",
         },
         databases: {
+          frontendCache: {
+            key: "frontend_cache",
+            label: "Frontend Short-Term Cache",
+            engine: "In-process memory",
+            role: "cache",
+            availability: "ready",
+            tableCount: 0,
+            load: [],
+            tables: [],
+          },
           sqlite: {
             key: "sqlite",
             label: "SQLite Metadata Store",
@@ -58,15 +68,17 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
             role: "metadata",
             availability: "ready",
             tableCount: 2,
+            load: [],
             tables: [],
           },
-          duckdb: {
-            key: "duckdb",
-            label: "DuckDB Inspection Snapshot",
-            engine: "DuckDB",
-            role: "inspection",
-            availability: "missing",
+          prefectPostgres: {
+            key: "prefect_postgres",
+            label: "Prefect Postgres",
+            engine: "Postgres",
+            role: "orchestration",
+            availability: "ready",
             tableCount: 0,
+            load: [],
             tables: [],
           },
         },
@@ -86,7 +98,8 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
     });
     assert.equal(status.status, "failed");
     assert.equal(status.error, "refresh exploded");
-    assert.equal(status.databases.duckdb.key, "duckdb");
+    assert.equal(status.databases.frontendCache.key, "frontend_cache");
+    assert.equal(status.databases.prefectPostgres.key, "prefect_postgres");
   } finally {
     restoreFetch();
   }

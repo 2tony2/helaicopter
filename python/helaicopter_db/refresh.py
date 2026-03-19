@@ -47,7 +47,14 @@ from .settings import (
 )
 from .status import build_status_payload, load_status, write_status
 from .utils import (
+    conversation_context_bucket_id,
+    conversation_context_step_id,
     conversation_id,
+    conversation_message_block_id,
+    conversation_message_id,
+    conversation_plan_row_id,
+    conversation_subagent_row_id,
+    conversation_task_row_id,
     date_key,
     model_dim_id,
     parse_timestamp_ms,
@@ -352,8 +359,9 @@ def _load_conversation(
     oltp_session.add(conversation)
 
     for ordinal, message in enumerate(detail.get("messages") or []):
+        persisted_message_id = conversation_message_id(conv_id, ordinal)
         message_row = ConversationMessage(
-            message_id=f"{conv_id}:message:{ordinal}",
+            message_id=persisted_message_id,
             conversation_id=conv_id,
             ordinal=ordinal,
             role=message.get("role", "assistant"),
@@ -377,7 +385,7 @@ def _load_conversation(
                 counters.tool_calls += 1
             oltp_session.add(
                 MessageBlockRecord(
-                    block_id=f"{message_row.message_id}:block:{block_index}",
+                    block_id=conversation_message_block_id(persisted_message_id, block_index),
                     message_id=message_row.message_id,
                     block_index=block_index,
                     block_type=block_type or "unknown",
@@ -394,7 +402,7 @@ def _load_conversation(
         counters.plans += 1
         oltp_session.add(
             ConversationPlanRecord(
-                plan_row_id=f"{conv_id}:plan:{ordinal}",
+                plan_row_id=conversation_plan_row_id(conv_id, ordinal),
                 conversation_id=conv_id,
                 plan_id=plan["id"],
                 slug=plan["slug"],
@@ -412,7 +420,7 @@ def _load_conversation(
     for ordinal, subagent in enumerate(detail.get("subagents") or []):
         oltp_session.add(
             ConversationSubagentRecord(
-                subagent_row_id=f"{conv_id}:subagent:{ordinal}",
+                subagent_row_id=conversation_subagent_row_id(conv_id, ordinal),
                 conversation_id=conv_id,
                 agent_id=subagent["agentId"],
                 description=subagent.get("description"),
@@ -425,7 +433,7 @@ def _load_conversation(
     for ordinal, task in enumerate(tasks):
         oltp_session.add(
             ConversationTaskRecord(
-                task_row_id=f"{conv_id}:task:{ordinal}",
+                task_row_id=conversation_task_row_id(conv_id, ordinal),
                 conversation_id=conv_id,
                 ordinal=ordinal,
                 task_json=to_json(task),
@@ -435,7 +443,7 @@ def _load_conversation(
     for ordinal, bucket in enumerate((detail.get("contextAnalytics") or {}).get("buckets") or []):
         oltp_session.add(
             ContextBucketRecord(
-                bucket_row_id=f"{conv_id}:bucket:{ordinal}",
+                bucket_row_id=conversation_context_bucket_id(conv_id, ordinal),
                 conversation_id=conv_id,
                 label=bucket["label"],
                 category=bucket["category"],
@@ -451,7 +459,7 @@ def _load_conversation(
     for ordinal, step in enumerate((detail.get("contextAnalytics") or {}).get("steps") or []):
         oltp_session.add(
             ContextStepRecord(
-                step_row_id=f"{conv_id}:step:{ordinal}",
+                step_row_id=conversation_context_step_id(conv_id, ordinal),
                 conversation_id=conv_id,
                 message_id=step["messageId"],
                 ordinal=ordinal,

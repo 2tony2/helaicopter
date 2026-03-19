@@ -99,7 +99,7 @@ export function conversationDags(opts?: {
 // ---------------------------------------------------------------------------
 
 export function subagent(projectPath: string, sessionId: string, agentId: string) {
-  return api(`/subagents/${enc(projectPath)}/${sessionId}/${agentId}`);
+  return api(`/conversations/${enc(projectPath)}/${sessionId}/subagents/${agentId}`);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,63 @@
+---
+title: Endpoint Groups
+description: Major HTTP routes implemented today (paths relative to the backend root).
+---
+
+Health
+
+- `GET /health` — liveness probe.
+
+Projects
+
+- `GET /projects` — list known projects derived from conversation data.
+
+Conversations and DAGs
+
+- `GET /conversations?project&days` — list summaries.
+- `GET /conversations/{projectPath}/{sessionId}` — detail for a single conversation.
+- `GET /conversations/{projectPath}/{sessionId}/dag` — backend-built conversation DAG.
+- `GET /conversation-dags?project&days&provider` — summarized DAG stats.
+
+Tasks
+
+- `GET /tasks/{sessionId}` — tool/task payloads for a session.
+
+Plans
+
+- `GET /plans` — list saved plans.
+- `GET /plans/{slug}` — plan detail.
+
+Analytics
+
+- `GET /analytics?days&provider` — token/cost/activity analytics.
+
+Databases
+
+- `GET /databases/status` — artifact status, refresh state, schema preview.
+- `POST /databases/refresh` — trigger refresh and invalidate backend read caches.
+
+Evaluation prompts and reviews
+
+- `GET /evaluation-prompts` — list prompts.
+- `GET /conversations/{projectPath}/{sessionId}/evaluations` — evaluation runs for a conversation.
+
+Subscriptions
+
+- `GET /subscription-settings` — current provider cost/cap controls.
+- `PATCH /subscription-settings` — update settings.
+
+History
+
+- `GET /history?limit` — merged CLI histories.
+
+Orchestration
+
+- `GET /orchestration/oats` — OATS local-runtime records and DAGs (repo-local artifacts).
+- `GET /orchestration/prefect/deployments` — Prefect deployments (primary flow set).
+- `GET /orchestration/prefect/flow-runs` — recent flow runs.
+- `GET /orchestration/prefect/flow-runs/{id}` — flow-run detail.
+- `GET /orchestration/prefect/workers` — workers and heartbeat.
+- `GET /orchestration/prefect/work-pools` — work pools and capacity.
+
+See also: `/openapi/helaicopter-api.yaml` for full schema.
+

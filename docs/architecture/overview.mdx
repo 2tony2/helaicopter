@@ -1,0 +1,24 @@
+---
+title: Architecture Overview
+description: High-level system design after the FastAPI/Prefect/database refresh.
+---
+
+At a glance:
+
+- Frontend: Next.js 16 (App Router) + React 19 + SWR. UI components follow a shadcn/tailwind style and live under `src/components/`.
+- Backend: FastAPI app under `python/helaicopter_api/` with pydantic v2 schemas and explicit routers. The frontend talks to it over HTTP using centralized URL builders.
+- Orchestration: Prefect-first control plane with a thin OATS local runtime reader. The dashboard surfaces deployments, flow runs, workers, and repo-local OATS artifacts.
+- Data: Two artifacts owned by the backend—an OLTP SQLite metadata store and an OLAP DuckDB inspection snapshot—plus a trivial in-process cache.
+- Contracts: OpenAPI artifacts shipped in-repo at `public/openapi/` and generated via `npm run api:openapi`.
+
+Primary directories:
+
+- `python/helaicopter_api/` — adapters, ports, application logic, schemas, server, and routers.
+- `python/helaicopter_db/` — refresh pipeline, alembic migrations, and schema-doc tooling for the SQLite/DuckDB artifacts.
+- `src/` — Next.js app (`src/app`), typed client layer (`src/lib/client`), and presentational components.
+
+Runtime defaults:
+
+- Backend serves on `127.0.0.1:30000` during local dev (`npm run api:dev`).
+- Frontend points at the backend via `NEXT_PUBLIC_API_BASE_URL`; if unset on localhost, the client layer falls back to `:30000`.
+

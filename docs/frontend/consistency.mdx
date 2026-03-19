@@ -1,0 +1,27 @@
+---
+title: Frontend Consistency
+description: URL builders, normalization, polling, and naming conventions.
+---
+
+HTTP targeting
+
+- Always build URLs via `src/lib/client/endpoints.ts`.
+- Configure the backend origin with `NEXT_PUBLIC_API_BASE_URL`; localhost falls back to `:30000`.
+
+Normalization
+
+- Accept both `snake_case` and `camelCase` during the post-refresh transition. `src/lib/client/normalize.ts` maps payloads and shapes to typed models in `src/lib/types.ts`.
+
+Data fetching
+
+- Use the existing SWR hooks as the primary surface (`src/hooks/*`). Default refresh intervals: conversations every 3s, analytics every 15s, DB status every 5 minutes.
+
+UI patterns
+
+- Prefer existing shadcn-style `Badge`, `Card`, `Tabs`, and responsive grid utilities. Keep orchestration visuals in `src/components/orchestration/` and conversation DAG/UI in their existing folders.
+
+Naming
+
+- Types end with `Record` or `Response` consistently on the backend; on the frontend, the display models in `src/lib/types.ts` are stable and should not mirror pydantic model names directly.
+- For new endpoints, prefer `camelCase` field names and add `snake_case` compatibility only if necessary.
+

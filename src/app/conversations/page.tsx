@@ -1,16 +1,15 @@
 "use client";
 
 import { ConversationList } from "@/components/conversation/conversation-list";
+import { PageHeader } from "@/components/layout/page-header";
 
 export default function ConversationsPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Conversations</h1>
-        <p className="text-muted-foreground mt-1">
-          Browse all conversation threads, including main runs and sub-agents
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title="Conversations"
+        description="Browse all conversation threads, including main runs and sub-agents"
+      />
       <ConversationList />
     </div>
   );

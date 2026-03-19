@@ -124,7 +124,12 @@ def get_subagent_conversation(
     parent_session_id: str,
     agent_id: str,
 ) -> ConversationDetailResponse | None:
-    """Return one subagent conversation, including Claude live subagent files."""
+    """Return one subagent conversation.
+
+    For persisted rows and Codex sessions, ``agent_id`` is resolved as the child session ID.
+    ``parent_session_id`` is currently only required for the Claude live-file fallback, where
+    subagent transcripts are nested under the parent conversation directory on disk.
+    """
     conversation = get_conversation(
         services,
         project_path=project_path,

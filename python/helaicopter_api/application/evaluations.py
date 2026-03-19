@@ -224,15 +224,43 @@ def _format_block(block: ConversationMessageBlockResponse) -> str:
 
 
 def _resolve_workspace(services: BackendServices, project_path: str) -> Path:
+    """Resolve a filesystem workspace for the given `project_path`.
+
+    Preference order:
+    1) If the configured project root exists, prefer it. This keeps evaluation
+       jobs scoped to the active backend workspace or test fixture.
+    2) Otherwise, if the current working directory is inside the decoded
+       project path, use the CWD. This supports running within a git worktree
+       while the project path points at the repository root.
+    3) Otherwise, if the decoded path exists on disk, use it.
+    4) Fallback to the configured `settings.project_root`.
+    """
     encoded = project_path
     if encoded.startswith("codex:"):
         encoded = encoded[len("codex:") :]
     if encoded.startswith("-"):
-        path = Path("/" + encoded.lstrip("-").replace("-", "/"))
+        decoded = Path("/" + encoded.lstrip("-").replace("-", "/"))
     else:
-        path = Path.home() / encoded
-    if path.exists():
-        return path
+        decoded = Path.home() / encoded
+
+    configured_root = services.settings.project_root.resolve()
+    if configured_root.exists():
+        return configured_root
+
+    try:
+        cwd = Path.cwd().resolve()
+        decoded_resolved = decoded.resolve()
+        # If running inside a worktree or subdirectory of the decoded path,
+        # prefer the active working directory for better locality when there is
+        # no explicit project_root override.
+        if cwd.is_relative_to(decoded_resolved):
+            return cwd
+    except Exception:
+        # If resolution fails for any reason, fall back to the next options.
+        pass
+
+    if decoded.exists():
+        return decoded
     return services.settings.project_root
 
 

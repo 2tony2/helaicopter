@@ -18,6 +18,7 @@ import type {
   ConversationSummary,
   DatabaseArtifactStatus,
   DatabaseColumnSchema,
+  DatabaseLoadMetric,
   DatabaseStatus,
   DatabaseTableSchema,
   DailyUsage,
@@ -105,6 +106,19 @@ function numberOr(value: unknown, fallback = 0): number {
   }
 
   return fallback;
+}
+
+function nullableNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
 }
 
 function booleanOr(value: unknown, fallback = false): boolean {
@@ -734,7 +748,28 @@ function normalizeDatabaseTable(value: unknown): DatabaseTableSchema {
   return {
     name: stringOr(field(item, "name")),
     rowCount: numberOr(field(item, "rowCount", "row_count")),
+    sizeBytes:
+      field(item, "sizeBytes", "size_bytes") === null
+        ? null
+        : nullableNumber(field(item, "sizeBytes", "size_bytes")),
+    sizeDisplay:
+      field(item, "sizeDisplay", "size_display") === null
+        ? null
+        : nullableString(field(item, "sizeDisplay", "size_display")),
     columns: asArray(field(item, "columns")).map(normalizeDatabaseColumn),
+  };
+}
+
+function normalizeDatabaseLoadMetric(value: unknown): DatabaseLoadMetric {
+  const item = asRecord(value);
+  return {
+    label: stringOr(field(item, "label")),
+    value:
+      field(item, "value") === null ? null : nullableNumber(field(item, "value")),
+    displayValue:
+      field(item, "displayValue", "display_value") === null
+        ? null
+        : nullableString(field(item, "displayValue", "display_value")),
   };
 }
 
@@ -743,26 +778,37 @@ function normalizeDatabaseArtifact(value: unknown): DatabaseArtifactStatus {
   const key = stringOr(field(item, "key"));
   const role = stringOr(field(item, "role"));
   return {
-    key: (key === "legacy_duckdb" ? "duckdb" : key) as DatabaseArtifactStatus["key"],
+    key: key as DatabaseArtifactStatus["key"],
     label: stringOr(field(item, "label")),
     engine: stringOr(field(item, "engine")),
-    role: (role === "legacy_debug" ? "inspection" : role) as DatabaseArtifactStatus["role"],
+    role: role as DatabaseArtifactStatus["role"],
     availability: stringOr(field(item, "availability")) as DatabaseArtifactStatus["availability"],
+    health:
+      field(item, "health") === null ? null : nullableString(field(item, "health")),
+    operationalStatus:
+      field(item, "operationalStatus", "operational_status") === null
+        ? null
+        : nullableString(field(item, "operationalStatus", "operational_status")),
     note:
       field(item, "note") === null ? null : nullableString(field(item, "note")),
     error:
       field(item, "error") === null ? null : nullableString(field(item, "error")),
     path: field(item, "path") === null ? null : nullableString(field(item, "path")),
     target: field(item, "target") === null ? null : nullableString(field(item, "target")),
-    publicPath:
-      field(item, "publicPath", "public_path") === null
-        ? null
-        : nullableString(field(item, "publicPath", "public_path")),
-    docsUrl:
-      field(item, "docsUrl", "docs_url") === null
-        ? null
-        : nullableString(field(item, "docsUrl", "docs_url")),
     tableCount: numberOr(field(item, "tableCount", "table_count")),
+    sizeBytes:
+      field(item, "sizeBytes", "size_bytes") === null
+        ? null
+        : nullableNumber(field(item, "sizeBytes", "size_bytes")),
+    sizeDisplay:
+      field(item, "sizeDisplay", "size_display") === null
+        ? null
+        : nullableString(field(item, "sizeDisplay", "size_display")),
+    inventorySummary:
+      field(item, "inventorySummary", "inventory_summary") === null
+        ? null
+        : nullableString(field(item, "inventorySummary", "inventory_summary")),
+    load: asArray(field(item, "load")).map(normalizeDatabaseLoadMetric),
     tables: asArray(field(item, "tables")).map(normalizeDatabaseTable),
   };
 }
@@ -825,9 +871,13 @@ export function normalizeDatabaseStatus(value: unknown): DatabaseStatus {
       ) as DatabaseStatus["runtime"]["conversationSummaryReadBackend"],
     },
     databases: {
+      frontendCache: normalizeDatabaseArtifact(
+        field(databases, "frontendCache", "frontend_cache")
+      ),
       sqlite: normalizeDatabaseArtifact(field(databases, "sqlite")),
-      duckdb: normalizeDatabaseArtifact(
-        field(databases, "duckdb", "legacyDuckdb", "legacy_duckdb")
+      duckdb: normalizeDatabaseArtifact(field(databases, "duckdb", "legacyDuckdb", "legacy_duckdb")),
+      prefectPostgres: normalizeDatabaseArtifact(
+        field(databases, "prefectPostgres", "prefect_postgres")
       ),
     },
   };

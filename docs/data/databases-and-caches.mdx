@@ -1,0 +1,25 @@
+---
+title: Databases and Caches
+description: OLTP/OLAP artifacts, refresh workflow, and backend cache behavior.
+---
+
+Artifacts (owned by the backend)
+
+- OLTP: SQLite metadata store — `public/database-artifacts/oltp/helaicopter_oltp.sqlite`
+- OLAP: DuckDB inspection snapshot — `public/database-artifacts/olap/helaicopter_olap.duckdb`
+
+Status and refresh
+
+- `GET /databases/status` — overall refresh state plus per-artifact schema previews.
+- `POST /databases/refresh` — triggers a refresh and invalidates backend read caches. The refresh writes artifacts and static schema docs under `public/database-schemas/`.
+- CLI helpers: `npm run db:refresh`, `npm run db:migrate:oltp`, `npm run db:migrate:olap`.
+
+Backend cache
+
+- A small in-process key/value cache lives in `bootstrap/services.py` and is cleared on refresh via `invalidate_backend_read_caches`.
+- The SQLAlchemy engine is disposed on refresh so new requests reopen fresh connections.
+
+Runtime read backends
+
+- Analytics and conversation summaries read from backend-owned artifacts, with the option to tune read backends via settings if needed in the future.
+

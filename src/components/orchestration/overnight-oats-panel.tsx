@@ -73,10 +73,11 @@ interface OatsNodeData {
 
 const OATS_NODE_WIDTH = 280;
 const OATS_NODE_LAYOUT_HEIGHT = 212;
+const OATS_STALE_AFTER_MS = 300_000;
 
 function isStaleHeartbeat(timestamp?: string | null, active = false) {
   if (!active || !timestamp) return false;
-  return Date.now() - new Date(timestamp).getTime() > 10_000;
+  return Date.now() - new Date(timestamp).getTime() > OATS_STALE_AFTER_MS;
 }
 
 const OatsNode = memo(function OatsNode({ data }: NodeProps) {

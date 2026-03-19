@@ -1,0 +1,42 @@
+{
+  "name": "Helaicopter Platform Docs",
+  "navigation": [
+    { "group": "Overview", "pages": ["docs/index"] },
+    {
+      "group": "Architecture",
+      "pages": [
+        "docs/architecture/overview",
+        "docs/architecture/components"
+      ]
+    },
+    {
+      "group": "APIs",
+      "pages": [
+        "docs/api/overview",
+        "docs/api/endpoints",
+        "docs/api/openapi-artifacts"
+      ]
+    },
+    {
+      "group": "Orchestration",
+      "pages": [
+        "docs/orchestration/overview",
+        "docs/orchestration/prefect",
+        "docs/orchestration/oats"
+      ]
+    },
+    {
+      "group": "Data",
+      "pages": [
+        "docs/data/databases-and-caches"
+      ]
+    },
+    {
+      "group": "Frontend",
+      "pages": [
+        "docs/frontend/consistency"
+      ]
+    }
+  ]
+}
+

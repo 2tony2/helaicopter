@@ -1,0 +1,28 @@
+---
+title: Component Map
+description: Code-level structure (backend service bag, routers, client layer) with pointers to source.
+---
+
+Backend layering (`python/helaicopter_api/`):
+
+- `server/` — app factory, middleware, settings, OpenAPI artifact generation.
+- `router/` — FastAPI `APIRouter`s grouped by domain (analytics, conversations, databases, orchestration, etc.). The root router aggregates them under a single app.
+- `application/` — request-shaping, joins, and domain logic (e.g., building orchestration DAGs, analytics aggregation, normalization).
+- `schema/` — pydantic v2 response/request models. Responses inherit from a `CamelCaseHttpResponseModel` base so payloads serialize in `camelCase`.
+- `adapters/` — concrete IO: SQLite stores, filesystem readers, Prefect HTTP adapter, OATS artifact store.
+- `ports/` — narrow interfaces implemented by adapters (dependency inversion).
+- `bootstrap/services.py` — assembles a `BackendServices` bag (settings, stores, clients, cache). Routes depend on this via a FastAPI dependency.
+
+Key backend behaviors to know:
+
+- Settings resolve from `HELA_*` env vars; see `python/helaicopter_api/server/config.py`.
+- `invalidate_backend_read_caches(services)` clears the in-process cache and disposes the SQLAlchemy engine after DB refreshes.
+- OpenAPI artifacts are written to `public/openapi/` (`helaicopter-api.json`/`.yaml`).
+
+Frontend layering (`src/`):
+
+- `lib/client/endpoints.ts` — single source of truth for all HTTP paths and base-URL logic. Hooks/components import these builders, never hard-code paths.
+- `lib/client/normalize.ts` — normalizes backend payloads and accepts both `snake_case` and `camelCase` during the rollout window.
+- `hooks/` — SWR hooks (e.g., `usePrefectFlowRuns`, `useDatabaseStatus`).
+- `components/` — composable UI including the orchestration dashboard and DAG visualizations.
+

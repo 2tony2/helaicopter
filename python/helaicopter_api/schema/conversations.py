@@ -201,7 +201,9 @@ class ConversationContextBucketResponse(BaseModel):
 
 
 class ConversationContextStepResponse(BaseModel):
-    message_id: str
+    message_id: str = Field(
+        description="Source/provider message identifier captured in context analytics; not the persisted conversation message row ID."
+    )
     index: int
     role: str
     label: str

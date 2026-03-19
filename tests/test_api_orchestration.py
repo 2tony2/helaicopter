@@ -281,6 +281,100 @@ class TestOrchestrationEndpoint:
         assert "contract_version" not in run
         assert "task_id" not in run["tasks"][0]
 
+    def test_stale_runtime_state_is_reconciled_so_graph_no_longer_reports_running(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        now = datetime.now(UTC)
+        repo_root = tmp_path
+        run_id = "oats-runtime-stale"
+        state_path = repo_root / ".oats" / "runtime" / run_id / "state.json"
+
+        runtime_state = RunRuntimeState(
+            run_id=run_id,
+            run_title="Repair orchestration graph",
+            repo_root=repo_root,
+            config_path=repo_root / ".oats" / "config.toml",
+            run_spec_path=repo_root / "runs" / "sample.md",
+            mode="writable",
+            integration_branch="oats/overnight/orchestration-graph",
+            task_pr_target="oats/overnight/orchestration-graph",
+            final_pr_target="main",
+            runtime_dir=state_path.parent,
+            status="running",
+            active_task_id="task-api",
+            started_at=now - timedelta(minutes=20),
+            updated_at=now - timedelta(minutes=8),
+            heartbeat_at=now - timedelta(minutes=8),
+            planner=InvocationRuntimeRecord(
+                agent="codex",
+                role="planner",
+                command=["codex", "exec"],
+                cwd=repo_root,
+                prompt="plan the run",
+                session_id="planner-live",
+                exit_code=0,
+                started_at=now - timedelta(minutes=20),
+                last_heartbeat_at=now - timedelta(minutes=19),
+                finished_at=now - timedelta(minutes=19),
+            ),
+            tasks=[
+                TaskRuntimeRecord(
+                    task_id="task-api",
+                    title="Implement route",
+                    depends_on=[],
+                    branch_name="oats/task/task-api",
+                    pr_base="oats/overnight/orchestration-graph",
+                    agent="claude",
+                    status="running",
+                    attempts=1,
+                    invocation=InvocationRuntimeRecord(
+                        agent="claude",
+                        role="executor",
+                        command=["claude", "run"],
+                        cwd=repo_root,
+                        prompt="implement the route",
+                        session_id="claude-task-1",
+                        output_text="stuck",
+                        started_at=now - timedelta(minutes=10),
+                        last_heartbeat_at=now - timedelta(minutes=8),
+                    ),
+                ),
+                TaskRuntimeRecord(
+                    task_id="task-tests",
+                    title="Add endpoint tests",
+                    depends_on=["task-api"],
+                    branch_name="oats/task/task-tests",
+                    pr_base="oats/overnight/orchestration-graph",
+                    agent="claude",
+                    status="blocked",
+                    attempts=0,
+                    invocation=None,
+                ),
+            ],
+        )
+        _write_model(state_path, runtime_state)
+
+        with orchestration_client(repo_root) as client:
+            response = client.get("/orchestration/oats")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 1
+
+        run = payload[0]
+        assert run["status"] == "pending"
+        assert run["activeTaskId"] is None
+        assert run["isRunning"] is False
+        assert [task["status"] for task in run["tasks"]] == ["pending", "blocked"]
+        assert run["dag"]["stats"]["activeCount"] == 0
+        task_node = next(node for node in run["dag"]["nodes"] if node["id"] == "task-api")
+        assert task_node["status"] == "pending"
+        assert task_node["isActive"] is False
+        assert task_node["lastHeartbeatAt"] == (
+            runtime_state.tasks[0].invocation.last_heartbeat_at.isoformat().replace("+00:00", "Z")
+        )
+
     def test_run_record_response_shapes_terminal_summary_without_runtime_state(
         self,
         tmp_path: Path,
@@ -351,7 +445,9 @@ class TestOrchestrationEndpoint:
         assert run["tasks"][0]["invocation"]["conversationPath"] == (
             f"/conversations/{encoded_claude_project}/task-thread-1"
         )
-        assert run["dag"]["stats"]["failedCount"] == 2
+        assert run["dag"]["stats"]["failedCount"] == 1
+        planner_node = next(node for node in run["dag"]["nodes"] if node["id"] == "planner")
+        assert planner_node["status"] == "succeeded"
         assert run["dag"]["stats"]["providerBreakdown"] == {"codex": 1, "claude": 1}
 
     def test_openapi_exposes_orchestration_route(self, tmp_path: Path) -> None:

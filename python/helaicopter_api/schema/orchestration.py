@@ -25,6 +25,7 @@ class OrchestrationInvocationResponse(CamelCaseHttpResponseModel):
     exit_code: int | None = None
     timed_out: bool = False
     started_at: str
+    last_heartbeat_at: str | None = None
     finished_at: str | None = None
     project_path: EncodedProjectKey | None = None
     conversation_path: str | None = None

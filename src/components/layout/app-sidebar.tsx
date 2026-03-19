@@ -25,10 +25,11 @@ const navItems = [
 ];
 
 const apiItems = [
-  { href: "/schema", label: "API", icon: Braces },
+  { href: "/schema", label: "API Explorer", icon: Braces },
   { href: "/openapi/helaicopter-api.json", label: "OpenAPI JSON" },
   { href: "/openapi/helaicopter-api.yaml", label: "OpenAPI YAML" },
 ];
+const apiSection = { label: "API" };
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -64,7 +65,7 @@ export function AppSidebar() {
           );
         })}
         <div className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          API
+          {apiSection.label}
         </div>
         {apiItems.map((item) => {
           const isActive = item.href === "/schema" && pathname.startsWith("/schema");

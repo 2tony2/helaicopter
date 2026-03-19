@@ -78,6 +78,7 @@ Useful local checks:
 
 ```bash
 curl http://127.0.0.1:30000/health
+curl http://127.0.0.1:30000/gateway/direction
 open http://127.0.0.1:30000/openapi.json
 npm run api:openapi
 ```
@@ -159,9 +160,12 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 
 ## Runtime Architecture
 
+- **FastAPI** is the single network gateway for the product. The Next.js frontend, Prefect orchestration views, database artifact inspection, and repo-local Oats artifact reads all flow through backend-owned routes.
 - **SQLite** stores app-local metadata, refresh bookkeeping, evaluations, and historical detail tables.
 - **ClickHouse** is the primary analytics and event store for warehouse-style reads.
-- **DuckDB** is no longer on the primary serving path. If present, it is only an optional local inspection artifact surfaced on the Databases page.
+- **DuckDB** is no longer on the primary serving path. If present, it is only an optional local inspection artifact surfaced through the Databases API and page.
+- **Prefect** is the primary orchestration control plane and is exposed through `/orchestration/prefect/*`.
+- **Oats local runtime** remains a compatibility and artifact-inspection surface under `/orchestration/oats`.
 
 ## Frontend/Backend Split
 

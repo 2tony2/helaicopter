@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { FileText } from "lucide-react";
 import { formatModelName, getModelBadgeClasses } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-header";
 
 function providerLabel(provider: "claude" | "codex"): string {
   return provider === "claude" ? "Claude" : "Codex";
@@ -21,13 +22,11 @@ export default function PlansPage() {
   const { data: plans, isLoading } = usePlans();
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Plans</h1>
-        <p className="text-muted-foreground mt-1">
-          Browse saved implementation plans
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title="Plans"
+        description="Browse saved implementation plans"
+      />
 
       {isLoading ? (
         <div className="space-y-3">

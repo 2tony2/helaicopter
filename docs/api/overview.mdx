@@ -1,0 +1,20 @@
+---
+title: API Overview
+description: How the frontend targets the FastAPI backend and where to find the OpenAPI schema.
+---
+
+Base URL and routing:
+
+- The frontend never hard-codes URLs. It imports builders from `src/lib/client/endpoints.ts`.
+- `NEXT_PUBLIC_API_BASE_URL` can point the app at any backend origin. On localhost with no env var, calls default to `http://127.0.0.1:30000`.
+
+Schema and artifacts:
+
+- The FastAPI app exposes a typed OpenAPI surface and exports artifacts to `public/openapi/`.
+- Regenerate locally with `npm run api:openapi`.
+
+Response shapes:
+
+- Pydantic response models inherit from `CamelCaseHttpResponseModel`, so fields emit as `camelCase` even if the internal model fields are `snake_case`.
+- The client `normalize.ts` accepts both casings during the transition to all-`camelCase`.
+

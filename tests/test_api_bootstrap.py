@@ -194,3 +194,20 @@ class TestApiDocsNavigation:
         assert 'href: "/schema"' in sidebar_source
         assert "/openapi/helaicopter-api.json" in schema_page_source
         assert "/openapi/helaicopter-api.yaml" in schema_page_source
+
+
+class TestGatewayDirection:
+    def test_gateway_direction_exposes_fastapi_first_platform_contract(self, client) -> None:
+        response = client.get("/gateway/direction")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["gatewayDirection"] == "fastapi-first"
+        assert body["frontendCallsVia"] == "fastapi"
+
+        surfaces = {surface["key"]: surface for surface in body["surfaces"]}
+        assert surfaces["fastapi"]["isPrimary"] is True
+        assert "/orchestration/prefect" in surfaces["prefect"]["pathPrefixes"]
+        assert surfaces["prefect"]["isPrimary"] is True
+        assert surfaces["oats"]["isPrimary"] is False
+        assert surfaces["cache"]["servingClass"] == "internal-only"

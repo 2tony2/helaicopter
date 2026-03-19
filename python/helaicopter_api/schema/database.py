@@ -26,6 +26,11 @@ class DatabaseTableSchemaResponse(CamelCaseHttpResponseModel):
     name: str
     row_count: int = 0
     columns: list[DatabaseColumnSchemaResponse] = []
+    serving_class: str = "not-served"
+    integration_type: str = "unclassified"
+    fastapi_routes: list[str] = []
+    sqlalchemy_model: str | None = None
+    note: str | None = None
 
 
 class DatabaseArtifactStatusResponse(CamelCaseHttpResponseModel):
