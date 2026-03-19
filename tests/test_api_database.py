@@ -54,13 +54,13 @@ def _status_payload(
                 "tableCount": 1,
                 "tables": [],
             },
-            "legacyDuckdb": {
-                "key": "legacy_duckdb",
-                "label": "Legacy DuckDB Snapshot",
+            "duckdb": {
+                "key": "duckdb",
+                "label": "DuckDB Inspection Snapshot",
                 "engine": "DuckDB",
-                "role": "legacy_debug",
+                "role": "inspection",
                 "availability": "missing",
-                "note": "Legacy compatibility",
+                "note": "DuckDB inspection snapshot",
                 "error": None,
                 "path": "/tmp/helaicopter_olap.duckdb",
                 "target": None,
@@ -172,7 +172,8 @@ class TestDatabaseEndpoints:
         body = response.json()
         assert body["status"] == "completed"
         assert body["runtime"]["analyticsReadBackend"] == "legacy"
-        assert body["databases"]["legacyDuckdb"]["key"] == "legacy_duckdb"
+        assert body["databases"]["duckdb"]["key"] == "duckdb"
+        assert "legacyDuckdb" not in body["databases"]
         assert refresh_calls == [
             {"force": True, "trigger": "manual-ui", "stale_after_seconds": 123},
         ]
@@ -206,7 +207,7 @@ class TestDatabaseEndpoints:
         assert body["error"] == "refresh exploded"
         assert body["runtime"]["conversationSummaryReadBackend"] == "legacy"
         assert body["databases"]["sqlite"]["key"] == "sqlite"
-        assert body["databases"]["legacyDuckdb"]["key"] == "legacy_duckdb"
+        assert body["databases"]["duckdb"]["key"] == "duckdb"
         assert services.cache.clear_calls == 1
         assert services.sqlite_engine.dispose_calls == 1
 
@@ -243,3 +244,5 @@ class TestDatabaseEndpoints:
         assert "stale_after_seconds" not in request_schema["properties"]
         assert "lastSuccessfulRefreshAt" in status_schema["properties"]
         assert "last_successful_refresh_at" not in status_schema["properties"]
+        assert "duckdb" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
+        assert "legacyDuckdb" not in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]

@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { LegacyDuckDbPreview } from "@/components/databases/olap-wasm-preview";
+import { DuckDbPreview } from "@/components/databases/olap-wasm-preview";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
@@ -201,13 +201,13 @@ export function DatabaseDashboard() {
           <div>
             <h1 className="text-2xl font-bold">Databases</h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
-              Helaicopter uses SQLite for app-local metadata and the legacy
-              DuckDB artifact for optional inspection/debugging. Conversations
+              Helaicopter uses SQLite for app-local metadata and the DuckDB
+              artifact for optional inspection/debugging. Conversations
               and analytics in the UI now stay fresh through simple polling.
             </p>
             <p className="text-sm text-muted-foreground">
               {data.scopeLabel ?? "Historical conversations before today from the last 365 days"}.
-              DuckDB remains optional legacy inspection tooling when the artifact is present.
+              DuckDB remains optional inspection tooling when the artifact is present.
             </p>
           </div>
         </div>
@@ -263,15 +263,15 @@ export function DatabaseDashboard() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Legacy DuckDB</CardTitle>
+            <CardTitle className="text-base">DuckDB Snapshot</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <Badge variant={availabilityVariant(data.databases.legacyDuckdb.availability)}>
-              {data.databases.legacyDuckdb.availability}
+            <Badge variant={availabilityVariant(data.databases.duckdb.availability)}>
+              {data.databases.duckdb.availability}
             </Badge>
-            <div>{data.databases.legacyDuckdb.engine}</div>
-            <div>{data.databases.legacyDuckdb.tableCount} tables</div>
-            <div className="font-mono text-xs break-all">{data.databases.legacyDuckdb.path}</div>
+            <div>{data.databases.duckdb.engine}</div>
+            <div>{data.databases.duckdb.tableCount} tables</div>
+            <div className="font-mono text-xs break-all">{data.databases.duckdb.path}</div>
           </CardContent>
         </Card>
         <Card>
@@ -317,15 +317,15 @@ export function DatabaseDashboard() {
       <Tabs defaultValue="sqlite" className="space-y-4">
         <TabsList>
           <TabsTrigger value="sqlite">SQLite</TabsTrigger>
-          <TabsTrigger value="legacyDuckdb">Legacy DuckDB</TabsTrigger>
+          <TabsTrigger value="duckdb">DuckDB Snapshot</TabsTrigger>
         </TabsList>
         <TabsContent value="sqlite">
           <DatabaseExplorer database={data.databases.sqlite} />
         </TabsContent>
-        <TabsContent value="legacyDuckdb">
+        <TabsContent value="duckdb">
           <div className="space-y-6">
-            <LegacyDuckDbPreview database={data.databases.legacyDuckdb} />
-            <DatabaseExplorer database={data.databases.legacyDuckdb} />
+            <DuckDbPreview database={data.databases.duckdb} />
+            <DatabaseExplorer database={data.databases.duckdb} />
           </div>
         </TabsContent>
       </Tabs>

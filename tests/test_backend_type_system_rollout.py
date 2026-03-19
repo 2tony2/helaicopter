@@ -377,7 +377,7 @@ def test_wave_nine_retires_rollout_compatibility_shims_or_tracks_them_with_dates
     assert "def legacy_duckdb_artifact(" not in db_settings
     assert "analyticsReadBackend" in rollout_doc
     assert "conversationSummaryReadBackend" in rollout_doc
-    assert "legacyDuckdb" in rollout_doc
+    assert "duckdb" in rollout_doc
     assert "2026-06-30" in rollout_doc
 
 

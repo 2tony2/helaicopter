@@ -1,4 +1,4 @@
-"""Application-layer shaping for legacy OATS local-runtime records."""
+"""Application-layer shaping for OATS local-runtime records."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class _ShapedRun:
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationRunResponse]:
-    """Return legacy OATS local-runtime summaries for compatibility views."""
+    """Return OATS local-runtime summaries."""
     runs_by_id: dict[str, _ShapedRun] = {}
 
     for stored_record in services.oats_run_store.list_run_records():

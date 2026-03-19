@@ -4,7 +4,7 @@ import { DatabaseDashboard } from "@/components/databases/database-dashboard";
 export const metadata: Metadata = {
   title: "Databases | Helaicopter",
   description:
-    "SQLite runtime status plus legacy DuckDB artifact inspection.",
+    "SQLite runtime status plus DuckDB artifact inspection.",
 };
 
 export default function DatabasesPage() {
