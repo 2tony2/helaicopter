@@ -21,9 +21,14 @@ from helaicopter_api.schema.prefect_orchestration import (
     PrefectWorkPoolResponse,
     PrefectWorkerResponse,
 )
-from oats.prefect.artifacts import LocalFlowRunMetadata
+from oats.prefect.artifacts import LocalFlowRunMetadata, LocalTaskCheckpoint
 
 _LOCAL_FLOW_RUN_METADATA_ADAPTER = TypeAdapter(LocalFlowRunMetadata)
+_LOCAL_TASK_CHECKPOINT_ADAPTER = TypeAdapter(LocalTaskCheckpoint)
+_ACTIVE_PREFECT_STATES = {"RUNNING", "PENDING", "SCHEDULED", "LATE", "CANCELLING"}
+_SUCCESSFUL_CHECKPOINT_STATES = {"succeeded", "completed", "skipped"}
+_FAILED_CHECKPOINT_STATES = {"failed", "timed_out", "crashed", "cancelled", "canceled"}
+_RUNNING_CHECKPOINT_STATES = {"running", "pending", "blocked"}
 
 
 def list_prefect_deployments(services: BackendServices) -> list[PrefectDeploymentResponse]:
@@ -91,6 +96,7 @@ def _shape_flow_run(
     item: PrefectFlowRunRecord,
     local_metadata: _StoredLocalFlowRunMetadata | None,
 ) -> PrefectFlowRunResponse:
+    state_type, state_name, updated_at = _reconcile_flow_run_state(item, local_metadata)
     return PrefectFlowRunResponse(
         flow_run_id=item.flow_run_id,
         flow_run_name=item.flow_run_name,
@@ -100,10 +106,10 @@ def _shape_flow_run(
         flow_name=item.flow_name,
         work_pool_name=item.work_pool_name,
         work_queue_name=item.work_queue_name,
-        state_type=item.state_type,
-        state_name=item.state_name,
+        state_type=state_type,
+        state_name=state_name,
         created_at=item.created_at,
-        updated_at=item.updated_at,
+        updated_at=updated_at,
         oats_metadata=(
             PrefectOatsMetadataResponse(
                 run_title=local_metadata.metadata.run_title,
@@ -133,9 +139,16 @@ def _shape_payload_metadata(payload: PrefectOatsPayload | None) -> PrefectOatsMe
 
 
 class _StoredLocalFlowRunMetadata:
-    def __init__(self, *, path: Path, metadata: LocalFlowRunMetadata) -> None:
+    def __init__(
+        self,
+        *,
+        path: Path,
+        metadata: LocalFlowRunMetadata,
+        checkpoints: list[LocalTaskCheckpoint],
+    ) -> None:
         self.path = path
         self.metadata = metadata
+        self.checkpoints = checkpoints
 
 
 def _load_local_flow_run_metadata(project_root: Path) -> dict[str, _StoredLocalFlowRunMetadata]:
@@ -146,5 +159,58 @@ def _load_local_flow_run_metadata(project_root: Path) -> dict[str, _StoredLocalF
             metadata = _LOCAL_FLOW_RUN_METADATA_ADAPTER.validate_json(path.read_bytes())
         except (FileNotFoundError, OSError, ValueError):
             continue
-        items[metadata.flow_run_id] = _StoredLocalFlowRunMetadata(path=path, metadata=metadata)
+        items[metadata.flow_run_id] = _StoredLocalFlowRunMetadata(
+            path=path,
+            metadata=metadata,
+            checkpoints=_load_task_checkpoints(path.parent / "tasks"),
+        )
     return items
+
+
+def _load_task_checkpoints(tasks_dir: Path) -> list[LocalTaskCheckpoint]:
+    checkpoints: list[LocalTaskCheckpoint] = []
+    for path in sorted(tasks_dir.glob("*.json")):
+        try:
+            checkpoints.append(_LOCAL_TASK_CHECKPOINT_ADAPTER.validate_json(path.read_bytes()))
+        except (FileNotFoundError, OSError, ValueError):
+            continue
+    return checkpoints
+
+
+def _reconcile_flow_run_state(
+    item: PrefectFlowRunRecord,
+    local_metadata: _StoredLocalFlowRunMetadata | None,
+) -> tuple[str | None, str | None, str | None]:
+    state_type = item.state_type
+    state_name = item.state_name
+    updated_at = item.updated_at
+    if local_metadata is None:
+        return state_type, state_name, updated_at
+
+    checkpoint_statuses = {
+        checkpoint.status.strip().lower()
+        for checkpoint in local_metadata.checkpoints
+        if checkpoint.status.strip()
+    }
+    latest_local_timestamp = max(
+        [
+            timestamp
+            for timestamp in [
+                updated_at,
+                local_metadata.metadata.updated_at,
+                local_metadata.metadata.completed_at,
+                *[checkpoint.updated_at for checkpoint in local_metadata.checkpoints],
+            ]
+            if timestamp is not None
+        ],
+        default=None,
+    )
+    if (state_type or "").upper() in _ACTIVE_PREFECT_STATES:
+        if checkpoint_statuses and checkpoint_statuses.isdisjoint(_RUNNING_CHECKPOINT_STATES):
+            if checkpoint_statuses & _FAILED_CHECKPOINT_STATES:
+                return "FAILED", "Failed", latest_local_timestamp
+            if local_metadata.metadata.completed_at or checkpoint_statuses <= _SUCCESSFUL_CHECKPOINT_STATES:
+                return "COMPLETED", "Completed", latest_local_timestamp
+        if local_metadata.metadata.completed_at:
+            return "COMPLETED", "Completed", latest_local_timestamp
+    return state_type, state_name, latest_local_timestamp

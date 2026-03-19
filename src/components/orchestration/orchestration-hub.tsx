@@ -6,6 +6,7 @@ import { OvernightOatsPanel } from "./overnight-oats-panel";
 import { PrefectUiEmbed } from "./prefect-ui-embed";
 import type { OrchestrationTab } from "./tabs";
 import { usePrefectFlowRuns } from "@/hooks/use-conversations";
+import { PageHeader } from "@/components/layout/page-header";
 
 export function OrchestrationHub({
   initialTab = "prefect",
@@ -16,13 +17,11 @@ export function OrchestrationHub({
   const prefectCount = prefectFlowRuns?.length ?? 0;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Orchestration</h1>
-        <p className="mt-1 text-muted-foreground">
-          Prefect-native orchestration status, worker health, and legacy Oats run records.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title="Orchestration"
+        description="Prefect-native orchestration status, worker health, and legacy Oats run records."
+      />
 
       <Tabs defaultValue={initialTab}>
         <TabsList>

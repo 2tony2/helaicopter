@@ -37,6 +37,7 @@ import {
   Percent,
 } from "lucide-react";
 import type { SubscriptionSettings } from "@/lib/types";
+import { PageHeader } from "@/components/layout/page-header";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -110,18 +111,16 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Analytics</h1>
-          <p className="text-muted-foreground mt-1">
-            Token usage, costs, and model statistics
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <DateRangePicker value={days} onChange={setDays} />
-          <ProviderFilter value={provider} onChange={setProvider} />
-        </div>
-      </div>
+      <PageHeader
+        title="Analytics"
+        description="Token usage, costs, and model statistics"
+        actions={
+          <div className="flex items-center gap-3">
+            <DateRangePicker value={days} onChange={setDays} />
+            <ProviderFilter value={provider} onChange={setProvider} />
+          </div>
+        }
+      />
 
       {isLoading ? (
         <>

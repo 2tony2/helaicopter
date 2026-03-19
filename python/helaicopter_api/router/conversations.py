@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from helaicopter_api.application.conversations import (
     get_conversation,
     get_conversation_dag,
+    get_subagent_conversation,
     list_conversations,
 )
 from helaicopter_api.bootstrap.services import BackendServices
@@ -67,3 +68,25 @@ async def conversations_dag_detail(
     if dag is None:
         raise HTTPException(status_code=404, detail="Conversation DAG not found")
     return dag
+
+
+@conversations_router.get(
+    "/{project_path}/{session_id}/subagents/{agent_id}",
+    response_model=ConversationDetailResponse,
+)
+async def conversations_subagent_detail(
+    project_path: str,
+    session_id: str,
+    agent_id: str,
+    services: BackendServices = Depends(get_services),
+) -> ConversationDetailResponse:
+    """Return one subagent transcript beneath its parent conversation route."""
+    conversation = get_subagent_conversation(
+        services,
+        project_path=project_path,
+        parent_session_id=session_id,
+        agent_id=agent_id,
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Subagent conversation not found")
+    return conversation

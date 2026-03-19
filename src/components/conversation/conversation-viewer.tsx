@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useConversation,
   useConversationDag,
@@ -27,6 +28,12 @@ import { ToolCallBlock } from "./tool-call-block";
 import { EvaluationDialog } from "./evaluation-dialog";
 import { EvaluationsTab } from "./evaluations-tab";
 import { ConversationDagView } from "./conversation-dag-view";
+import {
+  buildConversationRoute,
+  buildConversationSubagentRoute,
+  getConversationRouteState,
+  type ConversationDetailTab,
+} from "@/lib/routes";
 
 function providerLabel(provider: "claude" | "codex"): string {
   return provider === "claude" ? "Claude" : "Codex";
@@ -102,13 +109,17 @@ function FailedToolCallsTab({
 function SubagentTranscriptCard({
   projectPath,
   sessionId,
+  parentSessionId,
   agent,
+  isSelected = false,
   depth = 0,
   ancestry = [],
 }: {
   projectPath: string;
   sessionId: string;
+  parentSessionId?: string;
   agent: SubagentInfo;
+  isSelected?: boolean;
   depth?: number;
   ancestry?: string[];
 }) {
@@ -118,7 +129,7 @@ function SubagentTranscriptCard({
     error,
   } = useSubagentConversation(
     projectPath,
-    sessionId,
+    parentSessionId ?? sessionId,
     agent.agentId
   );
   const provider = providerFromProjectPath(projectPath);
@@ -131,7 +142,15 @@ function SubagentTranscriptCard({
       className={depth > 0 ? "border-l border-border/60 pl-4" : undefined}
       style={depth > 0 ? { marginLeft: `${depth * 12}px` } : undefined}
     >
-      <Card className={!agent.hasFile ? "opacity-70" : undefined}>
+      <Card
+        id={depth === 0 ? `subagent-${agent.agentId}` : undefined}
+        className={[
+          !agent.hasFile ? "opacity-70" : "",
+          isSelected ? "border-primary ring-1 ring-primary/30" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <CardContent className="p-4 space-y-4">
           <div className="flex items-start gap-3">
             <Bot className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
@@ -147,6 +166,16 @@ function SubagentTranscriptCard({
                 <Badge variant="outline" className="text-xs">
                   sub-agent
                 </Badge>
+                <Link
+                  href={buildConversationSubagentRoute(
+                    projectPath,
+                    parentSessionId ?? sessionId,
+                    agent.agentId
+                  )}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  native route
+                </Link>
                 {!agent.hasFile && (
                   <Badge variant="outline" className="text-xs text-muted-foreground">
                     no file
@@ -218,6 +247,7 @@ function SubagentTranscriptCard({
                       key={`${agent.agentId}:${child.agentId}`}
                       projectPath={projectPath}
                       sessionId={sessionId}
+                      parentSessionId={agent.agentId}
                       agent={child}
                       depth={depth + 1}
                       ancestry={[...ancestry, agent.agentId]}
@@ -236,10 +266,18 @@ function SubagentTranscriptCard({
 export function ConversationViewer({
   projectPath,
   sessionId,
+  initialTab = "messages",
+  initialPlanId,
+  initialSubagentId,
 }: {
   projectPath: string;
   sessionId: string;
+  initialTab?: ConversationDetailTab;
+  initialPlanId?: string;
+  initialSubagentId?: string;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: conversation, isLoading, error } = useConversation(projectPath, sessionId);
   const {
     data: conversationDag,
@@ -251,9 +289,13 @@ export function ConversationViewer({
     sessionId
   );
   const { data: tasks } = useTasks(sessionId);
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [showEvaluationToast, setShowEvaluationToast] = useState(false);
   const plans = conversation?.plans || [];
+  const routeState = getConversationRouteState(searchParams, {
+    tab: initialTab,
+    plan: initialPlanId,
+    subagent: initialSubagentId,
+  });
 
   useEffect(() => {
     if (!showEvaluationToast) {
@@ -266,6 +308,16 @@ export function ConversationViewer({
 
     return () => window.clearTimeout(timeout);
   }, [showEvaluationToast]);
+
+  useEffect(() => {
+    if (!routeState.subagent) {
+      return;
+    }
+    const element = document.getElementById(`subagent-${routeState.subagent}`);
+    if (element) {
+      element.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }, [routeState.subagent]);
 
   if (isLoading) {
     return (
@@ -293,9 +345,27 @@ export function ConversationViewer({
         : []
     )
   );
+  const selectedPlanId = routeState.plan ?? null;
+  const selectedSubagentId = routeState.subagent ?? null;
+  const activeTab = routeState.tab;
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
   const conversationEvaluations = evaluations ?? [];
   const provider = providerFromProjectPath(projectPath);
+
+  function replaceRoute(next: {
+    tab?: ConversationDetailTab;
+    plan?: string | null;
+    subagent?: string | null;
+  }) {
+    router.replace(
+      buildConversationRoute(projectPath, sessionId, {
+        tab: next.tab ?? routeState.tab,
+        plan: next.plan ?? routeState.plan,
+        subagent: next.subagent ?? routeState.subagent,
+      }),
+      { scroll: false }
+    );
+  }
 
   return (
     <div>
@@ -403,7 +473,13 @@ export function ConversationViewer({
         />
       </div>
 
-      <Tabs defaultValue="messages">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          const nextTab = value as ConversationDetailTab;
+          replaceRoute({ tab: nextTab });
+        }}
+      >
         <TabsList>
           <TabsTrigger value="messages">Messages</TabsTrigger>
           <TabsTrigger value="plans">
@@ -448,7 +524,9 @@ export function ConversationViewer({
                       className={`cursor-pointer transition-colors ${
                         selectedPlan.id === plan.id ? "border-primary" : "hover:bg-accent/50"
                       }`}
-                      onClick={() => setSelectedPlanId(plan.id)}
+                      onClick={() => {
+                        replaceRoute({ tab: "plans", plan: plan.id });
+                      }}
                     >
                       <CardContent className="p-4 space-y-2">
                         <div className="flex items-start justify-between gap-2">
@@ -557,12 +635,26 @@ export function ConversationViewer({
           <div className="mt-4">
             {subagents.length > 0 ? (
               <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {subagents.map((agent) => (
+                    <Button
+                      key={`chip:${agent.agentId}`}
+                      variant={selectedSubagentId === agent.agentId ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => replaceRoute({ tab: "subagents", subagent: agent.agentId })}
+                    >
+                      {agent.nickname || agent.agentId}
+                    </Button>
+                  ))}
+                </div>
                 {subagents.map((agent) => (
                   <SubagentTranscriptCard
                     key={agent.agentId}
                     projectPath={projectPath}
                     sessionId={sessionId}
+                    parentSessionId={sessionId}
                     agent={agent}
+                    isSelected={selectedSubagentId === agent.agentId}
                   />
                 ))}
               </div>

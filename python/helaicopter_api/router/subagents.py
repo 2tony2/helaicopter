@@ -32,3 +32,4 @@ async def subagents_detail(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Subagent conversation not found")
     return conversation
+

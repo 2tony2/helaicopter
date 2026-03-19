@@ -1,0 +1,19 @@
+---
+title: OATS Runtime Records
+description: Local orchestration artifacts and how they surface in the UI.
+---
+
+Source of truth
+
+- Repo-local OATS runtime state and recorded runs under `.oats/runtime/` and adjacent record files.
+
+Endpoint
+
+- `GET /orchestration/oats` — shapes both live runtime state and recorded runs into a single list, preferring live state when available.
+
+Model highlights
+
+- Planner vs. task nodes, dependency edges with `dispatches`/`depends_on` labels.
+- Activity flags: `isActive`, `isStale` (heartbeat age), `timedOut`.
+- Repo correlation: `projectPath`/`conversationPath` to jump into the conversation thread.
+

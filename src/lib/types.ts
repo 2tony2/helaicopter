@@ -271,6 +271,35 @@ export interface OrchestrationDag {
   stats: OrchestrationDagStats;
 }
 
+export interface OrchestrationRunEvaluationConversation {
+  nodeId: string;
+  label: string;
+  role: string;
+  agent: string;
+  status: OrchestrationTaskStatus | OrchestrationRunStatus;
+  taskId?: string | null;
+  sessionId?: string | null;
+  projectPath?: string | null;
+  conversationPath?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  hasSessionLink: boolean;
+}
+
+export interface OrchestrationRunEvaluationSummary {
+  conversationCount: number;
+  linkedConversationCount: number;
+  missingConversationCount: number;
+  activeConversationCount: number;
+  failedConversationCount: number;
+  providerBreakdown: Record<string, number>;
+}
+
+export interface OrchestrationRunEvaluation {
+  summary: OrchestrationRunEvaluationSummary;
+  conversations: OrchestrationRunEvaluationConversation[];
+}
+
 export interface OvernightOatsRunRecord {
   source: "overnight-oats";
   contractVersion: "oats-run-v1" | "oats-runtime-v1";
@@ -295,6 +324,7 @@ export interface OvernightOatsRunRecord {
   recordedAt: string;
   recordPath: string;
   dag: OrchestrationDag;
+  evaluation: OrchestrationRunEvaluation;
 }
 
 export type PrefectRunTone = "running" | "success" | "error" | "pending" | "unknown";

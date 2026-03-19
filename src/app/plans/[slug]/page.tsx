@@ -1,11 +1,10 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
 import { usePlan } from "@/hooks/use-plans";
 import { PlanPanel } from "@/components/plans/plan-panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronRight } from "lucide-react";
+import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 
 export default function PlanDetailPage({
   params,
@@ -16,14 +15,13 @@ export default function PlanDetailPage({
   const { data: plan, isLoading } = usePlan(planId);
 
   return (
-    <div className="space-y-6">
-      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Link href="/plans" className="hover:text-foreground transition-colors">
-          Plans
-        </Link>
-        <ChevronRight className="h-3.5 w-3.5" />
-        <span className="text-foreground">{plan?.title ?? plan?.slug ?? "Plan"}</span>
-      </nav>
+    <div className="space-y-8">
+      <Breadcrumbs
+        items={[
+          { href: "/plans", label: "Plans" },
+          { label: plan?.title ?? plan?.slug ?? "Plan" },
+        ]}
+      />
 
       {isLoading ? (
         <div className="space-y-4">

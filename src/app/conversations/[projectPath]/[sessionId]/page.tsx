@@ -1,10 +1,9 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
 import { ConversationViewer } from "@/components/conversation/conversation-viewer";
-import { ChevronRight } from "lucide-react";
 import { projectDirToDisplayName } from "@/lib/path-encoding";
+import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 
 export default function ConversationPage({
   params,
@@ -16,21 +15,14 @@ export default function ConversationPage({
   const displayName = projectDirToDisplayName(decodedPath);
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Link href="/conversations" className="hover:text-foreground transition-colors">
-          Conversations
-        </Link>
-        <ChevronRight className="h-3.5 w-3.5" />
-        <span className="truncate max-w-xs" title={decodedPath}>
-          {displayName}
-        </span>
-        <ChevronRight className="h-3.5 w-3.5" />
-        <span className="text-foreground font-mono text-xs">
-          {sessionId.slice(0, 8)}...
-        </span>
-      </nav>
+    <div className="space-y-8">
+      <Breadcrumbs
+        items={[
+          { href: "/conversations", label: "Conversations" },
+          { label: <span title={decodedPath} className="truncate max-w-xs inline-block">{displayName}</span> },
+          { label: <span className="font-mono text-xs">{sessionId.slice(0, 8)}...</span> },
+        ]}
+      />
 
       <ConversationViewer projectPath={decodedPath} sessionId={sessionId} />
     </div>

@@ -1,0 +1,16 @@
+---
+title: OpenAPI Artifacts
+description: Where schema files live and how to regenerate them.
+---
+
+Artifacts live at:
+
+- `public/openapi/helaicopter-api.json`
+- `public/openapi/helaicopter-api.yaml`
+
+Regeneration command:
+
+- `npm run api:openapi` — runs the Python generator to snapshot the current FastAPI schema.
+
+The frontend can statically import these paths for docs/playgrounds, or Mintlify can ingest the YAML.
+

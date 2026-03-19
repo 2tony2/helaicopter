@@ -6,6 +6,13 @@ from typing import Any
 
 from helaicopter_domain.ids import (
     ConversationId,
+    ConversationContextBucketId,
+    ConversationContextStepId,
+    ConversationMessageBlockId,
+    ConversationMessageId,
+    ConversationPlanRowId,
+    ConversationSubagentRowId,
+    ConversationTaskRowId,
     ModelId,
     ProjectId,
     SessionId,
@@ -36,6 +43,52 @@ def provider_for_project_path(project_path: EncodedProjectKey) -> ProviderName:
 
 def conversation_id(provider: ProviderName, session_id: SessionId) -> ConversationId:
     return f"{provider}:{session_id}"
+
+
+def conversation_message_id(conversation_id: ConversationId, ordinal: int) -> ConversationMessageId:
+    return f"{conversation_id}:message:{ordinal}"
+
+
+def conversation_message_block_id(
+    message_id: ConversationMessageId,
+    block_index: int,
+) -> ConversationMessageBlockId:
+    return f"{message_id}:block:{block_index}"
+
+
+def conversation_plan_row_id(
+    conversation_id: ConversationId,
+    ordinal: int,
+) -> ConversationPlanRowId:
+    return f"{conversation_id}:plan:{ordinal}"
+
+
+def conversation_subagent_row_id(
+    conversation_id: ConversationId,
+    ordinal: int,
+) -> ConversationSubagentRowId:
+    return f"{conversation_id}:subagent:{ordinal}"
+
+
+def conversation_task_row_id(
+    conversation_id: ConversationId,
+    ordinal: int,
+) -> ConversationTaskRowId:
+    return f"{conversation_id}:task:{ordinal}"
+
+
+def conversation_context_bucket_id(
+    conversation_id: ConversationId,
+    ordinal: int,
+) -> ConversationContextBucketId:
+    return f"{conversation_id}:bucket:{ordinal}"
+
+
+def conversation_context_step_id(
+    conversation_id: ConversationId,
+    ordinal: int,
+) -> ConversationContextStepId:
+    return f"{conversation_id}:step:{ordinal}"
 
 
 def tool_dim_id(provider: ProviderName, tool_name: str) -> ToolId:

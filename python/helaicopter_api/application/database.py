@@ -15,6 +15,7 @@ from helaicopter_db.status import (
     parse_status_payload,
 )
 
+from helaicopter_api.application.gateway import annotate_database_artifacts
 from helaicopter_api.bootstrap.services import BackendServices, invalidate_backend_read_caches
 from helaicopter_api.schema.database import DatabaseStatusResponse
 
@@ -119,6 +120,7 @@ def _coerce_status_payload(
     normalized.setdefault("refreshIntervalMinutes", 360)
     normalized.setdefault("runtime", _fallback_runtime_surface())
     normalized.setdefault("databases", _fallback_databases_surface(settings))
+    normalized["databases"] = annotate_database_artifacts(normalized.get("databases"))
     return DatabaseStatusResponse.model_validate(normalized)
 
 

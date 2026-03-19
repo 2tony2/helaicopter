@@ -52,7 +52,13 @@ def _status_payload(
                 "publicPath": "/database-artifacts/oltp/helaicopter_oltp.sqlite",
                 "docsUrl": "/database-schemas/oltp/index.html",
                 "tableCount": 1,
-                "tables": [],
+                "tables": [
+                    {
+                        "name": "refresh_runs",
+                        "rowCount": 1,
+                        "columns": [],
+                    }
+                ],
             },
             "duckdb": {
                 "key": "duckdb",
@@ -66,8 +72,14 @@ def _status_payload(
                 "target": None,
                 "publicPath": "/database-artifacts/olap/helaicopter_olap.duckdb",
                 "docsUrl": "/database-schemas/olap/index.html",
-                "tableCount": 0,
-                "tables": [],
+                "tableCount": 1,
+                "tables": [
+                    {
+                        "name": "daily_conversation_metrics",
+                        "rowCount": 7,
+                        "columns": [],
+                    }
+                ],
             },
         },
     }
@@ -174,6 +186,12 @@ class TestDatabaseEndpoints:
         assert body["runtime"]["analyticsReadBackend"] == "legacy"
         assert body["databases"]["duckdb"]["key"] == "duckdb"
         assert "legacyDuckdb" not in body["databases"]
+        assert body["databases"]["sqlite"]["tables"][0]["servingClass"] == "fastapi-derived"
+        assert body["databases"]["sqlite"]["tables"][0]["integrationType"] == "sqlalchemy"
+        assert body["databases"]["sqlite"]["tables"][0]["sqlalchemyModel"] == "RefreshRun"
+        assert "/databases/status" in body["databases"]["sqlite"]["tables"][0]["fastapiRoutes"]
+        assert body["databases"]["duckdb"]["tables"][0]["servingClass"] == "schema-inspection"
+        assert body["databases"]["duckdb"]["tables"][0]["integrationType"] == "duckdb-inspection"
         assert refresh_calls == [
             {"force": True, "trigger": "manual-ui", "stale_after_seconds": 123},
         ]
@@ -236,6 +254,7 @@ class TestDatabaseEndpoints:
         refresh_post = schema["paths"]["/databases/refresh"]["post"]
         request_schema = schema["components"]["schemas"]["DatabaseRefreshRequest"]
         status_schema = schema["components"]["schemas"]["DatabaseStatusResponse"]
+        table_schema = schema["components"]["schemas"]["DatabaseTableSchemaResponse"]
 
         assert refresh_post["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/DatabaseRefreshRequest"
@@ -246,3 +265,7 @@ class TestDatabaseEndpoints:
         assert "last_successful_refresh_at" not in status_schema["properties"]
         assert "duckdb" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
         assert "legacyDuckdb" not in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
+        assert "servingClass" in table_schema["properties"]
+        assert "integrationType" in table_schema["properties"]
+        assert "fastapiRoutes" in table_schema["properties"]
+        assert "sqlalchemyModel" in table_schema["properties"]

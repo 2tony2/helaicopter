@@ -29,6 +29,7 @@ from oats.models import (
 )
 
 ACTIVE_RUN_STATUSES = {"pending", "planning", "running"}
+STALE_RUNTIME_AFTER_SECONDS = 300
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,10 +80,13 @@ def _merge_run(runs_by_id: dict[str, _ShapedRun], shaped: _ShapedRun) -> None:
 def _shape_runtime_state(stored: StoredOatsRuntimeState) -> _ShapedRun:
     state = stored.state
     repo_root = state.repo_root
+    is_stale = _is_stale_runtime_state(state)
     heartbeat_at = _isoformat(state.heartbeat_at)
     planner = _shape_invocation(state.planner, repo_root)
-    tasks = [_shape_runtime_task(task, repo_root) for task in state.tasks]
+    tasks = [_shape_runtime_task(task, repo_root, stale=is_stale) for task in state.tasks]
     last_updated_at = _coerce_datetime(state.updated_at)
+    status = _reconcile_runtime_run_status(state, tasks, stale=is_stale)
+    active_task_id = None if is_stale else state.active_task_id
     response = OrchestrationRunResponse(
         source="overnight-oats",
         contract_version=state.contract_version,
@@ -95,24 +99,23 @@ def _shape_runtime_state(stored: StoredOatsRuntimeState) -> _ShapedRun:
         integration_branch=state.integration_branch,
         task_pr_target=state.task_pr_target,
         final_pr_target=state.final_pr_target,
-        status=state.status,
-        active_task_id=state.active_task_id,
+        status=status,
+        active_task_id=active_task_id,
         heartbeat_at=heartbeat_at,
         finished_at=_isoformat(state.finished_at),
         planner=planner,
         tasks=tasks,
         created_at=_isoformat(state.started_at) or heartbeat_at or "",
         last_updated_at=_isoformat(last_updated_at) or "",
-        is_running=state.status in ACTIVE_RUN_STATUSES and state.finished_at is None,
+        is_running=not is_stale and state.status in ACTIVE_RUN_STATUSES and state.finished_at is None,
         recorded_at=_isoformat(state.updated_at) or heartbeat_at or "",
         record_path=str(stored.path),
         dag=_build_orchestration_dag(
             planner,
             tasks,
             run_title=state.run_title,
-            run_status=state.status,
-            active_task_id=state.active_task_id,
-            heartbeat_at=heartbeat_at,
+            run_status=status,
+            active_task_id=active_task_id,
         ),
     )
     return _ShapedRun(response=response, last_updated_at=last_updated_at)
@@ -154,24 +157,29 @@ def _shape_run_record(stored: StoredOatsRunRecord) -> _ShapedRun:
             run_title=record.run_title,
             run_status=status,
             active_task_id=None,
-            heartbeat_at=_isoformat(recorded_at),
         ),
     )
     return _ShapedRun(response=response, last_updated_at=recorded_at)
 
 
-def _shape_runtime_task(task: TaskRuntimeRecord, repo_root: Path) -> OrchestrationTaskResponse:
+def _shape_runtime_task(
+    task: TaskRuntimeRecord,
+    repo_root: Path,
+    *,
+    stale: bool = False,
+) -> OrchestrationTaskResponse:
     invocation = _shape_invocation(
         task.invocation,
         repo_root,
         fallback_agent=task.agent,
         fallback_role=task.role,
     )
+    status = "pending" if stale and task.status == "running" else task.status
     return OrchestrationTaskResponse(
         task_id=task.task_id,
         title=task.title,
         depends_on=list(task.depends_on),
-        status=task.status,
+        status=status,
         attempts=task.attempts,
         invocation=invocation,
     )
@@ -211,6 +219,7 @@ def _shape_invocation(
         exit_code = None
         timed_out = False
         started_at = ""
+        last_heartbeat_at = None
         finished_at = None
     else:
         session_id = invocation.session_id
@@ -225,6 +234,7 @@ def _shape_invocation(
         exit_code = invocation.exit_code
         timed_out = invocation.timed_out
         started_at = _isoformat(invocation.started_at) or ""
+        last_heartbeat_at = _isoformat(getattr(invocation, "last_heartbeat_at", None))
         finished_at = _isoformat(invocation.finished_at)
 
     project_path = _normalize_repo_project_path(str(repo_root), agent) if session_id else None
@@ -246,6 +256,7 @@ def _shape_invocation(
         exit_code=exit_code,
         timed_out=timed_out,
         started_at=started_at,
+        last_heartbeat_at=last_heartbeat_at,
         finished_at=finished_at,
         project_path=project_path,
         conversation_path=conversation_path,
@@ -290,7 +301,6 @@ def _build_orchestration_dag(
     run_title: str,
     run_status: str,
     active_task_id: str | None,
-    heartbeat_at: str | None,
 ) -> OrchestrationDagResponse:
     nodes: dict[str, OrchestrationDagNodeResponse] = {}
     edges: dict[str, OrchestrationDagEdgeResponse] = {}
@@ -306,9 +316,9 @@ def _build_orchestration_dag(
             session_id=planner.session_id,
             project_path=planner.project_path,
             conversation_path=planner.conversation_path,
-            status="running" if run_status == "planning" else run_status,
-            is_active=run_status == "planning",
-            last_heartbeat_at=heartbeat_at,
+            status=_derive_invocation_status(planner, run_status=run_status, is_planner=True),
+            is_active=run_status == "planning" and planner.finished_at is None,
+            last_heartbeat_at=planner.last_heartbeat_at,
             exit_code=planner.exit_code,
             timed_out=planner.timed_out,
             depth=0,
@@ -329,7 +339,7 @@ def _build_orchestration_dag(
             status=task.status,
             is_active=active_task_id == task.task_id or task.status == "running",
             attempts=task.attempts,
-            last_heartbeat_at=heartbeat_at,
+            last_heartbeat_at=invocation.last_heartbeat_at if invocation is not None else None,
             exit_code=invocation.exit_code if invocation is not None else None,
             timed_out=invocation.timed_out if invocation is not None else False,
             depth=1 if planner is not None else 0,
@@ -414,3 +424,47 @@ def _isoformat(value: datetime | None) -> str | None:
     if value is None:
         return None
     return _coerce_datetime(value).isoformat().replace("+00:00", "Z")
+
+
+def _is_stale_runtime_state(state: RunRuntimeState, *, now: datetime | None = None) -> bool:
+    if state.finished_at is not None or state.status not in ACTIVE_RUN_STATUSES:
+        return False
+    if state.active_task_id is None and not any(task.status == "running" for task in state.tasks):
+        return False
+    reference_time = now or datetime.now(UTC)
+    heartbeat_age = (reference_time - _coerce_datetime(state.heartbeat_at)).total_seconds()
+    return heartbeat_age > STALE_RUNTIME_AFTER_SECONDS
+
+
+def _reconcile_runtime_run_status(
+    state: RunRuntimeState,
+    tasks: list[OrchestrationTaskResponse],
+    *,
+    stale: bool,
+) -> str:
+    if not stale:
+        return state.status
+    if any(task.status in {"pending", "blocked"} for task in tasks):
+        return "pending"
+    if any(task.status == "timed_out" for task in tasks):
+        return "timed_out"
+    if any(task.status == "failed" for task in tasks):
+        return "failed"
+    return "completed"
+
+
+def _derive_invocation_status(
+    invocation: OrchestrationInvocationResponse,
+    *,
+    run_status: str,
+    is_planner: bool = False,
+) -> str:
+    if invocation.timed_out:
+        return "timed_out"
+    if invocation.exit_code == 0 and invocation.finished_at:
+        return "succeeded"
+    if invocation.exit_code not in (None, 0):
+        return "failed"
+    if is_planner and run_status == "planning":
+        return "running"
+    return "pending"

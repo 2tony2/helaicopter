@@ -16,6 +16,16 @@ from helaicopter_api.ports.app_sqlite import HistoricalConversationTask
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
+from helaicopter_db.utils import (
+    conversation_context_bucket_id,
+    conversation_context_step_id,
+    conversation_id,
+    conversation_message_block_id,
+    conversation_message_id,
+    conversation_plan_row_id,
+    conversation_subagent_row_id,
+    conversation_task_row_id,
+)
 
 
 def _codex_thread_row(
@@ -807,20 +817,30 @@ class TestConversationEndpoints:
         claude_subagent = conversations_client.get(
             "/subagents/-Users-tony-Code-helaicopter/claude-session-1/claude-agent-1"
         )
+        claude_nested = conversations_client.get(
+            "/conversations/-Users-tony-Code-helaicopter/claude-session-1/subagents/claude-agent-1"
+        )
 
         assert claude_subagent.status_code == 200
+        assert claude_nested.status_code == 200
         claude_payload = claude_subagent.json()
         assert claude_payload["session_id"] == "claude-agent-1"
         assert claude_payload["thread_type"] == "subagent"
+        assert claude_nested.json()["session_id"] == "claude-agent-1"
 
         codex_subagent = conversations_client.get(
             "/subagents/codex:-Users-tony-Code-helaicopter/019cdbff-dbb7-71d0-baaf-c669c55af628/019cdbff-dbb7-71d0-baaf-c669c55af629"
         )
+        codex_nested = conversations_client.get(
+            "/conversations/codex:-Users-tony-Code-helaicopter/019cdbff-dbb7-71d0-baaf-c669c55af628/subagents/019cdbff-dbb7-71d0-baaf-c669c55af629"
+        )
 
         assert codex_subagent.status_code == 200
+        assert codex_nested.status_code == 200
         codex_payload = codex_subagent.json()
         assert codex_payload["session_id"] == "019cdbff-dbb7-71d0-baaf-c669c55af629"
         assert codex_payload["thread_type"] == "subagent"
+        assert codex_nested.json()["session_id"] == "019cdbff-dbb7-71d0-baaf-c669c55af629"
 
     def test_missing_conversation_returns_404(self, conversations_client: TestClient) -> None:
         response = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/missing-session")
@@ -895,7 +915,7 @@ class TestConversationDagEndpoints:
         }
         assert codex_payload["nodes"][1]["subagent_type"] == "explorer"
         assert codex_payload["nodes"][1]["path"].endswith(
-            "/019cdbff-dbb7-71d0-baaf-c669c55af629"
+            "/019cdbff-dbb7-71d0-baaf-c669c55af628/subagents/019cdbff-dbb7-71d0-baaf-c669c55af629"
         )
 
         missing = conversations_client.get(
@@ -962,6 +982,7 @@ class TestProjectsHistoryAndTasks:
         assert "/conversations" in schema["paths"]
         assert "/conversations/{project_path}/{session_id}" in schema["paths"]
         assert "/conversations/{project_path}/{session_id}/dag" in schema["paths"]
+        assert "/conversations/{project_path}/{session_id}/subagents/{agent_id}" in schema["paths"]
         assert "/projects" in schema["paths"]
         assert "/history" in schema["paths"]
         assert "/subagents/{project_path}/{session_id}/{agent_id}" in schema["paths"]
@@ -1000,3 +1021,17 @@ class TestProjectsHistoryAndTasks:
         block_items = message_schema["properties"]["blocks"]["items"]
         assert block_items["discriminator"]["propertyName"] == "type"
         assert set(block_items["discriminator"]["mapping"]) == {"text", "thinking", "tool_call"}
+
+
+def test_conversation_persistence_ids_make_entity_grain_explicit() -> None:
+    conversation = conversation_id("claude", "session-123")
+    message = conversation_message_id(conversation, 7)
+
+    assert conversation == "claude:session-123"
+    assert message == "claude:session-123:message:7"
+    assert conversation_message_block_id(message, 3) == "claude:session-123:message:7:block:3"
+    assert conversation_plan_row_id(conversation, 1) == "claude:session-123:plan:1"
+    assert conversation_subagent_row_id(conversation, 2) == "claude:session-123:subagent:2"
+    assert conversation_task_row_id(conversation, 4) == "claude:session-123:task:4"
+    assert conversation_context_bucket_id(conversation, 5) == "claude:session-123:bucket:5"
+    assert conversation_context_step_id(conversation, 6) == "claude:session-123:step:6"

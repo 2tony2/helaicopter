@@ -10,6 +10,7 @@ from .conversations import conversations_router
 from .database import database_router
 from .evaluations import evaluations_router
 from .evaluation_prompts import evaluation_prompts_router
+from .gateway import gateway_router
 from .history import history_router
 from .orchestration import orchestration_router
 from .ops import ops_router
@@ -36,6 +37,7 @@ root_router.include_router(conversations_router)
 root_router.include_router(database_router)
 root_router.include_router(evaluations_router)
 root_router.include_router(evaluation_prompts_router)
+root_router.include_router(gateway_router)
 root_router.include_router(history_router)
 root_router.include_router(orchestration_router)
 root_router.include_router(prefect_orchestration_router)

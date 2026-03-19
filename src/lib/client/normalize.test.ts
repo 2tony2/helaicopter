@@ -16,6 +16,7 @@ import {
   conversationDags,
   projects,
   setBaseUrl,
+  subagent,
 } from "./endpoints";
 
 test("endpoint builders target FastAPI routes without the Next /api prefix", () => {
@@ -29,6 +30,10 @@ test("endpoint builders target FastAPI routes without the Next /api prefix", () 
   assert.equal(
     conversationDags({ project: "repo", days: 7, provider: "all" }),
     "https://api.example.test/conversation-dags?project=repo&days=7"
+  );
+  assert.equal(
+    subagent("-Users-tony-Code-helaicopter", "session-123", "agent-1"),
+    "https://api.example.test/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
   );
 });
 
@@ -56,6 +61,10 @@ test("endpoint builders infer the local FastAPI origin when the frontend runs on
     assert.equal(
       conversationDags({ project: "repo", days: 7, provider: "all" }),
       "http://localhost:30000/conversation-dags?project=repo&days=7"
+    );
+    assert.equal(
+      subagent("-Users-tony-Code-helaicopter", "session-123", "agent-1"),
+      "http://localhost:30000/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
     );
   } finally {
     Object.defineProperty(globalThis, "window", {

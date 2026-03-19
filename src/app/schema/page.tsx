@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { Container } from "@/components/layout/container";
+import { PageHeader } from "@/components/layout/page-header";
+import { Card, CardContent } from "@/components/ui/card";
 
 const artifactLinks = [
   {
@@ -20,47 +23,44 @@ const artifactLinks = [
 
 export default function SchemaPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 px-6 py-10">
-      <div className="mx-auto max-w-4xl space-y-8">
-        <div className="space-y-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            API
-          </p>
-          <h1 className="text-4xl font-semibold tracking-tight">OpenAPI Artifacts</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
+    <div className="space-y-8">
+      <PageHeader
+        title="OpenAPI Artifacts"
+        description={
+          <span className="max-w-2xl block">
             Helaicopter publishes generated OpenAPI snapshots from the FastAPI backend into a
             stable repo-local directory so the contract is easy to inspect, diff, and download.
-          </p>
-        </div>
-
+          </span>
+        }
+      />
+      <Container size="lg">
         <div className="grid gap-4 md:grid-cols-3">
           {artifactLinks.map((item) => {
             const isExternal = item.href.startsWith("http");
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                target={isExternal ? "_blank" : undefined}
-                className="rounded-2xl border bg-card p-5 shadow-sm transition-colors hover:border-foreground/30 hover:bg-accent/30"
-              >
-                <div className="space-y-2">
-                  <h2 className="text-base font-semibold">{item.label}</h2>
-                  <p className="text-sm text-muted-foreground">{item.description}</p>
-                  <p className="text-xs text-muted-foreground">{item.href}</p>
-                </div>
+              <Link key={item.href} href={item.href} target={isExternal ? "_blank" : undefined}>
+                <Card className="hover:bg-accent/30 transition-colors">
+                  <CardContent className="p-5 space-y-2">
+                    <h2 className="text-base font-semibold">{item.label}</h2>
+                    <p className="text-sm text-muted-foreground">{item.description}</p>
+                    <p className="text-xs text-muted-foreground">{item.href}</p>
+                  </CardContent>
+                </Card>
               </Link>
             );
           })}
         </div>
 
-        <section className="rounded-2xl border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Regenerate</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Run <code>npm run api:openapi</code> to overwrite the committed JSON and YAML
-            artifacts under <code>public/openapi/</code>.
-          </p>
-        </section>
-      </div>
-    </main>
+        <Card className="mt-8">
+          <CardContent className="p-6">
+            <h2 className="text-lg font-semibold">Regenerate</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Run <code>npm run api:openapi</code> to overwrite the committed JSON and YAML
+              artifacts under <code>public/openapi/</code>.
+            </p>
+          </CardContent>
+        </Card>
+      </Container>
+    </div>
   );
 }

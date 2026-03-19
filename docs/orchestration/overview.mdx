@@ -1,0 +1,20 @@
+---
+title: Orchestration Overview
+description: Prefect-first orchestration with OATS runtime correlation.
+---
+
+The orchestration dashboard (`/orchestration`) shows three views:
+
+- Conversation DAGs — graph of agent/subagent threads and dependencies.
+- Prefect — deployments, flow runs, workers, and work pools via backend proxy.
+- Prefect UI — embedded external UI for deep dives.
+
+Data sources:
+
+- Prefect REST API proxied by the backend (`/orchestration/prefect/*`).
+- OATS local runtime and record files (`.oats/runtime/` and persisted records) via `/orchestration/oats`.
+
+Joining logic:
+
+- Backend shapes Prefect payloads and OATS artifacts into a unified DAG model with status tones, heartbeat/staleness, and repo-local metadata links.
+

@@ -440,7 +440,7 @@ class TestConversationEvaluationEndpoints:
 
         assert len(runner.submissions) == 1
         assert runner.submissions[0]["evaluation_id"] == created["evaluationId"]
-        assert runner.submissions[0]["workspace"] == str(Path.cwd())
+        assert runner.submissions[0]["workspace"] == str(tmp_path.resolve())
         assert "failed tool calls and their nearby context" in runner.submissions[0]["prompt"]
         assert "Focus on the failing exec_command step only." not in runner.submissions[0]["prompt"]
 
