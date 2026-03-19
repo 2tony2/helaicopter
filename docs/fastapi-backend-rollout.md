@@ -86,7 +86,7 @@ What these prove:
 - README is the canonical onboarding doc for running Next.js plus FastAPI locally.
 - This document is the rollout record for the backend split and the required verification commands.
 - Database status contract debt still intentionally preserved after the type-system rollout:
-  - `legacyDuckdb`
+  - `duckdb` (canonical field) while the parser still accepts `legacyDuckdb`
   - `analyticsReadBackend`
   - `conversationSummaryReadBackend`
 - Retirement target for those database labels: `2026-06-30`. Do not add more aliases or helper shims around them before that cleanup lands.

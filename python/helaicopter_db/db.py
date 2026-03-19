@@ -21,7 +21,7 @@ def create_oltp_engine(settings: Settings | None = None) -> Engine:
 def create_olap_engine(settings: Settings | None = None) -> Engine:
     database_settings = get_database_settings(settings)
     return create_engine(
-        database_settings.legacy_duckdb.sqlalchemy_url,
+        database_settings.duckdb.sqlalchemy_url,
         future=True,
     )
 

@@ -60,11 +60,11 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
             tableCount: 2,
             tables: [],
           },
-          legacyDuckdb: {
-            key: "legacy_duckdb",
-            label: "Legacy DuckDB Snapshot",
+          duckdb: {
+            key: "duckdb",
+            label: "DuckDB Inspection Snapshot",
             engine: "DuckDB",
-            role: "legacy_debug",
+            role: "inspection",
             availability: "missing",
             tableCount: 0,
             tables: [],
@@ -86,7 +86,7 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
     });
     assert.equal(status.status, "failed");
     assert.equal(status.error, "refresh exploded");
-    assert.equal(status.databases.legacyDuckdb.key, "legacy_duckdb");
+    assert.equal(status.databases.duckdb.key, "duckdb");
   } finally {
     restoreFetch();
   }

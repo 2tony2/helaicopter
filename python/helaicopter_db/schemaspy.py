@@ -99,9 +99,9 @@ def generate_schema_docs(settings: Settings | None = None) -> None:
     tools = ensure_schemaspy_tools(settings)
     database_settings = get_database_settings(settings)
     sqlite = database_settings.sqlite
-    legacy_duckdb = database_settings.legacy_duckdb
+    duckdb = database_settings.duckdb
 
-    for docs_dir in (sqlite.docs_dir, legacy_duckdb.docs_dir):
+    for docs_dir in (sqlite.docs_dir, duckdb.docs_dir):
         if docs_dir.exists():
             shutil.rmtree(docs_dir)
         docs_dir.mkdir(parents=True, exist_ok=True)
@@ -140,16 +140,16 @@ def generate_schema_docs(settings: Settings | None = None) -> None:
             "-dp",
             str(tools["duckdb_jar"]),
             "-db",
-            str(legacy_duckdb.path),
+            str(duckdb.path),
             "-s",
             "main",
             "-cat",
-            legacy_duckdb.catalog_name,
+            duckdb.catalog_name,
             "-u",
             "schemaspy",
             "-o",
-            str(legacy_duckdb.docs_dir),
+            str(duckdb.docs_dir),
             "-vizjs",
         ]
     )
-    _sanitize_schema_docs(legacy_duckdb)
+    _sanitize_schema_docs(duckdb)

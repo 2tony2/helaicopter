@@ -27,7 +27,7 @@ target_metadata = OltpBase.metadata if target_name == "oltp" else OlapBase.metad
 target_url = (
     database_settings.sqlite.sqlalchemy_url
     if target_name == "oltp"
-    else database_settings.legacy_duckdb.sqlalchemy_url
+    else database_settings.duckdb.sqlalchemy_url
 )
 config.set_main_option("sqlalchemy.url", target_url)
 
