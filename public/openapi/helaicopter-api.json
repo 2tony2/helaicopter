@@ -868,10 +868,10 @@
     "/orchestration/oats": {
       "get": {
         "tags": [
-          "orchestration-legacy"
+          "orchestration"
         ],
-        "summary": "List legacy OATS local-runtime records.",
-        "description": "Legacy compatibility view over repo-local OATS runtime and record files.",
+        "summary": "List OATS local-runtime records.",
+        "description": "View over repo-local OATS runtime and record files.",
         "operationId": "orchestration_oats_index_orchestration_oats_get",
         "responses": {
           "200": {
@@ -3534,7 +3534,7 @@
             "type": "string",
             "enum": [
               "sqlite",
-              "legacy_duckdb"
+              "duckdb"
             ],
             "title": "Key"
           },
@@ -3550,7 +3550,7 @@
             "type": "string",
             "enum": [
               "metadata",
-              "legacy_debug"
+              "inspection"
             ],
             "title": "Role"
           },
@@ -3658,14 +3658,14 @@
           "sqlite": {
             "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
           },
-          "legacyDuckdb": {
+          "duckdb": {
             "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
           }
         },
         "type": "object",
         "required": [
           "sqlite",
-          "legacyDuckdb"
+          "duckdb"
         ],
         "title": "DatabaseArtifactsResponse"
       },

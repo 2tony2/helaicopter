@@ -361,7 +361,7 @@ class TestOrchestrationEndpoint:
         assert response.status_code == 200
         schema = response.json()
         orchestration_get = schema["paths"]["/orchestration/oats"]["get"]
-        assert orchestration_get["tags"] == ["orchestration-legacy"]
+        assert orchestration_get["tags"] == ["orchestration"]
         assert orchestration_get["responses"]["200"]["content"]["application/json"]["schema"]["items"][
             "$ref"
         ].endswith("/OrchestrationRunResponse")
