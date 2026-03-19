@@ -1,0 +1,22 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "99dd0ea2-a0b5-4875-abce-8e57967af8c1",
+  "flow_run_name": "saffron-raven",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "model": null,
+    "output_text": "1. Files changed\n\n- [python/helaicopter_api/server/openapi_artifacts.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/python/helaicopter_api/server/openapi_artifacts.py#L24) now generates stable filtered specs for the frontend app API, OATS orchestration, and the Prefect proxy surface alongside the full backend spec.\n- [src/app/schema/page.tsx](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/src/app/schema/page.tsx#L38) is now a single \u201cUnified API Explorer\u201d entry point with clear surface labels, raw spec links, and endpoint inspection.\n- [src/components/layout/app-sidebar.tsx](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/src/components/layout/app-sidebar.tsx#L27) renames the nav entry to `API Explorer`.\n- [README.md](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/README.md#L91) documents the unified explorer and the stable/proxied spec artifacts.\n- [tests/test_api_bootstrap.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/tests/test_api_bootstrap.py#L170) now covers generated surface artifacts and explorer/navigation documentation.\n- Added generated artifacts:\n  - [public/openapi/helaicopter-frontend-app-api.json](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/public/openapi/helaicopter-frontend-app-api.json)\n  - [public/openapi/helaicopter-oats-orchestration-api.json](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/public/openapi/helaicopter-oats-orchestration-api.json)\n  - [public/openapi/helaicopter-prefect-orchestration-api.json](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/swagger-ui-gateway/public/openapi/helaicopter-prefect-orchestration-api.json)\n\n2. Validation commands run and outcomes\n\n- `PYTHONPATH=python /Users/tony/Code/helaicopter/.venv/bin/pytest -q tests/test_api_bootstrap.py tests/test_api_orchestration.py tests/test_api_prefect_orchestration.py`\n  Result: passed, `25 passed in 1.08s`\n- `env npm_config_cache=.cache/npm npm run lint`\n  Result: passed\n\n3. Remaining risks or follow-ups\n\n- The explorer is a repo-local API explorer, not an embedded third-party Swagger UI package. It satisfies the acceptance criteria, but if you want \u201cTry it out\u201d request execution next, that would be a separate UI addition.\n- `npm run api:openapi` hit a sandbox/`uv` issue in this environment, so I regenerated artifacts with the underlying script directly via the project Python env. The committed outputs are current, but the `uv` execution path itself was not fixed in this task.",
+    "reasoning_effort": null,
+    "session_id": "019d0657-4a07-7772-9cad-4b05de9abc1a",
+    "task_id": "swagger_ui_gateway",
+    "title": "T001 Build A Unified Swagger UI Surface",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "swagger_ui_gateway",
+  "task_title": "T001 Build A Unified Swagger UI Surface",
+  "updated_at": "2026-03-19T13:51:38.735478+00:00",
+  "upstream_task_ids": []
+}

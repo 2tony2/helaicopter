@@ -1,0 +1,26 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "46f916f8-6aa1-4449-aebd-d3af62c91852",
+  "flow_run_name": "loud-bullfinch",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "model": "gpt-5",
+    "output_text": "**Summary**\n- Built a Mintlify-compatible docs tree that reflects the current platform (as of March 19, 2026): architecture, APIs, orchestration (Prefect + OATS), databases/caches, and frontend consistency. Added `mint.json` for navigation.\n\n**Files Changed**\n- mint.json\n- docs/index.mdx\n- docs/architecture/overview.mdx\n- docs/architecture/components.mdx\n- docs/api/overview.mdx\n- docs/api/endpoints.mdx\n- docs/api/openapi-artifacts.mdx\n- docs/orchestration/overview.mdx\n- docs/orchestration/prefect.mdx\n- docs/orchestration/oats.mdx\n- docs/data/databases-and-caches.mdx\n- docs/frontend/consistency.mdx\n\n**What\u2019s in the Docs**\n- Architecture: Next.js frontend + FastAPI backend layering, BackendServices service bag, adapters/ports, OpenAPI artifacts location.\n- APIs: Base URL behavior via `src/lib/client/endpoints.ts`, casing strategy (camelCase responses, snake_case compatibility), endpoint groups, artifact regeneration (`npm run api:openapi`).\n- Orchestration: Prefect proxy endpoints, status tones, workers/pools, and OATS runtime record shaping and DAG construction.\n- Databases & Caches: OLTP SQLite + OLAP DuckDB artifacts, refresh endpoints/CLI, cache invalidation strategy.\n- Frontend Consistency: URL builders, SWR polling, normalization, UI component patterns, naming conventions.\n\n**Validation**\n- Ran: `env npm_config_cache=.cache/npm npm run lint` \u2192 Passed (no errors)\n- Ran: `test -d docs` \u2192 Passed (docs dir exists)\n\n**Remaining Risks / Follow\u2011Ups**\n- Optional: If you want Mintlify to render the API reference automatically, we can extend `mint.json` with an OpenAPI section pointing at `public/openapi/helaicopter-api.yaml` and add any Mintlify-specific config (logo, colors, SEO).\n- Optional: Add deeper endpoint-specific examples and error shapes pulled from the OpenAPI file.\n- Optional: Link doc pages directly from the app or README for quick discovery.\n\nIf you\u2019d like, I can wire Mintlify\u2019s OpenAPI rendering and add a minimal \u201cAPI Reference\u201d section next.",
+    "reasoning_effort": "high",
+    "session_id": "019d06aa-53fd-7fa2-a4d2-1d2ccc69bb8e",
+    "task_id": "mintlify_docs_recovery",
+    "title": "T009 Mintlify Documentation Recovery",
+    "upstream_task_ids": [
+      "frontend_consistency_research_and_implementation_recovery"
+    ]
+  },
+  "status": "completed",
+  "task_id": "mintlify_docs_recovery",
+  "task_title": "T009 Mintlify Documentation Recovery",
+  "updated_at": "2026-03-19T15:19:14.261801+00:00",
+  "upstream_task_ids": [
+    "frontend_consistency_research_and_implementation_recovery"
+  ]
+}

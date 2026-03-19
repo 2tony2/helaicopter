@@ -1,0 +1,16 @@
+{
+  "attempt": 3,
+  "error": "[Errno 2] No such file or directory: 'claude'",
+  "flow_run_id": "40329169-f53c-4dbb-9453-1ca1e4ca8548",
+  "flow_run_name": "solid-quail",
+  "result": null,
+  "status": "failed",
+  "task_id": "frontend_consistency_research_and_implementation",
+  "task_title": "T006 Frontend Consistency Audit And Implementation",
+  "updated_at": "2026-03-19T13:37:18.601159+00:00",
+  "upstream_task_ids": [
+    "database_cache_observability",
+    "orchestration_page_cleanup",
+    "routes_and_data_model_audit"
+  ]
+}

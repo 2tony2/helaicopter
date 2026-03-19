@@ -1,0 +1,30 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "99dd0ea2-a0b5-4875-abce-8e57967af8c1",
+  "flow_run_name": "saffron-raven",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "model": null,
+    "output_text": "Files changed:\n- `python/helaicopter_api/application/gateway.py`\n- `python/helaicopter_api/router/gateway.py`\n- `python/helaicopter_api/schema/gateway.py`\n- `python/helaicopter_api/application/database.py`\n- `python/helaicopter_api/schema/database.py`\n- `python/helaicopter_api/router/router.py`\n- `python/helaicopter_api/server/openapi.py`\n- `tests/test_api_bootstrap.py`\n- `tests/test_api_database.py`\n- `README.md`\n- `docs/fastapi-backend-rollout.md`\n\nValidation commands run and outcomes:\n- `PYTHONPATH=python /Users/tony/Code/helaicopter/.venv/bin/pytest -q tests/test_api_bootstrap.py tests/test_api_database.py tests/test_api_orchestration.py`\n  Outcome: passed, `27 passed in 1.13s`\n- `env npm_config_cache=.cache/npm npm run lint`\n  Outcome: passed\n\nRemaining risks or follow-ups:\n- The gateway direction is currently a backend-owned descriptive contract, not a hard enforcement layer. New routes or stores will need corresponding updates in `application/gateway.py` to keep the platform map accurate.\n- Table-level integration metadata is intentionally strongest for SQLite/FastAPI paths and DuckDB inspection; if more SQLAlchemy-backed tables become first-class API resources later, they should be added explicitly to the integration map rather than inferred implicitly.",
+    "reasoning_effort": null,
+    "session_id": "019d066d-5152-7d62-a614-433ca9d2204f",
+    "task_id": "api_gateway_and_sqlalchemy_alignment",
+    "title": "T005 Create A Single API Gateway Direction",
+    "upstream_task_ids": [
+      "database_cache_observability",
+      "routes_and_data_model_audit",
+      "swagger_ui_gateway"
+    ]
+  },
+  "status": "completed",
+  "task_id": "api_gateway_and_sqlalchemy_alignment",
+  "task_title": "T005 Create A Single API Gateway Direction",
+  "updated_at": "2026-03-19T14:10:50.473272+00:00",
+  "upstream_task_ids": [
+    "database_cache_observability",
+    "routes_and_data_model_audit",
+    "swagger_ui_gateway"
+  ]
+}

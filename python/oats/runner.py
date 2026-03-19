@@ -17,6 +17,10 @@ class AgentInvocationError(RuntimeError):
     """Raised when an agent CLI call fails."""
 
 
+class AgentSessionStaleError(RuntimeError):
+    """Raised when an agent subprocess stops producing output for too long."""
+
+
 class InvocationProgress(TypedDict, total=False):
     session_id: str
     session_id_field: str
@@ -106,6 +110,7 @@ def invoke_agent(
     raise_on_nonzero: bool = True,
     on_heartbeat: Callable[[], None] | None = None,
     on_progress: Callable[[InvocationProgress], None] | None = None,
+    stale_after_seconds: float | None = None,
 ) -> AgentInvocationResult:
     started_at = datetime.now(timezone.utc)
 
@@ -125,6 +130,7 @@ def invoke_agent(
             prompt=None,
             timeout_seconds=timeout_seconds,
             on_heartbeat=on_heartbeat,
+            stale_after_seconds=stale_after_seconds,
             on_stdout_line=(
                 (lambda line: _handle_codex_progress_line(line, on_progress))
                 if on_progress is not None
@@ -157,6 +163,7 @@ def invoke_agent(
             prompt=prompt,
             timeout_seconds=timeout_seconds,
             on_heartbeat=on_heartbeat,
+            stale_after_seconds=stale_after_seconds,
             on_stdout_line=(
                 (lambda line: _handle_claude_progress_line(line, requested_session_id, on_progress))
                 if on_progress is not None
@@ -544,7 +551,19 @@ def _run_command(
     timeout_seconds: int,
     on_heartbeat: Callable[[], None] | None = None,
     on_stdout_line: Callable[[str], None] | None = None,
+    stale_after_seconds: float | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], bool]:
+    last_output_at = time.monotonic()
+
+    def _mark_output(_line: str) -> None:
+        nonlocal last_output_at
+        last_output_at = time.monotonic()
+
+    def _handle_stdout_line(line: str) -> None:
+        _mark_output(line)
+        if on_stdout_line is not None:
+            on_stdout_line(line)
+
     process = subprocess.Popen(
         command,
         cwd=cwd,
@@ -553,8 +572,8 @@ def _run_command(
         stderr=subprocess.PIPE,
         text=True,
     )
-    stdout_collector = _StreamCollector(process.stdout, on_line=on_stdout_line)
-    stderr_collector = _StreamCollector(process.stderr)
+    stdout_collector = _StreamCollector(process.stdout, on_line=_handle_stdout_line)
+    stderr_collector = _StreamCollector(process.stderr, on_line=_mark_output)
     stdout_collector.start()
     stderr_collector.start()
 
@@ -600,6 +619,17 @@ def _run_command(
                     stderr=stderr,
                 ),
                 True,
+            )
+
+        if stale_after_seconds is not None and (time.monotonic() - last_output_at) >= stale_after_seconds:
+            process.kill()
+            process.wait()
+            stdout = stdout_collector.finish()
+            stderr = stderr_collector.finish()
+            raise AgentSessionStaleError(
+                f"Agent session went stale after {stale_after_seconds:.1f}s without output.\n"
+                f"stdout:\n{stdout or '<empty>'}\n"
+                f"stderr:\n{stderr or '<empty>'}"
             )
 
         time.sleep(0.1)

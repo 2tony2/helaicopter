@@ -1,0 +1,12 @@
+{
+  "artifact_root": "/Users/tony/Code/helaicopter/.oats/prefect/flow-runs/97a67877-ad56-41fc-9e47-d0cfc5d9519f",
+  "completed_at": "2026-03-19T14:57:04.164141+00:00",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "created_at": "2026-03-19T14:57:03.808922+00:00",
+  "flow_run_id": "97a67877-ad56-41fc-9e47-d0cfc5d9519f",
+  "flow_run_name": "primitive-lizard",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "run_title": "Run: Platform Claude Task Recovery",
+  "source_path": "/Users/tony/Code/helaicopter/examples/platform_claude_recovery.md",
+  "updated_at": "2026-03-19T14:57:04.164100+00:00"
+}

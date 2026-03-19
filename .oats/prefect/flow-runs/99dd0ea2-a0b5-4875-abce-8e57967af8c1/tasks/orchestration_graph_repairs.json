@@ -1,0 +1,28 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "99dd0ea2-a0b5-4875-abce-8e57967af8c1",
+  "flow_run_name": "saffron-raven",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "model": null,
+    "output_text": "1. Files changed\n\n- [python/helaicopter_api/application/orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/orchestration-graph-repairs/python/helaicopter_api/application/orchestration.py)\n- [python/helaicopter_api/application/prefect_orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/orchestration-graph-repairs/python/helaicopter_api/application/prefect_orchestration.py)\n- [python/helaicopter_api/schema/orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/orchestration-graph-repairs/python/helaicopter_api/schema/orchestration.py)\n- [src/components/orchestration/overnight-oats-panel.tsx](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/orchestration-graph-repairs/src/components/orchestration/overnight-oats-panel.tsx)\n- [tests/test_api_orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/orchestration-graph-repairs/tests/test_api_orchestration.py)\n- [tests/test_api_prefect_orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/orchestration-graph-repairs/tests/test_api_prefect_orchestration.py)\n\n2. Validation commands run and outcomes\n\n- `PYTHONPATH=python /Users/tony/Code/helaicopter/.venv/bin/pytest -q tests/test_api_orchestration.py tests/test_api_prefect_orchestration.py tests/test_cli_runtime.py`  \n  Passed: `21 passed in 13.90s`\n- `env npm_config_cache=.cache/npm npm run lint`  \n  Passed: `eslint` exit code `0`\n\n3. Remaining risks or follow-ups\n\n- OATS stale-run reconciliation is now response-time and graph-time reconciliation; it stops stale items from presenting as active, but it does not physically delete stale runtime directories.\n- Prefect reconciliation now trusts repo-local artifact metadata/checkpoints to override stuck remote active states; if Prefect introduces additional terminal state names, the reconciliation maps may need a small extension.\n- `npm run lint` created an untracked workspace cache directory at `.cache/`, which I could not remove under the current command policy.",
+    "reasoning_effort": null,
+    "session_id": "019d0677-56fd-7a42-a6e5-b537f4d515ca",
+    "task_id": "orchestration_graph_repairs",
+    "title": "T008 Fix Broken Oats And Prefect Orchestration Graphs",
+    "upstream_task_ids": [
+      "api_gateway_and_sqlalchemy_alignment",
+      "routes_and_data_model_audit"
+    ]
+  },
+  "status": "completed",
+  "task_id": "orchestration_graph_repairs",
+  "task_title": "T008 Fix Broken Oats And Prefect Orchestration Graphs",
+  "updated_at": "2026-03-19T14:29:48.881209+00:00",
+  "upstream_task_ids": [
+    "api_gateway_and_sqlalchemy_alignment",
+    "routes_and_data_model_audit"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "40329169-f53c-4dbb-9453-1ca1e4ca8548",
+  "flow_run_name": "solid-quail",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "model": null,
+    "output_text": "1. Files changed\n\n- [README.md](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/README.md)\n- [docs/fastapi-backend-rollout.md](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/docs/fastapi-backend-rollout.md)\n- [python/helaicopter_api/application/database.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/application/database.py)\n- [python/helaicopter_api/application/gateway.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/application/gateway.py)\n- [python/helaicopter_api/router/gateway.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/router/gateway.py)\n- [python/helaicopter_api/router/orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/router/orchestration.py)\n- [python/helaicopter_api/router/router.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/router/router.py)\n- [python/helaicopter_api/schema/database.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/schema/database.py)\n- [python/helaicopter_api/schema/gateway.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/schema/gateway.py)\n- [python/helaicopter_api/server/openapi.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/server/openapi.py)\n- [tests/test_api_bootstrap.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/tests/test_api_bootstrap.py)\n- [tests/test_api_database.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/tests/test_api_database.py)\n\nThe implementation adds `/gateway/direction` as the backend-owned gateway contract, marks Prefect as the primary orchestration surface, keeps Oats local runtime explicitly compatibility-only, and annotates database table status with serving class, integration type, FastAPI routes, SQLAlchemy model, and note so SQLite/DuckDB exposure is intentional instead of implicit.\n\n2. Validation commands run and outcomes\n\n- `PYTHONPATH=python /Users/tony/Code/helaicopter/.venv/bin/pytest -q tests/test_api_bootstrap.py tests/test_api_database.py tests/test_api_orchestration.py`\n  Result: passed, `27 passed in 1.09s`\n- `env npm_config_cache=.cache/npm npm run lint`\n  Result: passed, exit code `0`\n\n3. Remaining risks or follow-ups\n\n- The new gateway and table-integration metadata is declarative. If more SQLite or DuckDB tables are added later, [python/helaicopter_api/application/gateway.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/api-gateway-and-sqlalchemy-alignment/python/helaicopter_api/application/gateway.py) should be updated so the contract stays intentional.\n- `npm run lint` created an untracked `.cache/` directory in the worktree. I could not remove it because command deletion was blocked by policy.",
+    "reasoning_effort": null,
+    "session_id": "019d064a-7a40-7770-baf4-f221238ae951",
+    "task_id": "api_gateway_and_sqlalchemy_alignment",
+    "title": "T005 Create A Single API Gateway Direction",
+    "upstream_task_ids": [
+      "database_cache_observability",
+      "routes_and_data_model_audit",
+      "swagger_ui_gateway"
+    ]
+  },
+  "status": "completed",
+  "task_id": "api_gateway_and_sqlalchemy_alignment",
+  "task_title": "T005 Create A Single API Gateway Direction",
+  "updated_at": "2026-03-19T13:37:18.239149+00:00",
+  "upstream_task_ids": [
+    "database_cache_observability",
+    "routes_and_data_model_audit",
+    "swagger_ui_gateway"
+  ]
+}

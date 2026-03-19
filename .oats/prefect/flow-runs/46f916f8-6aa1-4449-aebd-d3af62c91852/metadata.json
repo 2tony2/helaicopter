@@ -1,0 +1,12 @@
+{
+  "artifact_root": "/Users/tony/Code/helaicopter/.oats/prefect/flow-runs/46f916f8-6aa1-4449-aebd-d3af62c91852",
+  "completed_at": "2026-03-19T15:19:14.276952+00:00",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "created_at": "2026-03-19T15:10:38.468445+00:00",
+  "flow_run_id": "46f916f8-6aa1-4449-aebd-d3af62c91852",
+  "flow_run_name": "loud-bullfinch",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "run_title": "Run: Platform Claude Task Recovery",
+  "source_path": "/Users/tony/Code/helaicopter/examples/platform_claude_recovery.md",
+  "updated_at": "2026-03-19T15:19:14.276923+00:00"
+}

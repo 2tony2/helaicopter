@@ -1,0 +1,28 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "99dd0ea2-a0b5-4875-abce-8e57967af8c1",
+  "flow_run_name": "saffron-raven",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "model": null,
+    "output_text": "1. Files changed\n\n- [python/helaicopter_api/schema/orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/oats-run-evaluation-surface/python/helaicopter_api/schema/orchestration.py)\n- [python/helaicopter_api/application/orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/oats-run-evaluation-surface/python/helaicopter_api/application/orchestration.py)\n- [python/helaicopter_api/application/evaluations.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/oats-run-evaluation-surface/python/helaicopter_api/application/evaluations.py)\n- [src/lib/types.ts](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/oats-run-evaluation-surface/src/lib/types.ts)\n- [src/components/orchestration/overnight-oats-panel.tsx](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/oats-run-evaluation-surface/src/components/orchestration/overnight-oats-panel.tsx)\n- [tests/test_api_orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/oats-run-evaluation-surface/tests/test_api_orchestration.py)\n- [tests/test_api_evaluations.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-platform-api-and-orchestration-refresh/oats-run-evaluation-surface/tests/test_api_evaluations.py)\n\n2. Validation commands run and outcomes\n\n- `PYTHONPATH=python /Users/tony/Code/helaicopter/.venv/bin/pytest -q tests/test_api_evaluations.py tests/test_api_conversations.py tests/test_api_orchestration.py`  \n  Passed: `16 passed in 1.56s`\n- `env npm_config_cache=.cache/npm npm run lint`  \n  Passed\n\n3. Remaining risks or follow-ups\n\n- Run-level evaluation is currently a derived summary over planner/task conversation links in the OATS orchestration payload; there is no separate persisted run-evaluation record yet.\n- `env npm_config_cache=.cache/npm npm run lint` created an untracked `.cache/` directory in the worktree. The command passed, but the cache artifact remains because shell deletion was blocked by policy.",
+    "reasoning_effort": null,
+    "session_id": "019d0670-d971-74b1-9bd1-1034ed5af1bd",
+    "task_id": "oats_run_evaluation_surface",
+    "title": "T007 Add Full Oats Run Evaluation UI",
+    "upstream_task_ids": [
+      "api_gateway_and_sqlalchemy_alignment",
+      "routes_and_data_model_audit"
+    ]
+  },
+  "status": "completed",
+  "task_id": "oats_run_evaluation_surface",
+  "task_title": "T007 Add Full Oats Run Evaluation UI",
+  "updated_at": "2026-03-19T14:19:36.691731+00:00",
+  "upstream_task_ids": [
+    "api_gateway_and_sqlalchemy_alignment",
+    "routes_and_data_model_audit"
+  ]
+}

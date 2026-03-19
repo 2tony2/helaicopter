@@ -39,6 +39,12 @@ class LocalTaskCheckpoint(BaseModel):
     status: str
     attempt: int
     upstream_task_ids: list[str]
+    session_id: str | None = None
+    session_id_field: str | None = None
+    requested_session_id: str | None = None
+    output_text: str | None = None
+    last_heartbeat_at: str | None = None
+    last_progress_event_at: str | None = None
     result: dict[str, object] | None = None
     error: str | None = None
     updated_at: str
@@ -100,6 +106,12 @@ class LocalArtifactCheckpointStore:
         status: str,
         attempt: int,
         upstream_task_ids: list[str],
+        session_id: str | None = None,
+        session_id_field: str | None = None,
+        requested_session_id: str | None = None,
+        output_text: str | None = None,
+        last_heartbeat_at: str | None = None,
+        last_progress_event_at: str | None = None,
         result: dict[str, object] | None = None,
         error: str | None = None,
     ) -> Path:
@@ -111,6 +123,12 @@ class LocalArtifactCheckpointStore:
             status=status,
             attempt=attempt,
             upstream_task_ids=sorted(upstream_task_ids),
+            session_id=session_id,
+            session_id_field=session_id_field,
+            requested_session_id=requested_session_id,
+            output_text=output_text,
+            last_heartbeat_at=last_heartbeat_at,
+            last_progress_event_at=last_progress_event_at,
             result=result,
             error=error,
             updated_at=_utc_now(),

@@ -82,6 +82,7 @@ python/helaicopter_api/server/lifespan.py
 python/helaicopter_api/server/main.py
 python/helaicopter_api/server/middleware.py
 python/helaicopter_api/server/openapi.py
+python/helaicopter_api/server/openapi_artifacts.py
 python/helaicopter_api/server/route_classes.py
 python/helaicopter_db/__init__.py
 python/helaicopter_db/db.py

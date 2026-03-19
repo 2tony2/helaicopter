@@ -3,8 +3,10 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
+import pytest
 
 from oats.runner import (
+    AgentSessionStaleError,
     _StreamCollector,
     _build_claude_command,
     _build_codex_command,
@@ -207,6 +209,21 @@ def test_run_command_drains_large_output_without_deadlocking(tmp_path: Path) -> 
     assert timed_out is False
     assert completed.returncode == 0
     assert len(completed.stdout) == payload_size
+
+
+def test_run_command_fails_when_process_goes_stale_without_output(tmp_path: Path) -> None:
+    with pytest.raises(AgentSessionStaleError):
+        _run_command(
+            command=[
+                sys.executable,
+                "-c",
+                "import time; time.sleep(5)",
+            ],
+            cwd=tmp_path,
+            prompt=None,
+            timeout_seconds=10,
+            stale_after_seconds=0.25,
+        )
 
 
 def test_handle_codex_progress_line_emits_thread_id() -> None:
