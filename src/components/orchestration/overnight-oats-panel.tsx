@@ -23,10 +23,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLayoutedElements } from "@/lib/conversation-dag-layout";
-import { useOvernightOatsRuns } from "@/hooks/use-conversations";
+import {
+  useOvernightOatsRuns,
+  usePrefectDeployments,
+  usePrefectFlowRuns,
+  usePrefectWorkPools,
+  usePrefectWorkers,
+} from "@/hooks/use-conversations";
 import type {
   OrchestrationDagNode,
   OvernightOatsRunRecord,
+  PrefectFlowRunRecord,
+  PrefectOatsMetadata,
 } from "@/lib/types";
 import {
   Activity,
@@ -181,6 +189,82 @@ const nodeTypes = {
   oats: OatsNode,
 };
 
+function formatRelativeTimestamp(value?: string) {
+  if (!value) return "unknown";
+  return formatDistanceToNow(new Date(value), { addSuffix: true });
+}
+
+function prefectRunToneClass(tone: PrefectFlowRunRecord["statusTone"]) {
+  if (tone === "running") {
+    return "border-sky-300 text-sky-700 dark:border-sky-700 dark:text-sky-300";
+  }
+  if (tone === "success") {
+    return "border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300";
+  }
+  if (tone === "error") {
+    return "border-rose-300 text-rose-700 dark:border-rose-700 dark:text-rose-300";
+  }
+  if (tone === "pending") {
+    return "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300";
+  }
+  return "";
+}
+
+function infraToneClass(tone: "healthy" | "warning" | "offline" | "unknown") {
+  if (tone === "healthy") {
+    return "border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300";
+  }
+  if (tone === "warning") {
+    return "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300";
+  }
+  if (tone === "offline") {
+    return "border-rose-300 text-rose-700 dark:border-rose-700 dark:text-rose-300";
+  }
+  return "";
+}
+
+function PrefectMetadataLinks({ metadata }: { metadata?: PrefectOatsMetadata }) {
+  if (!metadata) return null;
+
+  const links = [
+    metadata.sourceHref
+      ? { href: metadata.sourceHref, label: metadata.sourceLabel ?? "run definition" }
+      : null,
+    metadata.configHref ? { href: metadata.configHref, label: ".oats/config.toml" } : null,
+    metadata.metadataHref ? { href: metadata.metadataHref, label: "metadata.json" } : null,
+    metadata.artifactHref ? { href: metadata.artifactHref, label: "artifact folder" } : null,
+  ].filter((item): item is { href: string; label: string } => item !== null);
+
+  if (links.length === 0 && !metadata.repoRoot && !metadata.runTitle) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      {metadata.runTitle && <div className="text-sm font-medium">{metadata.runTitle}</div>}
+      {metadata.repoRoot && (
+        <div className="text-xs text-muted-foreground">
+          repo {metadata.repoLabel ?? metadata.repoRoot}
+        </div>
+      )}
+      {links.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {links.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-primary hover:bg-accent"
+            >
+              <ExternalLink className="h-3 w-3" />
+              {link.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
   const router = useRouter();
   const { fitView } = useReactFlow();
@@ -311,9 +395,75 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
 }
 
 export function OvernightOatsPanel() {
-  const { data: runs, isLoading } = useOvernightOatsRuns();
+  const { data: runs, isLoading: oatsLoading } = useOvernightOatsRuns();
+  const { data: deployments, isLoading: deploymentsLoading } = usePrefectDeployments();
+  const { data: flowRuns, isLoading: flowRunsLoading } = usePrefectFlowRuns();
+  const { data: workers, isLoading: workersLoading } = usePrefectWorkers();
+  const { data: workPools, isLoading: workPoolsLoading } = usePrefectWorkPools(workers);
   const [search, setSearch] = useState("");
   const [selectedRecordPath, setSelectedRecordPath] = useState<string | null>(null);
+  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
+
+  const isPrefectLoading =
+    deploymentsLoading || flowRunsLoading || workersLoading || workPoolsLoading;
+
+  const filteredFlowRuns = useMemo(() => {
+    return (flowRuns ?? [])
+      .filter((run) => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return [
+          run.flowRunName,
+          run.deploymentName,
+          run.flowName,
+          run.oatsMetadata?.runTitle,
+          run.oatsMetadata?.repoRoot,
+        ]
+          .filter(Boolean)
+          .some((value) => value?.toLowerCase().includes(q));
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+        const bTime = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+        return bTime - aTime;
+      });
+  }, [flowRuns, search]);
+
+  const selectedFlowRun = useMemo(() => {
+    if (selectedFlowRunId) {
+      return filteredFlowRuns.find((run) => run.flowRunId === selectedFlowRunId) ?? null;
+    }
+    return filteredFlowRuns[0] ?? null;
+  }, [filteredFlowRuns, selectedFlowRunId]);
+
+  const selectedDeploymentId = selectedFlowRun?.deploymentId;
+
+  const linkedDeployment = useMemo(() => {
+    if (!selectedDeploymentId) return null;
+    return (
+      deployments?.find((deployment) => deployment.deploymentId === selectedDeploymentId) ??
+      null
+    );
+  }, [deployments, selectedDeploymentId]);
+
+  const prefectAggregate = useMemo(() => {
+    const activeRuns = (flowRuns ?? []).filter((run) => run.isActive).length;
+    const healthyWorkers = (workers ?? []).filter((worker) => worker.isOnline).length;
+    const poolCapacity = (workPools ?? []).reduce(
+      (sum, pool) => sum + (pool.concurrencyLimit ?? 0),
+      0
+    );
+
+    return {
+      deployments: deployments?.length ?? 0,
+      flowRuns: flowRuns?.length ?? 0,
+      activeRuns,
+      workers: workers?.length ?? 0,
+      healthyWorkers,
+      workPools: workPools?.length ?? 0,
+      poolCapacity,
+    };
+  }, [deployments, flowRuns, workers, workPools]);
 
   const filteredRuns = useMemo(() => {
     return (runs ?? []).filter((run) => {
@@ -364,11 +514,314 @@ export function OvernightOatsPanel() {
 
   return (
     <div className="space-y-6">
+      <Card className="border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/20">
+        <CardContent className="flex items-start justify-between gap-4 p-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="secondary">Prefect orchestration</Badge>
+              {prefectAggregate.flowRuns > 0 ? (
+                <Badge
+                  variant="outline"
+                  className="border-sky-300 text-sky-700 dark:border-sky-700 dark:text-sky-300"
+                >
+                  connected
+                </Badge>
+              ) : (
+                <Badge variant="outline">awaiting data</Badge>
+              )}
+            </div>
+            <div className="text-sm font-medium">
+              {prefectAggregate.flowRuns > 0
+                ? `Tracking ${prefectAggregate.flowRuns} Prefect flow run${prefectAggregate.flowRuns === 1 ? "" : "s"}`
+                : "No Prefect flow runs returned yet"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Deployments, flow state, workers, and repo-local Oats artifacts joined from the backend Prefect proxy.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Activity className="h-4 w-4" />
+            source: prefect
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <Input
+          placeholder="Search Prefect runs, deployments, repos..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="max-w-md"
+        />
+        <div className="text-sm text-muted-foreground">
+          {filteredFlowRuns.length} Prefect runs shown
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-sky-500/20 bg-sky-500/5">
+          <CardContent className="p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Deployments
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <Layers2 className="h-5 w-5 text-sky-500" />
+              {prefectAggregate.deployments}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-violet-500/20 bg-violet-500/5">
+          <CardContent className="p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Active runs
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <PlaySquare className="h-5 w-5 text-violet-500" />
+              {prefectAggregate.activeRuns}/{prefectAggregate.flowRuns}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-emerald-500/20 bg-emerald-500/5">
+          <CardContent className="p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Workers healthy
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <Bot className="h-5 w-5 text-emerald-500" />
+              {prefectAggregate.healthyWorkers}/{prefectAggregate.workers}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-amber-500/20 bg-amber-500/5">
+          <CardContent className="p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Work pool capacity
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <Database className="h-5 w-5 text-amber-500" />
+              {prefectAggregate.poolCapacity}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {isPrefectLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-28 w-full" />
+          ))}
+        </div>
+      ) : filteredFlowRuns.length === 0 ? (
+        <p className="py-8 text-center text-muted-foreground">
+          No Prefect flow runs matched the current search.
+        </p>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="space-y-3">
+            {filteredFlowRuns.map((run) => {
+              const isSelected = selectedFlowRun?.flowRunId === run.flowRunId;
+              return (
+                <Card
+                  key={run.flowRunId}
+                  className={cn(
+                    "cursor-pointer transition-colors",
+                    isSelected ? "border-primary" : "hover:bg-accent/40"
+                  )}
+                  onClick={() => setSelectedFlowRunId(run.flowRunId)}
+                >
+                  <CardContent className="p-4">
+                    <div className="space-y-2">
+                      <div className="line-clamp-2 text-sm font-medium">
+                        {run.flowRunName ?? run.flowRunId}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {run.deploymentName ?? run.flowName ?? "Unlinked deployment"}
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap text-xs">
+                        <Badge variant="secondary">Flow run</Badge>
+                        <Badge
+                          variant="outline"
+                          className={prefectRunToneClass(run.statusTone)}
+                        >
+                          {run.statusLabel}
+                        </Badge>
+                        {run.workPoolName && <Badge variant="outline">{run.workPoolName}</Badge>}
+                        {run.oatsMetadata?.repoLabel && (
+                          <Badge variant="outline">{run.oatsMetadata.repoLabel}</Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        updated {formatRelativeTimestamp(run.updatedAt ?? run.createdAt)}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {selectedFlowRun && (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="space-y-2">
+                      <div className="text-lg font-semibold">
+                        {selectedFlowRun.flowRunName ?? selectedFlowRun.flowRunId}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {selectedFlowRun.deploymentName ?? selectedFlowRun.flowName ?? "No deployment metadata"}
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge
+                          variant="outline"
+                          className={prefectRunToneClass(selectedFlowRun.statusTone)}
+                        >
+                          {selectedFlowRun.statusLabel}
+                        </Badge>
+                        {selectedFlowRun.workPoolName && (
+                          <Badge variant="secondary">{selectedFlowRun.workPoolName}</Badge>
+                        )}
+                        {selectedFlowRun.workQueueName && (
+                          <Badge variant="outline">{selectedFlowRun.workQueueName}</Badge>
+                        )}
+                        {selectedFlowRun.oatsMetadata?.repoLabel && (
+                          <Badge variant="outline">
+                            repo {selectedFlowRun.oatsMetadata.repoLabel}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-sm text-muted-foreground text-right">
+                      <div>Created {selectedFlowRun.createdAt ? new Date(selectedFlowRun.createdAt).toLocaleString() : "unknown"}</div>
+                      <div>Updated {selectedFlowRun.updatedAt ? new Date(selectedFlowRun.updatedAt).toLocaleString() : "unknown"}</div>
+                      <div className="mt-1">Flow run ID {selectedFlowRun.flowRunId}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="grid gap-4 p-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Repo-local artifacts</div>
+                    <PrefectMetadataLinks metadata={selectedFlowRun.oatsMetadata} />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Deployment context</div>
+                    {linkedDeployment ? (
+                      <>
+                        <div className="flex items-center gap-2 flex-wrap text-xs">
+                          <Badge variant="secondary">Deployment</Badge>
+                          <Badge variant="outline">{linkedDeployment.deploymentName}</Badge>
+                          {linkedDeployment.workPoolName && (
+                            <Badge variant="outline">{linkedDeployment.workPoolName}</Badge>
+                          )}
+                          {linkedDeployment.status && (
+                            <Badge variant="outline">{linkedDeployment.status}</Badge>
+                          )}
+                        </div>
+                        {linkedDeployment.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {linkedDeployment.tags.map((tag) => (
+                              <Badge key={tag} variant="outline">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        <PrefectMetadataLinks metadata={linkedDeployment.oatsMetadata} />
+                      </>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        No linked deployment metadata for this run.
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="mb-3 text-sm font-medium">Work pools</div>
+                    <div className="space-y-2">
+                      {(workPools ?? []).map((pool) => (
+                        <div
+                          key={pool.workPoolId}
+                          className="rounded-xl border border-border/60 bg-muted/30 p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium">{pool.workPoolName}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {pool.type ?? "unknown"} pool
+                              </div>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={infraToneClass(pool.statusTone)}
+                            >
+                              {pool.status ?? "unknown"}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                            <Badge variant="outline">
+                              {pool.onlineWorkerCount}/{pool.workerCount} workers online
+                            </Badge>
+                            <Badge variant="outline">
+                              concurrency {pool.concurrencyLimit ?? "n/a"}
+                            </Badge>
+                            {pool.isPaused && <Badge variant="outline">paused</Badge>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="mb-3 text-sm font-medium">Workers</div>
+                    <div className="space-y-2">
+                      {(workers ?? []).map((worker) => (
+                        <div
+                          key={worker.workerId}
+                          className="rounded-xl border border-border/60 bg-muted/30 p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium">{worker.workerName}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {worker.workPoolName ?? "No pool assigned"}
+                              </div>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={infraToneClass(worker.statusTone)}
+                            >
+                              {worker.status ?? "unknown"}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 text-xs text-muted-foreground">
+                            heartbeat {formatRelativeTimestamp(worker.lastHeartbeatAt)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <Card className={filteredRuns.length > 0 ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-dashed"}>
         <CardContent className="flex items-start justify-between gap-4 p-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary">Oats runs</Badge>
+              <Badge variant="secondary">Legacy Oats runs</Badge>
               {filteredRuns.length > 0 ? (
                 <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
                   loaded
@@ -383,27 +836,15 @@ export function OvernightOatsPanel() {
                 : "No Oats run records loaded"}
             </div>
             <div className="text-xs text-muted-foreground">
-              Scanning repo-local `.oats/runs`, `.oats/pr-runs`, plus `~/.oats` and `~/.overnightoats`.
+              Legacy disk records from repo-local `.oats/runs`, `.oats/pr-runs`, plus `~/.oats` and `~/.overnightoats`.
             </div>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Database className="h-4 w-4" />
-            source: oats
+            source: legacy
           </div>
         </CardContent>
       </Card>
-
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <Input
-          placeholder="Search Oats runs..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          className="max-w-md"
-        />
-        <div className="text-sm text-muted-foreground">
-          {filteredRuns.length} orchestration runs
-        </div>
-      </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card className="border-sky-500/20 bg-sky-500/5">
@@ -467,7 +908,7 @@ export function OvernightOatsPanel() {
         </Card>
       </div>
 
-      {isLoading ? (
+      {oatsLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-28 w-full" />

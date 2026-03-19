@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PREFECT_POSTGRES_DB:-prefect}
+      POSTGRES_USER: ${PREFECT_POSTGRES_USER:-prefect}
+      POSTGRES_PASSWORD: ${PREFECT_POSTGRES_PASSWORD:-prefect}
+    ports:
+      - "${PREFECT_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - prefect-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PREFECT_POSTGRES_USER:-prefect} -d ${PREFECT_POSTGRES_DB:-prefect}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "${PREFECT_REDIS_PORT:-6379}:6379"
+    volumes:
+      - prefect-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    restart: unless-stopped
+    command:
+      - prefect
+      - server
+      - start
+      - --host
+      - 0.0.0.0
+      - --port
+      - "4200"
+    environment:
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_SERVER_API_PORT: 4200
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://${PREFECT_POSTGRES_USER:-prefect}:${PREFECT_POSTGRES_PASSWORD:-prefect}@postgres:5432/${PREFECT_POSTGRES_DB:-prefect}
+      PREFECT_SERVER_ANALYTICS_ENABLED: "false"
+    ports:
+      - "${PREFECT_API_PORT:-4200}:4200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  prefect-services:
+    image: prefecthq/prefect:3-latest
+    restart: unless-stopped
+    command:
+      - prefect
+      - server
+      - services
+      - start
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://${PREFECT_POSTGRES_USER:-prefect}:${PREFECT_POSTGRES_PASSWORD:-prefect}@postgres:5432/${PREFECT_POSTGRES_DB:-prefect}
+      PREFECT_SERVER_ANALYTICS_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      prefect-server:
+        condition: service_started
+
+volumes:
+  prefect-postgres:
+  prefect-redis:

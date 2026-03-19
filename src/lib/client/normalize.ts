@@ -24,6 +24,11 @@ import type {
   DisplayBlock,
   EvaluationPrompt,
   HistoryEntry,
+  PrefectDeploymentRecord,
+  PrefectFlowRunRecord,
+  PrefectOatsMetadata,
+  PrefectWorkPoolRecord,
+  PrefectWorkerRecord,
   PlanDetail,
   PlanSummary,
   ProcessedConversation,
@@ -114,6 +119,65 @@ function field(item: JsonRecord, ...keys: string[]): unknown {
   }
 
   return undefined;
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function basename(value?: string): string | undefined {
+  if (!value) return undefined;
+  const cleaned = value.replace(/\/+$/, "");
+  const segments = cleaned.split("/").filter(Boolean);
+  return segments[segments.length - 1];
+}
+
+function toRepoHref(path?: string, repoRoot?: string): string | undefined {
+  if (!path || !repoRoot) return undefined;
+  const normalizedPath = trimTrailingSlash(path);
+  const normalizedRoot = trimTrailingSlash(repoRoot);
+  if (!normalizedPath.startsWith(normalizedRoot)) {
+    return undefined;
+  }
+
+  const relativePath = normalizedPath.slice(normalizedRoot.length);
+  return relativePath ? relativePath : "/";
+}
+
+function normalizePrefectRunTone(value?: string): PrefectFlowRunRecord["statusTone"] {
+  const normalized = value?.toUpperCase();
+  if (normalized === "RUNNING" || normalized === "PENDING") {
+    return "running";
+  }
+  if (normalized === "COMPLETED") {
+    return "success";
+  }
+  if (
+    normalized === "FAILED" ||
+    normalized === "CRASHED" ||
+    normalized === "CANCELLED" ||
+    normalized === "CANCELLING"
+  ) {
+    return "error";
+  }
+  if (normalized === "SCHEDULED" || normalized === "PAUSED") {
+    return "pending";
+  }
+  return "unknown";
+}
+
+function normalizeInfraTone(value?: string): PrefectWorkerRecord["statusTone"] {
+  const normalized = value?.toUpperCase();
+  if (normalized === "ONLINE" || normalized === "READY") {
+    return "healthy";
+  }
+  if (normalized === "OFFLINE") {
+    return "offline";
+  }
+  if (normalized === "PAUSED" || normalized === "NOT_READY") {
+    return "warning";
+  }
+  return "unknown";
 }
 
 function normalizeThreadType(value: unknown): "main" | "subagent" {
@@ -851,6 +915,128 @@ export function normalizeSubscriptionSettings(value: unknown): SubscriptionSetti
     claude: normalizeProviderSubscription(field(item, "claude")),
     codex: normalizeProviderSubscription(field(item, "codex")),
   };
+}
+
+function normalizePrefectOatsMetadata(value: unknown): PrefectOatsMetadata | undefined {
+  const item = asRecord(value);
+  if (Object.keys(item).length === 0) {
+    return undefined;
+  }
+
+  const repoRoot = nullableString(field(item, "repoRoot", "repo_root"));
+  const sourcePath = nullableString(field(item, "sourcePath", "source_path"));
+  const configPath = nullableString(field(item, "configPath", "config_path"));
+  const localMetadataPath = nullableString(field(item, "localMetadataPath", "local_metadata_path"));
+  const artifactRoot = nullableString(field(item, "artifactRoot", "artifact_root"));
+
+  const metadata: PrefectOatsMetadata = {
+    runTitle: nullableString(field(item, "runTitle", "run_title")),
+    sourcePath,
+    repoRoot,
+    configPath,
+    localMetadataPath,
+    artifactRoot,
+    repoLabel: basename(repoRoot),
+    sourceLabel: basename(sourcePath),
+    sourceHref: toRepoHref(sourcePath, repoRoot),
+    configHref: toRepoHref(configPath, repoRoot),
+    metadataHref: toRepoHref(localMetadataPath, repoRoot),
+    artifactHref: toRepoHref(artifactRoot, repoRoot),
+  };
+
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([, entry]) => entry !== undefined)
+  ) as PrefectOatsMetadata;
+}
+
+export function normalizePrefectDeployments(value: unknown): PrefectDeploymentRecord[] {
+  return asArray(value).map((entry) => {
+    const item = asRecord(entry);
+    return {
+      deploymentId: stringOr(field(item, "deploymentId", "deployment_id")),
+      deploymentName: stringOr(field(item, "deploymentName", "deployment_name")),
+      flowId: nullableString(field(item, "flowId", "flow_id")),
+      flowName: nullableString(field(item, "flowName", "flow_name")),
+      workPoolName: nullableString(field(item, "workPoolName", "work_pool_name")),
+      workQueueName: nullableString(field(item, "workQueueName", "work_queue_name")),
+      status: nullableString(field(item, "status")),
+      updatedAt: nullableString(field(item, "updatedAt", "updated_at")),
+      tags: asArray(field(item, "tags")).map((tag) => stringOr(tag)).filter(Boolean),
+      oatsMetadata: normalizePrefectOatsMetadata(field(item, "oatsMetadata", "oats_metadata")),
+    };
+  });
+}
+
+export function normalizePrefectFlowRuns(value: unknown): PrefectFlowRunRecord[] {
+  return asArray(value).map((entry) => {
+    const item = asRecord(entry);
+    const stateName = nullableString(field(item, "stateName", "state_name"));
+    const stateType = nullableString(field(item, "stateType", "state_type"));
+    return {
+      flowRunId: stringOr(field(item, "flowRunId", "flow_run_id")),
+      flowRunName: nullableString(field(item, "flowRunName", "flow_run_name")),
+      deploymentId: nullableString(field(item, "deploymentId", "deployment_id")),
+      deploymentName: nullableString(field(item, "deploymentName", "deployment_name")),
+      flowId: nullableString(field(item, "flowId", "flow_id")),
+      flowName: nullableString(field(item, "flowName", "flow_name")),
+      workPoolName: nullableString(field(item, "workPoolName", "work_pool_name")),
+      workQueueName: nullableString(field(item, "workQueueName", "work_queue_name")),
+      stateType,
+      stateName,
+      createdAt: nullableString(field(item, "createdAt", "created_at")),
+      updatedAt: nullableString(field(item, "updatedAt", "updated_at")),
+      oatsMetadata: normalizePrefectOatsMetadata(field(item, "oatsMetadata", "oats_metadata")),
+      statusTone: normalizePrefectRunTone(stateType),
+      statusLabel: stateName ?? stateType ?? "Unknown",
+      isActive: stateType === "RUNNING" || stateType === "PENDING",
+    };
+  });
+}
+
+export function normalizePrefectWorkers(value: unknown): PrefectWorkerRecord[] {
+  return asArray(value).map((entry) => {
+    const item = asRecord(entry);
+    const status = nullableString(field(item, "status"));
+    return {
+      workerId: stringOr(field(item, "workerId", "worker_id")),
+      workerName: stringOr(field(item, "workerName", "worker_name")),
+      workPoolName: nullableString(field(item, "workPoolName", "work_pool_name")),
+      status,
+      lastHeartbeatAt: nullableString(field(item, "lastHeartbeatAt", "last_heartbeat_at")),
+      statusTone: normalizeInfraTone(status),
+      isOnline: status?.toUpperCase() === "ONLINE",
+    };
+  });
+}
+
+export function normalizePrefectWorkPools(
+  value: unknown,
+  workers: PrefectWorkerRecord[] = []
+): PrefectWorkPoolRecord[] {
+  return asArray(value).map((entry) => {
+    const item = asRecord(entry);
+    const workPoolName = stringOr(field(item, "workPoolName", "work_pool_name"));
+    const attachedWorkers = workers.filter((worker) => worker.workPoolName === workPoolName);
+    const status = nullableString(field(item, "status"));
+    const isPaused = booleanOr(field(item, "isPaused", "is_paused"));
+    return {
+      workPoolId: stringOr(field(item, "workPoolId", "work_pool_id")),
+      workPoolName,
+      type: nullableString(field(item, "type")),
+      status,
+      isPaused,
+      concurrencyLimit:
+        field(item, "concurrencyLimit", "concurrency_limit") === null
+          ? undefined
+          : (nullableString(field(item, "concurrencyLimit", "concurrency_limit")) !== undefined ||
+            typeof field(item, "concurrencyLimit", "concurrency_limit") === "number")
+          ? numberOr(field(item, "concurrencyLimit", "concurrency_limit"))
+          : undefined,
+      workerCount: attachedWorkers.length,
+      onlineWorkerCount: attachedWorkers.filter((worker) => worker.isOnline).length,
+      statusTone: isPaused ? "warning" : normalizeInfraTone(status),
+    };
+  });
 }
 
 export function normalizeTasks(value: unknown): unknown[] {

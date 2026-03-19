@@ -15,12 +15,20 @@ from oats.models import (
 from oats.runner import AgentInvocationError, build_merge_prompt, invoke_agent
 
 
+def slugify_branch_component(value: str, *, fallback: str) -> str:
+    slug = "".join(char.lower() if char.isalnum() else "-" for char in value.strip())
+    compact_slug = "-".join(segment for segment in slug.split("-") if segment)
+    return compact_slug or fallback
+
+
 def build_task_branch_name(prefix: str, task_id: str) -> str:
     normalized_prefix = prefix if prefix.endswith("/") else f"{prefix}/"
-    slug = "".join(char.lower() if char.isalnum() else "-" for char in task_id.strip())
-    compact_slug = "-".join(segment for segment in slug.split("-") if segment)
-    compact_slug = compact_slug or "task"
-    return f"{normalized_prefix}{compact_slug}"
+    return f"{normalized_prefix}{slugify_branch_component(task_id, fallback='task')}"
+
+
+def build_integration_branch_name(prefix: str, run_title: str) -> str:
+    normalized_prefix = prefix if prefix.endswith("/") else f"{prefix}/"
+    return f"{normalized_prefix}{slugify_branch_component(run_title, fallback='run')}"
 
 
 def build_final_pr_title(run_title: str) -> str:

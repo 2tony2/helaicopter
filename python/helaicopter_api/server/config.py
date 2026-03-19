@@ -79,6 +79,13 @@ class DatabaseSettings(BaseModel):
     legacy_duckdb: DatabaseArtifactSettings
 
 
+class PrefectApiSettings(BaseModel):
+    """Backend-owned Prefect API connection settings."""
+
+    api_url: str
+    timeout_seconds: float = 30.0
+
+
 class Settings(BaseSettings):
     """Runtime settings, resolved from env vars prefixed ``HELA_``."""
 
@@ -99,6 +106,14 @@ class Settings(BaseSettings):
     codex_dir: Path = Field(
         default_factory=lambda: Path.home() / ".codex",
         description="Root of the Codex CLI data directory (typically ~/.codex).",
+    )
+    prefect_api_url: str = Field(
+        default="http://127.0.0.1:4200/api",
+        description="Base URL for the Prefect API proxied by the backend.",
+    )
+    prefect_api_timeout_seconds: float = Field(
+        default=30.0,
+        description="Timeout for Prefect API requests made by the backend.",
     )
     debug: bool = False
 
@@ -143,6 +158,13 @@ class Settings(BaseSettings):
                 public_path="/database-artifacts/olap/helaicopter_olap.duckdb",
                 docs_url="/database-schemas/olap/index.html",
             ),
+        )
+
+    @cached_property
+    def prefect(self) -> PrefectApiSettings:
+        return PrefectApiSettings(
+            api_url=self.prefect_api_url,
+            timeout_seconds=self.prefect_api_timeout_seconds,
         )
 
     @property

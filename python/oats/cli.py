@@ -14,6 +14,12 @@ from rich.table import Table
 
 from oats.parser import RunSpecParseError, parse_run_spec
 from oats.planner import PlanError, build_execution_plan
+from oats.prefect.client import PrefectApiError
+from oats.prefect.deployments import (
+    deploy_run_spec,
+    read_flow_run_status,
+    trigger_run_spec,
+)
 from oats.repo_config import RepoConfigError, find_repo_config, load_repo_config
 from oats.runner import (
     AgentInvocationError,
@@ -54,9 +60,20 @@ from oats.runtime_state import (
     write_plan_snapshot,
     write_runtime_state,
 )
+from oats.run_definition_loader import (
+    UnsupportedRunDefinitionInputError,
+    load_run_definition,
+)
 
 
-app = typer.Typer(help="Overnight Oats CLI")
+app = typer.Typer(
+    help=(
+        "Overnight Oats CLI. Primary path: prefect deploy, run, status. "
+        "Legacy top-level commands available."
+    )
+)
+prefect_app = typer.Typer(help="Primary orchestration commands: deploy, run, status.")
+app.add_typer(prefect_app, name="prefect")
 console = Console()
 DEFAULT_STALE_AFTER_SECONDS = 300
 DEFAULT_PROGRESS_HEARTBEAT_INTERVAL_SECONDS = 30.0
@@ -77,6 +94,15 @@ def _load_execution_plan(
         config_path=config_path,
     )
     return config, config_path, execution_plan
+
+
+def _load_repo_config_for_run_spec(
+    run_spec: Path,
+    repo: Path | None,
+) -> tuple[RepoConfig, Path]:
+    search_root = repo.resolve() if repo else run_spec.resolve().parent
+    config_path = find_repo_config(search_root)
+    return load_repo_config(config_path), config_path
 
 
 def _invocation_runtime_to_result(
@@ -306,7 +332,7 @@ def _handle_runtime_progress(
 def _prepare_retryable_tasks(state: RunRuntimeState) -> bool:
     reset_any = False
     for task in state.tasks:
-        if task.status in {"failed", "timed_out", "blocked"} or (
+        if task.status in {"failed", "timed_out", "blocked", "running"} or (
             task.status == "pending" and task.attempts > 0
         ):
             task.status = "pending"
@@ -843,7 +869,12 @@ def pr_apply(
     console.print(table)
 
 
-@app.command()
+@app.command(
+    help=(
+        "Legacy compatibility command. "
+        "Use `oats prefect run`."
+    )
+)
 def run(
     run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
     repo: Path | None = typer.Option(
@@ -875,7 +906,7 @@ def run(
         help="Use the persisted execution plan directly instead of waiting on a separate planner agent step.",
     ),
 ) -> None:
-    """Execute an OATS run and persist intermediary runtime state."""
+    """Legacy local-runtime execution path that persists intermediary runtime state."""
 
     try:
         config, _, execution_plan = _load_execution_plan(run_spec, repo)
@@ -904,7 +935,7 @@ def run(
     _print_execution_record(record, runtime_state)
 
 
-@app.command()
+@app.command(help="Legacy compatibility command for resuming persisted local-runtime state.")
 def resume(
     run_id: str | None = typer.Argument(
         None,
@@ -944,7 +975,7 @@ def resume(
     retry_failed: bool = typer.Option(
         False,
         "--retry-failed",
-        help="Reset failed/timed-out tasks back to pending before resuming.",
+        help="Reset failed, timed-out, or interrupted tasks back to pending before resuming.",
     ),
     skip_planner: bool = typer.Option(
         True,
@@ -999,7 +1030,7 @@ def resume(
     _print_execution_record(record, updated_state)
 
 
-@app.command()
+@app.command(help="Legacy compatibility command for inspecting persisted local-runtime state.")
 def status(
     run_id: str | None = typer.Argument(
         None,
@@ -1027,7 +1058,7 @@ def status(
         help="Mark active runs stale when heartbeat age exceeds this threshold.",
     ),
 ) -> None:
-    """Print the current runtime status for an OATS run."""
+    """Legacy local-runtime status for `.oats/runtime` state files."""
 
     try:
         if state_file is not None:
@@ -1049,7 +1080,7 @@ def status(
     )
 
 
-@app.command()
+@app.command(help="Legacy compatibility command for watching persisted local-runtime state.")
 def watch(
     run_id: str | None = typer.Argument(
         None,
@@ -1131,6 +1162,101 @@ def watch(
         }:
             break
         time.sleep(interval_seconds)
+
+
+@prefect_app.command("deploy")
+def prefect_deploy(
+    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+) -> None:
+    """Register or update a Prefect deployment from a Markdown run spec."""
+
+    try:
+        run_definition = load_run_definition(run_spec, repo_root=repo)
+        repo_config, _ = _load_repo_config_for_run_spec(run_spec, repo)
+        registered = deploy_run_spec(run_definition, repo_config)
+    except (
+        PrefectApiError,
+        RepoConfigError,
+        RunSpecParseError,
+        UnsupportedRunDefinitionInputError,
+    ) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    action = "Created" if registered.created else "Updated"
+    console.print(
+        Panel.fit(
+            f"{action} deployment [bold]{registered.deployment_name}[/bold]\n"
+            f"Deployment ID: {registered.deployment_id}\n"
+            f"Flow: {registered.flow_name}",
+            title="Prefect Deployment",
+        )
+    )
+
+
+@prefect_app.command("run")
+def prefect_run(
+    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+) -> None:
+    """Create a manual Prefect flow run from a Markdown run spec."""
+
+    try:
+        run_definition = load_run_definition(run_spec, repo_root=repo)
+        repo_config, _ = _load_repo_config_for_run_spec(run_spec, repo)
+        flow_run = trigger_run_spec(run_definition, repo_config)
+    except (
+        PrefectApiError,
+        RepoConfigError,
+        RunSpecParseError,
+        UnsupportedRunDefinitionInputError,
+    ) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        Panel.fit(
+            f"Flow run ID: [bold]{flow_run.flow_run_id}[/bold]\n"
+            f"Deployment ID: {flow_run.deployment_id}\n"
+            f"State: {flow_run.state_name or flow_run.state_type or '-'}",
+            title="Prefect Flow Run",
+        )
+    )
+
+
+@prefect_app.command("status")
+def prefect_status(
+    flow_run_id: str = typer.Argument(..., help="Prefect flow-run id to inspect."),
+) -> None:
+    """Print the latest Prefect status for a flow run."""
+
+    try:
+        status = read_flow_run_status(flow_run_id)
+    except PrefectApiError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        Panel.fit(
+            f"Flow run ID: [bold]{status.flow_run_id}[/bold]\n"
+            f"Name: {status.flow_run_name or '-'}\n"
+            f"State: {status.state_name or status.state_type or '-'}",
+            title="Prefect Status",
+        )
+    )
 
 
 def main() -> None:
