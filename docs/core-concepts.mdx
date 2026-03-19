@@ -1,0 +1,96 @@
+---
+title: Core Concepts
+description: The foundational mental model behind Helaicopter — conversations, providers, tokens, DAGs, and evaluations.
+---
+
+## Conversations
+
+A **conversation** is a single AI coding session. Claude Code stores them as streaming JSONL files under `~/.claude/projects/<encoded-path>/<uuid>.jsonl`. Codex stores them in `~/.codex/sessions/YYYY/MM/DD/<uuid>.jsonl`.
+
+Each conversation contains:
+- **Messages** — alternating human/assistant turns with text, tool calls, and tool results
+- **Thinking blocks** — the model's extended reasoning (Claude only)
+- **Tool calls** — Bash, text editor, file reads, web searches, and custom MCP tools
+- **Token usage** — input, output, cache read, and cache write counts per message
+
+Helaicopter's backend parses these JSONL files with a streaming parser that handles 200MB+ files efficiently, using an in-memory LRU cache and a default 7-day window for fast loading.
+
+## Providers
+
+Helaicopter supports two **providers**:
+
+| Provider | Source directory | Session format | Models |
+|----------|-----------------|----------------|--------|
+| `claude` | `~/.claude/` | JSONL with nested subagent dirs | Opus 4.6, Sonnet 4.5/4.6, Haiku 4.5 |
+| `codex` | `~/.codex/` | SQLite + JSONL | GPT-5.x, o3, o4-mini |
+
+Most views let you filter by provider or view both combined.
+
+## Token accounting and costs
+
+Every message carries token counts. Helaicopter maps these to dollar costs using built-in pricing tables:
+
+- **Input tokens** — what you send to the model (your messages, system prompts, tool results)
+- **Output tokens** — what the model generates (responses, tool calls, thinking)
+- **Cache write tokens** — tokens written to the prompt cache (first-time cost, expires after 5 min or 1 hour depending on tier)
+- **Cache read tokens** — tokens served from cache (heavily discounted vs. fresh input)
+- **Reasoning tokens** — extended thinking tokens (Codex o-series models)
+
+The pricing engine in `src/lib/pricing.ts` uses prefix matching — `claude-sonnet-4-5` matches the Sonnet 4.5 pricing tier. Costs roll up into the analytics dashboard with breakdowns by model, provider, day, and subscription plan.
+
+## Subagents and threading
+
+Claude Code can spawn **subagents** — child conversations that handle subtasks autonomously. These appear as nested JSONL files under `<session-uuid>/subagents/<agent-uuid>.jsonl`.
+
+Helaicopter tracks the full parent → subagent tree and visualizes it as a **conversation DAG** (directed acyclic graph). Each node represents a conversation thread; edges show the dispatch relationship.
+
+## Conversation DAGs
+
+A **DAG** shows how a single task decomposes into parallel and sequential work:
+
+```
+       main session
+       ├── subagent-1 (file search)
+       ├── subagent-2 (implementation)
+       │   ├── subagent-2a (tests)
+       │   └── subagent-2b (docs)
+       └── subagent-3 (review)
+```
+
+The DAG view is available per-conversation and in the orchestration hub for cross-session analysis. Layout is computed using `src/lib/conversation-dag-layout.ts` and rendered with `@xyflow/react`.
+
+## Plans
+
+Claude Code can save implementation plans to `~/.claude/plans/`. Helaicopter indexes these and provides a browsable viewer with full markdown rendering. Plans appear in the dedicated `/plans` page and inline within conversation detail views when a plan was referenced during the session.
+
+## Evaluations
+
+The evaluation system lets you run **LLM-as-judge** assessments on conversation transcripts:
+
+1. **Define a prompt** — create evaluation criteria in the prompt manager (`/prompts`)
+2. **Run an evaluation** — select a conversation and prompt, the backend spawns a subprocess that sends the transcript to an evaluator model
+3. **Review results** — scored evaluations appear in the conversation's Evaluations tab
+
+This is useful for assessing code quality, instruction following, or custom criteria across your AI coding sessions.
+
+## Database roles
+
+Helaicopter uses multiple databases, each with a specific role:
+
+| Database | Engine | Role | Location |
+|----------|--------|------|----------|
+| OLTP | SQLite | Operational metadata — conversations, evaluations, subscriptions | `database-artifacts/oltp/` |
+| OLAP | DuckDB | Analytics warehouse — time-series aggregation | `database-artifacts/olap/` |
+| Prefect | PostgreSQL | Orchestration control plane (external) | Configured via Prefect |
+| Frontend cache | Browser | SWR client-side cache | In-memory |
+
+The **refresh pipeline** (`POST /databases/refresh`) re-parses conversation files and updates both SQLite and DuckDB, then invalidates all backend caches.
+
+## Orchestration
+
+Two orchestration systems are supported:
+
+- **OATS (Overnight Automated Task Specs)** — a repo-local CLI for defining multi-step agent workflows as markdown run specs. Tasks execute as Claude Code or Codex invocations with dependency tracking.
+- **Prefect** — a production workflow orchestration platform. OATS run specs can be compiled into Prefect deployments for scheduled, monitored execution with worker pools.
+
+The orchestration hub at `/orchestration` provides a unified view of both systems.

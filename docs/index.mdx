@@ -1,23 +1,73 @@
 ---
-title: Helaicopter Platform Documentation
-description: Architecture, APIs, orchestration, data stores, and frontend direction for the refreshed platform.
+title: Helaicopter
+description: A local-first platform for browsing, analyzing, and orchestrating Claude Code and OpenAI Codex conversations.
 ---
 
-Welcome. This documentation reflects the platform as of March 19, 2026 and covers:
+Helaicopter is a self-hosted analytics and operations platform that reads your AI coding conversations directly from `~/.claude/` and `~/.codex/`. Nothing leaves your machine.
 
-- Architecture overview and component map
-- Public APIs and how the frontend targets the FastAPI backend
-- Orchestration: Prefect integration and OATS runtime records
-- Databases and caches: OLTP/OLAP artifacts, refresh, and cache invalidation
-- Frontend consistency and naming conventions
+## What you get
 
-Quick links:
+- **Analytics dashboard** — token usage, cost breakdowns, model mix, activity trends across all your Claude and Codex sessions
+- **Conversation browser** — search, filter, and inspect every message, tool call, thinking block, and subagent thread
+- **Conversation DAGs** — visualize parent/subagent relationships as directed acyclic graphs
+- **Plan viewer** — browse saved implementation plans from `~/.claude/plans/`
+- **Evaluation system** — run LLM-as-judge evaluations against conversation transcripts
+- **Orchestration hub** — monitor OATS run specs and Prefect workflow executions
+- **Database inspector** — view schema, table inventories, and refresh status for all backing stores
 
-- Architecture → /docs/architecture/overview
-- API overview → /docs/api/overview
-- Orchestration → /docs/orchestration/overview
-- Databases & caches → /docs/data/databases-and-caches
-- Frontend consistency → /docs/frontend/consistency
+## Architecture at a glance
 
-This site is organized for incremental extension. New guides can be added under `docs/` and linked in `mint.json` navigation.
+```
+┌─────────────────────────────────┐
+│   Next.js 16 Frontend (:3000)   │
+│   React 19 · SWR · Recharts     │
+│   Tailwind v4 · shadcn/ui       │
+└────────────┬────────────────────┘
+             │ HTTP (JSON)
+┌────────────▼────────────────────┐
+│   FastAPI Backend (:30000)      │
+│   Pydantic v2 · SQLAlchemy 2    │
+│   Hexagonal architecture        │
+└────┬───────┬───────┬────────────┘
+     │       │       │
+  ~/.claude  SQLite  Prefect API
+  ~/.codex   DuckDB  OATS runtime
+```
 
+The frontend never touches the filesystem directly — all data flows through the FastAPI backend, which owns the conversation parser, analytics aggregation, and database refresh pipeline.
+
+## Quick start
+
+```bash
+# Start the backend
+cd python && uv run uvicorn helaicopter_api.server.main:create_app --factory --port 30000
+
+# Start the frontend (separate terminal)
+npm run dev
+
+# Refresh databases (loads conversations into SQLite + DuckDB)
+npm run db:refresh
+```
+
+## Sections
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="lightbulb" href="/core-concepts">
+    Conversations, providers, token accounting, DAGs, and the data model
+  </Card>
+  <Card title="Architecture" icon="building" href="/architecture/overview">
+    System design, backend layering, and how components connect
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Every endpoint, request shape, and response contract
+  </Card>
+  <Card title="How-To Guides" icon="wrench" href="/guides/getting-started">
+    Step-by-step guides for common tasks
+  </Card>
+  <Card title="Orchestration" icon="diagram-project" href="/orchestration/overview">
+    OATS run specs, Prefect integration, and workflow monitoring
+  </Card>
+  <Card title="Data Layer" icon="database" href="/data/databases-and-caches">
+    SQLite, DuckDB, refresh pipeline, and caching strategy
+  </Card>
+</CardGroup>

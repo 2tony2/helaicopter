@@ -1,19 +1,111 @@
 ---
-title: OATS Runtime Records
-description: Local orchestration artifacts and how they surface in the UI.
+title: OATS (Overnight Automated Task Specs)
+description: Define, execute, and monitor multi-step agent workflows with the OATS CLI.
 ---
 
-Source of truth
+## What is OATS?
 
-- Repo-local OATS runtime state and recorded runs under `.oats/runtime/` and adjacent record files.
+OATS is a CLI tool bundled in the repo (`python/oats/`) that lets you define multi-step agent workflows as markdown run specs. Each task becomes a Claude Code or Codex invocation with dependency tracking, parallel execution, and timeout handling.
 
-Endpoint
+## Run spec format
 
-- `GET /orchestration/oats` — shapes both live runtime state and recorded runs into a single list, preferring live state when available.
+Run specs are markdown files that define tasks and their dependencies. Example specs live in `examples/`.
 
-Model highlights
+Each task in a run spec specifies:
+- **Agent** — which AI tool to invoke (Claude Code, Codex)
+- **Prompt** — the task instructions
+- **Dependencies** — which tasks must complete first
+- **Timeout** — maximum execution time
 
-- Planner vs. task nodes, dependency edges with `dispatches`/`depends_on` labels.
-- Activity flags: `isActive`, `isStale` (heartbeat age), `timedOut`.
-- Repo correlation: `projectPath`/`conversationPath` to jump into the conversation thread.
+## CLI commands
 
+### Preview execution plan
+
+```bash
+uv run oats plan examples/my-spec.md
+```
+
+Shows the task DAG, execution order, and estimated parallelism without running anything.
+
+### Run locally (legacy)
+
+```bash
+uv run oats run examples/my-spec.md
+```
+
+Executes tasks directly using the local OATS runtime. Each task spawns a Claude or Codex process.
+
+### Deploy to Prefect
+
+```bash
+uv run oats prefect deploy examples/my-spec.md
+```
+
+Compiles the run spec into a Prefect deployment. The OATS compiler translates tasks into Prefect flow tasks with proper dependency wiring.
+
+### Trigger a Prefect run
+
+```bash
+uv run oats prefect run examples/my-spec.md
+```
+
+Triggers execution of a previously deployed spec through Prefect's scheduling system.
+
+## Task lifecycle
+
+Each task moves through these states:
+
+| State | Meaning |
+|-------|---------|
+| `pending` | Waiting for dependencies to complete |
+| `running` | Currently executing |
+| `succeeded` | Completed successfully |
+| `failed` | Exited with an error |
+| `timed_out` | Exceeded the configured timeout |
+| `skipped` | Skipped due to upstream failure |
+| `blocked` | Cannot run — circular or unresolvable dependency |
+
+## DAG model
+
+OATS builds a directed acyclic graph of task execution:
+
+- **Planner node** — the top-level orchestrator that dispatches tasks
+- **Task nodes** — individual agent invocations
+- **Edges** — labeled `dispatches` (parent → child) or `depends_on` (child → dependency)
+
+The DAG is visualized in the orchestration hub using `@xyflow/react`.
+
+## Activity indicators
+
+The backend tracks task liveness:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `isActive` | Task is currently executing (recent heartbeat) |
+| `isStale` | Task was active but heartbeat has aged out |
+| `timedOut` | Task exceeded its time limit |
+
+## Runtime files
+
+OATS state is stored locally:
+
+- **Live state** — `.oats/runtime/` contains in-progress execution state
+- **Records** — completed run records persisted alongside runtime files
+- **Config** — `.oats/config.toml` defines repo-level policy (agents, git settings, validation)
+
+## Conversation correlation
+
+Each OATS task that invokes Claude Code or Codex produces a conversation. The backend links these:
+
+- `project_path` — the repo where the task executed
+- `conversation_path` — direct link to the conversation thread
+
+This lets you click from an OATS task node directly into the conversation viewer to see exactly what the agent did.
+
+## API
+
+```
+GET /orchestration/oats
+```
+
+Returns both live runtime state and persisted records, preferring live state when both exist for the same run. Response includes the full DAG with task nodes, edges, status, and conversation links.

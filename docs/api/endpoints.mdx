@@ -1,63 +1,123 @@
 ---
-title: Endpoint Groups
-description: Major HTTP routes implemented today (paths relative to the backend root).
+title: API Endpoints
+description: Complete reference for all backend HTTP routes.
 ---
 
-Health
+## Health and operations
 
-- `GET /health` — liveness probe.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness probe — returns 200 if the server is running |
+| `GET` | `/` | API gateway landing page |
+| `GET` | `/gateway/direction` | Deployment info |
 
-Projects
+## Projects
 
-- `GET /projects` — list known projects derived from conversation data.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/projects` | List known projects with session counts |
 
-Conversations and DAGs
+Returns projects derived from conversation data. Each project includes the path and number of sessions.
 
-- `GET /conversations?project&days` — list summaries.
-- `GET /conversations/{projectPath}/{sessionId}` — detail for a single conversation.
-- `GET /conversations/{projectPath}/{sessionId}/dag` — backend-built conversation DAG.
-- `GET /conversation-dags?project&days&provider` — summarized DAG stats.
+## Conversations
 
-Tasks
+| Method | Path | Query params | Description |
+|--------|------|-------------|-------------|
+| `GET` | `/conversations` | `project`, `days` | List conversation summaries |
+| `GET` | `/conversations/{projectPath}/{sessionId}` | — | Full conversation detail |
+| `GET` | `/conversations/{projectPath}/{sessionId}/dag` | — | Conversation DAG |
+| `GET` | `/conversations/{projectPath}/{sessionId}/subagents/{agentId}` | — | Subagent transcript |
+| `GET` | `/conversation-dags` | `project`, `days`, `provider` | DAG summaries with stats |
 
-- `GET /tasks/{sessionId}` — tool/task payloads for a session.
+### Conversation summary fields
+- `title` — auto-generated from first message
+- `project_path` — encoded project directory
+- `session_id` — UUID
+- `provider` — `"claude"` or `"codex"`
+- `model` — model identifier
+- `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`
+- `estimated_cost` — dollar cost based on model pricing
+- `created_at`, `updated_at` — timestamps
+- `has_subagents` — whether child threads exist
 
-Plans
+## Tasks
 
-- `GET /plans` — list saved plans.
-- `GET /plans/{slug}` — plan detail.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/tasks/{sessionId}` | Tool/task payloads for a session |
 
-Analytics
+## Plans
 
-- `GET /analytics?days&provider` — token/cost/activity analytics.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/plans` | List saved plan summaries |
+| `GET` | `/plans/{slug}` | Plan detail with full markdown content |
 
-Databases
+Plans are loaded from `~/.claude/plans/`. Each plan includes title, creation date, and the full markdown body.
 
-- `GET /databases/status` — artifact status, refresh state, schema preview.
-- `POST /databases/refresh` — trigger refresh and invalidate backend read caches.
+## Analytics
 
-Evaluation prompts and reviews
+| Method | Path | Query params | Description |
+|--------|------|-------------|-------------|
+| `GET` | `/analytics` | `days`, `provider` | Aggregated token/cost/activity data |
 
-- `GET /evaluation-prompts` — list prompts.
-- `GET /conversations/{projectPath}/{sessionId}/evaluations` — evaluation runs for a conversation.
+Returns:
+- `time_series` — hourly/daily data points with token counts and costs
+- `model_breakdown` — token and cost distribution by model
+- `cost_breakdown` — detailed cost attribution by provider and model
+- `summary` — totals for the time window
 
-Subscriptions
+## Databases
 
-- `GET /subscription-settings` — current provider cost/cap controls.
-- `PATCH /subscription-settings` — update settings.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/databases/status` | Artifact status, refresh state, table schemas |
+| `POST` | `/databases/refresh` | Trigger full refresh pipeline |
 
-History
+The refresh endpoint re-parses all conversation files, updates both SQLite and DuckDB, invalidates backend caches, and regenerates schema documentation.
 
-- `GET /history?limit` — merged CLI histories.
+## Evaluations
 
-Orchestration
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/evaluation-prompts` | List all evaluation prompts |
+| `GET` | `/evaluation-prompts/{promptId}` | Prompt detail |
+| `POST` | `/evaluation-prompts` | Create a new prompt |
+| `PATCH` | `/evaluation-prompts/{promptId}` | Update a prompt |
+| `DELETE` | `/evaluation-prompts/{promptId}` | Delete a prompt |
+| `POST` | `/conversations/{projectPath}/{sessionId}/evaluations` | Start an evaluation |
+| `GET` | `/conversations/{projectPath}/{sessionId}/evaluations` | Get evaluation results |
 
-- `GET /orchestration/oats` — OATS local-runtime records and DAGs (repo-local artifacts).
-- `GET /orchestration/prefect/deployments` — Prefect deployments (primary flow set).
-- `GET /orchestration/prefect/flow-runs` — recent flow runs.
-- `GET /orchestration/prefect/flow-runs/{id}` — flow-run detail.
-- `GET /orchestration/prefect/workers` — workers and heartbeat.
-- `GET /orchestration/prefect/work-pools` — work pools and capacity.
+## Subscriptions
 
-See also: `/openapi/helaicopter-api.yaml` for full schema.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/subscription-settings` | Current subscription configuration |
+| `PATCH` | `/subscription-settings` | Update subscription settings |
 
+## History
+
+| Method | Path | Query params | Description |
+|--------|------|-------------|-------------|
+| `GET` | `/history` | `limit` | Merged Claude + Codex CLI command histories |
+
+## Orchestration — OATS
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/orchestration/oats` | OATS run records with DAGs and task status |
+
+Returns both live runtime state and persisted records, preferring live state when available.
+
+## Orchestration — Prefect
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/orchestration/prefect/deployments` | All Prefect deployments |
+| `GET` | `/orchestration/prefect/deployments/{deploymentId}` | Deployment detail |
+| `GET` | `/orchestration/prefect/flow-runs` | Recent flow runs |
+| `GET` | `/orchestration/prefect/flow-runs/{flowRunId}` | Flow run detail |
+| `GET` | `/orchestration/prefect/workers` | Active workers with heartbeat |
+| `GET` | `/orchestration/prefect/work-pools` | Work pool configuration |
+
+These proxy the Prefect REST API (default `http://127.0.0.1:4200/api`), enriching responses with status tones and OATS metadata.

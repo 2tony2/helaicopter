@@ -1,27 +1,153 @@
 ---
-title: Frontend Consistency
-description: URL builders, normalization, polling, and naming conventions.
+title: Frontend Development Guide
+description: Patterns, conventions, and guidelines for working on the Helaicopter frontend.
 ---
 
-HTTP targeting
+## Tech stack
 
-- Always build URLs via `src/lib/client/endpoints.ts`.
-- Configure the backend origin with `NEXT_PUBLIC_API_BASE_URL`; localhost falls back to `:30000`.
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router, Turbopack) |
+| Language | TypeScript 5 (strict mode) |
+| Styling | Tailwind CSS v4 |
+| Components | shadcn/ui patterns with Radix UI primitives |
+| Data fetching | SWR with custom hooks |
+| Charts | Recharts |
+| Icons | Lucide React |
+| Markdown | react-markdown with remark-gfm |
+| DAG visualization | @xyflow/react |
+| Date handling | date-fns |
 
-Normalization
+## URL and API conventions
 
-- Accept both `snake_case` and `camelCase` during the post-refresh transition. `src/lib/client/normalize.ts` maps payloads and shapes to typed models in `src/lib/types.ts`.
+### Never hard-code API paths
 
-Data fetching
+Always use the builder functions from `src/lib/client/endpoints.ts`:
 
-- Use the existing SWR hooks as the primary surface (`src/hooks/*`). Default refresh intervals: conversations every 3s, analytics every 15s, DB status every 5 minutes.
+```typescript
+import { conversationsUrl, analyticsUrl } from '@/lib/client/endpoints'
 
-UI patterns
+// Correct
+const url = conversationsUrl(project, days)
 
-- Prefer existing shadcn-style `Badge`, `Card`, `Tabs`, and responsive grid utilities. Keep orchestration visuals in `src/components/orchestration/` and conversation DAG/UI in their existing folders.
+// Wrong — don't do this
+const url = `http://localhost:30000/conversations?project=${project}`
+```
 
-Naming
+### Backend origin
 
-- Types end with `Record` or `Response` consistently on the backend; on the frontend, the display models in `src/lib/types.ts` are stable and should not mirror pydantic model names directly.
-- For new endpoints, prefer `camelCase` field names and add `snake_case` compatibility only if necessary.
+Configured via `NEXT_PUBLIC_API_BASE_URL`. When unset on localhost, the client automatically falls back to `:30000`.
 
+## Data fetching patterns
+
+### Use SWR hooks
+
+All data fetching goes through the hooks in `src/hooks/`:
+
+```typescript
+import { useConversations, useAnalytics } from '@/hooks/use-conversations'
+
+function MyComponent() {
+  const { data, error, isLoading } = useConversations(project, days)
+  // ...
+}
+```
+
+### Default refresh intervals
+
+| Hook | Interval |
+|------|----------|
+| Conversations | 3 seconds |
+| Analytics | 15 seconds |
+| Database status | 5 minutes |
+
+### Mutations
+
+Write operations use the functions in `src/lib/client/mutations.ts`:
+
+```typescript
+import { refreshDatabase, createEvaluationPrompt } from '@/lib/client/mutations'
+
+await refreshDatabase({ fullRefresh: true })
+```
+
+## Response normalization
+
+The backend returns `snake_case` fields. The normalizer in `src/lib/client/normalize.ts` maps them to TypeScript types defined in `src/lib/types.ts`.
+
+During the migration period, the normalizer accepts both casings. For new endpoints, prefer `snake_case` from the backend and let the normalizer handle the mapping.
+
+## Component patterns
+
+### UI primitives
+
+Use the existing shadcn-style components from `src/components/ui/`:
+
+- `Card`, `CardHeader`, `CardTitle`, `CardContent` — content containers
+- `Badge` — status indicators, tags
+- `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` — tabbed interfaces
+- `Button` — actions with variants (default, outline, ghost)
+- `Input`, `Textarea` — form inputs
+- `Skeleton` — loading placeholders
+- `Dialog` — modal dialogs
+- `ScrollArea` — scrollable containers
+- `Tooltip` — hover hints
+
+### Page structure
+
+Every page follows this pattern:
+
+```typescript
+import { PageHeader } from '@/components/layout/page-header'
+import { Container } from '@/components/layout/container'
+
+export default function MyPage() {
+  return (
+    <>
+      <PageHeader title="Page Title" description="What this page does" />
+      {/* Page content */}
+    </>
+  )
+}
+```
+
+### Feature component organization
+
+Keep components in their domain folder:
+
+- `components/analytics/` — dashboard charts, KPI cards
+- `components/conversation/` — message display, DAG views
+- `components/orchestration/` — OATS and Prefect panels
+- `components/databases/` — database status and inspection
+- `components/plans/` — plan viewing
+- `components/evaluations/` — prompt management
+
+## Type system
+
+### Core types (`src/lib/types.ts`)
+
+Key interfaces:
+
+- `ConversationSummary` — list-level session data
+- `ProcessedConversation` — full detail with messages
+- `ProcessedMessage` / `DisplayBlock` — message rendering
+- `AnalyticsData` — dashboard data structure
+- `ConversationDag` / `ConversationDagNode` — DAG visualization
+- `DatabaseStatus` — database health information
+
+### Naming conventions
+
+| Layer | Convention | Example |
+|-------|-----------|---------|
+| Backend schemas | `*Record`, `*Response` | `ConversationRecord`, `AnalyticsDataResponse` |
+| Frontend types | Descriptive, no suffix | `ConversationSummary`, `AnalyticsData` |
+| Hooks | `use*` | `useConversations`, `useDatabaseStatus` |
+| URL builders | `*Url` | `conversationsUrl`, `analyticsUrl` |
+
+Frontend display models in `types.ts` are stable and should not mirror Pydantic model names directly.
+
+## Pricing and costs
+
+Token costs are calculated in `src/lib/pricing.ts` using pricing tables from `src/lib/constants.ts`. The `getPricing(model)` function uses prefix matching — `claude-sonnet-4-5-20250514` matches the `claude-sonnet-4-5` pricing tier.
+
+Pricing covers both Claude models (Opus, Sonnet, Haiku) and OpenAI models (GPT-5.x, o3, o4-mini) with per-token rates for input, output, cache read, and cache write.

@@ -1,16 +1,39 @@
 ---
 title: OpenAPI Artifacts
-description: Where schema files live and how to regenerate them.
+description: Where the OpenAPI schema files live and how to use them.
 ---
 
-Artifacts live at:
+## Artifact locations
 
-- `public/openapi/helaicopter-api.json`
-- `public/openapi/helaicopter-api.yaml`
+The backend generates machine-readable API schemas in two formats:
 
-Regeneration command:
+| File | Format | Path |
+|------|--------|------|
+| JSON | OpenAPI 3.x | `public/openapi/helaicopter-api.json` |
+| YAML | OpenAPI 3.x | `public/openapi/helaicopter-api.yaml` |
 
-- `npm run api:openapi` — runs the Python generator to snapshot the current FastAPI schema.
+## Regenerating
 
-The frontend can statically import these paths for docs/playgrounds, or Mintlify can ingest the YAML.
+After making changes to any router or schema in the backend:
 
+```bash
+npm run api:openapi
+```
+
+This runs the Python generator that introspects the live FastAPI app and writes updated artifacts to `public/openapi/`.
+
+## Usage
+
+These artifacts can be used for:
+
+- **API documentation** — import into Mintlify, Swagger UI, or Redoc
+- **Client generation** — feed into `openapi-generator` or `openapi-typescript` for typed client code
+- **Testing** — validate API responses against the schema in CI
+- **Playground** — use with tools like Bruno, Insomnia, or Postman for interactive exploration
+
+## Schema conventions
+
+- All response models are defined in `python/helaicopter_api/schema/`
+- Field names use `snake_case` in the schema
+- Enum values match Python string literals
+- Optional fields are marked as nullable in the schema

@@ -1,25 +1,127 @@
 ---
 title: Databases and Caches
-description: OLTP/OLAP artifacts, refresh workflow, and backend cache behavior.
+description: The data storage strategy — OLTP, OLAP, refresh pipeline, and caching layers.
 ---
 
-Artifacts (owned by the backend)
+## Storage overview
 
-- OLTP: SQLite metadata store — `public/database-artifacts/oltp/helaicopter_oltp.sqlite`
-- OLAP: DuckDB inspection snapshot — `public/database-artifacts/olap/helaicopter_olap.duckdb`
+Helaicopter uses a multi-database architecture where each store is optimized for its workload:
 
-Status and refresh
+| Store | Engine | Role | Location |
+|-------|--------|------|----------|
+| OLTP | SQLite | Operational metadata, conversations, evaluations | `database-artifacts/oltp/helaicopter_oltp.sqlite` |
+| OLAP | DuckDB | Analytics warehouse, time-series queries | `database-artifacts/olap/helaicopter_olap.duckdb` |
+| Prefect | PostgreSQL | Orchestration control plane (external) | Configured via Prefect |
+| Backend cache | In-process | LRU cache for hot reads | Memory |
+| Frontend cache | SWR | Client-side response cache | Browser memory |
 
-- `GET /databases/status` — overall refresh state plus per-artifact schema previews.
-- `POST /databases/refresh` — triggers a refresh and invalidates backend read caches. The refresh writes artifacts and static schema docs under `public/database-schemas/`.
-- CLI helpers: `npm run db:refresh`, `npm run db:migrate:oltp`, `npm run db:migrate:olap`.
+## OLTP database (SQLite)
 
-Backend cache
+The primary operational store. Contains:
 
-- A small in-process key/value cache lives in `bootstrap/services.py` and is cleared on refresh via `invalidate_backend_read_caches`.
-- The SQLAlchemy engine is disposed on refresh so new requests reopen fresh connections.
+| Table | Purpose |
+|-------|---------|
+| `conversations` | Persisted conversation summaries with token/cost stats |
+| `conversation_messages` | Individual message records |
+| `message_blocks` | Content blocks (text, tool calls, thinking) |
+| `conversation_plans` | Plan step records |
+| `conversation_tasks` | Task records per session |
+| `conversation_subagents` | Subagent parent-child relationships |
+| `conversation_evaluations` | LLM evaluation execution records |
+| `evaluation_prompts` | User-defined evaluation prompt templates |
+| `subscription_settings` | Claude Pro/Max/Team plan configuration |
+| `refresh_runs` | Database refresh execution log |
+| `context_buckets` | Per-tool token attribution |
+| `context_steps` | Per-step token attribution |
 
-Runtime read backends
+Managed by SQLAlchemy 2 ORM with Alembic migrations.
 
-- Analytics and conversation summaries read from backend-owned artifacts, with the option to tune read backends via settings if needed in the future.
+## OLAP database (DuckDB)
 
+The analytics warehouse. Materialized during the refresh pipeline for fast aggregation queries. Used by the analytics endpoints for time-series data, model breakdowns, and cost calculations.
+
+DuckDB's columnar storage is ideal for the `GROUP BY` and windowed aggregation queries that power the analytics dashboard.
+
+## Refresh pipeline
+
+The refresh pipeline re-parses conversation source files and updates both databases:
+
+```
+~/.claude/ ─┐                    ┌─▶ SQLite (OLTP)
+             ├─▶ JSONL Parser ──┤
+~/.codex/ ──┘                    └─▶ DuckDB (OLAP)
+                                           │
+                                           ▼
+                                  Schema docs generated
+                                  Backend caches cleared
+```
+
+### Triggering a refresh
+
+**From the UI:**
+Click "Refresh Overview" on the `/databases` page.
+
+**From the API:**
+```
+POST /databases/refresh
+```
+
+**From the CLI:**
+```bash
+npm run db:refresh
+```
+
+### What happens during refresh
+
+1. Scans `~/.claude/` and `~/.codex/` for conversation JSONL files
+2. Streaming parser processes each file (handles 200MB+ files)
+3. Extracts messages, tool calls, token counts, plans, tasks, subagent relationships
+4. Writes/updates records in SQLite
+5. Materializes analytics views in DuckDB
+6. Clears all backend in-process caches
+7. Disposes and recreates SQLAlchemy engine (fresh connections)
+8. Generates schema documentation under `public/database-schemas/`
+
+### Database migrations
+
+After pulling changes that modify the schema:
+
+```bash
+npm run db:migrate:oltp   # Run SQLite (Alembic) migrations
+npm run db:migrate:olap   # Run DuckDB migrations
+```
+
+## Caching layers
+
+### Backend in-process cache
+
+A lightweight key/value cache in `bootstrap/services.py`. Caches frequently-read data like conversation summaries to avoid repeated file parsing. Cleared entirely on database refresh via `invalidate_backend_read_caches(services)`.
+
+The SQLAlchemy engine is also disposed on refresh, ensuring new requests get fresh database connections.
+
+### Frontend SWR cache
+
+The frontend uses SWR's built-in caching with per-hook refresh intervals:
+
+| Data type | Refresh interval |
+|-----------|-----------------|
+| Conversations | 3 seconds |
+| Analytics | 15 seconds |
+| Database status | 5 minutes |
+| Orchestration | SWR default |
+
+This means the UI stays reasonably fresh without manual refreshing, while keeping network traffic manageable.
+
+## Monitoring database health
+
+The `/databases` page provides:
+
+- **Refresh status** — last refresh time, success/failure, trigger button
+- **Per-database health** — connection status, table count, size
+- **Table inventory** — schema preview with columns, types, and row counts
+- **Schema docs** — generated HTML documentation under `public/database-schemas/`
+
+API equivalent:
+```
+GET /databases/status
+```

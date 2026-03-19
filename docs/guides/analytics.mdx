@@ -1,0 +1,66 @@
+---
+title: Using Analytics
+description: Understand your AI usage patterns with token, cost, and activity analytics.
+---
+
+## The analytics dashboard
+
+The home page (`/`) is the analytics dashboard. It provides a comprehensive view of your AI coding usage across both Claude and Codex.
+
+## KPI cards
+
+The top row shows key metrics for the selected time window:
+
+- **Total conversations** — session count
+- **Total tokens** — combined input + output across all sessions
+- **Cache hit rate** — percentage of input tokens served from cache
+- **Total spend** — estimated cost based on model pricing
+- **Active projects** — number of distinct project paths
+
+## Charts
+
+### Daily usage
+Stacked area chart showing input, output, and cache tokens per day. Hover for exact numbers.
+
+### Conversations per day
+Bar chart of session count over time — useful for spotting work patterns.
+
+### Model breakdown
+Pie chart showing token distribution across models (Opus, Sonnet, Haiku, GPT-5, etc.).
+
+### Tool usage
+Bar chart of tool call frequency — see which tools (Bash, text editor, file read, etc.) you use most.
+
+### Subagent types
+Distribution of subagent invocations by type.
+
+### Spend trend
+Line chart of daily estimated cost — track spending over time.
+
+### Token mix
+Breakdown of input vs. output vs. cache read vs. cache write tokens.
+
+### Activity trend
+Conversations and tokens overlaid on the same timeline.
+
+### Tool error rate
+Percentage of tool calls that returned errors, by tool type.
+
+## Filtering
+
+- **Date range** — adjust the analysis window (default: 7 days)
+- **Provider** — filter to Claude, Codex, or both
+
+## Rate summary cards
+
+Below the charts, rate cards show normalized metrics:
+
+- Spend per hour / day / week / month
+- Tokens per hour / day / week / month
+- Conversations per day
+
+These help you forecast usage and compare against subscription limits.
+
+## Subscription settings
+
+Navigate to the cost breakdown card to configure your subscription plan. This lets Helaicopter compare your actual spend against what you're paying for your Claude Pro/Max/Team plan.

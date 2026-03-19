@@ -1,0 +1,58 @@
+{
+  "name": "Helaicopter Platform Docs",
+  "theme": "prism",
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#0f766e",
+    "light": "#14b8a6",
+    "dark": "#0d9488"
+  },
+  "navigation": [
+    { "group": "Overview", "pages": ["index", "core-concepts"] },
+    {
+      "group": "How-To Guides",
+      "pages": [
+        "guides/getting-started",
+        "guides/browsing-conversations",
+        "guides/analytics",
+        "guides/evaluations",
+        "guides/orchestration"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "architecture/overview",
+        "architecture/components"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api/overview",
+        "api/endpoints",
+        "api/openapi-artifacts"
+      ]
+    },
+    {
+      "group": "Orchestration",
+      "pages": [
+        "orchestration/overview",
+        "orchestration/oats",
+        "orchestration/prefect"
+      ]
+    },
+    {
+      "group": "Data Layer",
+      "pages": [
+        "data/databases-and-caches"
+      ]
+    },
+    {
+      "group": "Frontend",
+      "pages": [
+        "frontend/consistency"
+      ]
+    }
+  ]
+}

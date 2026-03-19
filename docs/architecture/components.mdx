@@ -1,28 +1,163 @@
 ---
 title: Component Map
-description: Code-level structure (backend service bag, routers, client layer) with pointers to source.
+description: Detailed breakdown of backend and frontend code structure with source pointers.
 ---
 
-Backend layering (`python/helaicopter_api/`):
+## Backend (`python/helaicopter_api/`)
 
-- `server/` — app factory, middleware, settings, OpenAPI artifact generation.
-- `router/` — FastAPI `APIRouter`s grouped by domain (analytics, conversations, databases, orchestration, etc.). The root router aggregates them under a single app.
-- `application/` — request-shaping, joins, and domain logic (e.g., building orchestration DAGs, analytics aggregation, normalization).
-- `schema/` — pydantic v2 response/request models. Responses inherit from a `CamelCaseHttpResponseModel` base so payloads serialize in `camelCase`.
-- `adapters/` — concrete IO: SQLite stores, filesystem readers, Prefect HTTP adapter, OATS artifact store.
-- `ports/` — narrow interfaces implemented by adapters (dependency inversion).
-- `bootstrap/services.py` — assembles a `BackendServices` bag (settings, stores, clients, cache). Routes depend on this via a FastAPI dependency.
+### Server layer (`server/`)
 
-Key backend behaviors to know:
+The application factory and infrastructure:
 
-- Settings resolve from `HELA_*` env vars; see `python/helaicopter_api/server/config.py`.
-- `invalidate_backend_read_caches(services)` clears the in-process cache and disposes the SQLAlchemy engine after DB refreshes.
-- OpenAPI artifacts are written to `public/openapi/` (`helaicopter-api.json`/`.yaml`).
+| File | Purpose |
+|------|---------|
+| `main.py` | FastAPI app factory with CORS, GZip, timing, and request ID middleware |
+| `config.py` | Pydantic settings from `HELA_*` env vars |
+| `dependencies.py` | Dependency injection — provides `BackendServices` to route handlers |
+| `lifespan.py` | Startup/shutdown lifecycle (cache warming, connection pools) |
+| `middleware.py` | `RequestIDMiddleware` and `TimingMiddleware` for observability |
+| `openapi.py` | OpenAPI schema generation, writes to `public/openapi/` |
 
-Frontend layering (`src/`):
+### Router layer (`router/`)
 
-- `lib/client/endpoints.ts` — single source of truth for all HTTP paths and base-URL logic. Hooks/components import these builders, never hard-code paths.
-- `lib/client/normalize.ts` — normalizes backend payloads and accepts both `snake_case` and `camelCase` during the rollout window.
-- `hooks/` — SWR hooks (e.g., `usePrefectFlowRuns`, `useDatabaseStatus`).
-- `components/` — composable UI including the orchestration dashboard and DAG visualizations.
+Domain-grouped `APIRouter` modules. Each router defines HTTP endpoints and delegates to the application layer:
 
+| Router | Endpoints | Domain |
+|--------|-----------|--------|
+| `conversations.py` | List, detail, DAG, subagents | Conversation data |
+| `conversation_dags.py` | DAG summaries with filters | Cross-session DAGs |
+| `analytics.py` | Token/cost/activity aggregation | Analytics |
+| `database.py` | Status, refresh trigger | Database management |
+| `evaluations.py` | Start eval, get results | LLM-as-judge |
+| `evaluation_prompts.py` | CRUD for eval prompts | Evaluation config |
+| `plans.py` | List and detail | Plan browsing |
+| `projects.py` | Project list | Project discovery |
+| `tasks.py` | Task payloads per session | Tool/task data |
+| `history.py` | Merged CLI histories | Command history |
+| `subscriptions.py` | Get/update settings | Subscription config |
+| `orchestration.py` | OATS run records | OATS monitoring |
+| `prefect_orchestration.py` | Deployments, runs, workers, pools | Prefect proxy |
+| `ops.py` | Health, docs, OpenAPI | Operations |
+| `gateway.py` | Root landing, deployment info | Gateway |
+
+### Application layer (`application/`)
+
+Pure business logic with no HTTP or database imports:
+
+- `conversations.py` — merges persisted SQLite data with live JSONL parsing
+- `analytics.py` — aggregates tokens, costs, and model breakdown across providers
+- `evaluations.py` — spawns evaluation subprocess, tracks execution
+- `database.py` — orchestrates the refresh pipeline across both databases
+- `prefect_orchestration.py` — adds status tones and joins OATS metadata to Prefect records
+- `codex_payloads.py` — Codex-specific message format parsing
+
+### Schema layer (`schema/`)
+
+Pydantic v2 response models. All responses inherit from a base that serializes fields consistently. Key schemas:
+
+- `ConversationSummaryResponse` — title, project, tokens, cost, timestamps
+- `ProcessedConversationResponse` — full message tree with blocks, tool calls, thinking
+- `AnalyticsDataResponse` — time-series, model breakdown, cost summary
+- `DatabaseStatusResponse` — per-artifact health, table inventory, refresh state
+- `OrchestrationRunResponse` — OATS DAG with task nodes and dependency edges
+
+### Ports layer (`ports/`)
+
+Protocol classes (Python `typing.Protocol`) that define interfaces for external dependencies:
+
+| Port | Implementations |
+|------|-----------------|
+| `claude_fs.py` | Claude filesystem conversation reader |
+| `codex_sqlite.py` | Codex SQLite session reader |
+| `app_sqlite.py` | App metadata store (evaluations, subscriptions) |
+| `orchestration.py` | OATS artifact storage |
+| `prefect.py` | Prefect HTTP API client |
+| `evaluations.py` | Evaluation job runner |
+
+### Adapter layer (`adapters/`)
+
+Concrete implementations of the port interfaces:
+
+- `claude_fs/` — reads `~/.claude/projects/` directory tree, parses JSONL with streaming
+- `codex_sqlite/` — reads Codex SQLite schema for sessions
+- `app_sqlite/` — SQLAlchemy ORM for the app metadata database
+- `oats_artifacts/` — parses `.oats/runtime/` files for run records
+- `prefect_http.py` — HTTP client wrapping Prefect's REST API
+- `evaluation_jobs.py` — spawns CLI subprocess for LLM evaluation
+
+### Bootstrap (`bootstrap/`)
+
+`services.py` assembles a `BackendServices` dataclass containing all adapters, settings, and cache. Route handlers receive this via FastAPI dependency injection. The `invalidate_backend_read_caches(services)` function clears all caches and disposes the SQLAlchemy engine after database refreshes.
+
+---
+
+## Database layer (`python/helaicopter_db/`)
+
+| File | Purpose |
+|------|---------|
+| `models/oltp.py` | SQLAlchemy ORM models for all OLTP tables |
+| `models/olap.py` | DuckDB analytics table definitions |
+| `refresh.py` | Data pipeline: JSONL → parsed records → SQLite + DuckDB |
+| `export_pipeline.py` | Export parsed data for external tooling |
+| `schemaspy.py` | Generate HTML schema documentation |
+| `db.py` | Engine and session factory creation |
+| `settings.py` | Database path and connection configuration |
+
+### OLTP tables (SQLite)
+
+| Table | Purpose |
+|-------|---------|
+| `conversations` | Persisted conversation summaries |
+| `conversation_messages` | Individual message records |
+| `message_blocks` | Content blocks within messages |
+| `conversation_plans` | Plan step records |
+| `conversation_tasks` | Task records per session |
+| `conversation_subagents` | Subagent relationship tracking |
+| `conversation_evaluations` | Evaluation execution records |
+| `evaluation_prompts` | Evaluation prompt definitions |
+| `subscription_settings` | User subscription preferences |
+| `refresh_runs` | Database refresh execution log |
+| `context_buckets` | Per-tool token attribution |
+| `context_steps` | Per-step token attribution |
+
+---
+
+## Frontend components (`src/components/`)
+
+### Analytics (`analytics/`)
+- `stats-card.tsx` — small KPI cards (conversations, tokens, cache rate, spend)
+- `charts.tsx` — 9 Recharts visualizations (daily usage, model breakdown, tool usage, spend trend, etc.)
+- `cost-breakdown-card.tsx` — cost by provider/model with subscription context
+- `rate-summary-cards.tsx` — normalized spend/token/activity rates
+
+### Conversation (`conversation/`)
+- `conversation-list.tsx` — filterable list with search, date range, provider
+- `conversation-viewer.tsx` — detail view with 7 tabs (messages, context, subagents, tasks, DAG, evaluations, raw)
+- `message-card.tsx` — single message with markdown, code highlighting
+- `thinking-block.tsx` — collapsible extended reasoning display
+- `tool-call-block.tsx` — tool invocation with input/output panels
+- `conversation-dag-view.tsx` — interactive DAG graph (`@xyflow/react`)
+- `conversation-dag-node.tsx` — individual DAG node rendering
+- `evaluation-dialog.tsx` — start evaluation modal
+- `evaluations-tab.tsx` — evaluation history display
+- `context-tab.tsx` — token attribution charts and tables
+
+### Orchestration (`orchestration/`)
+- `orchestration-hub.tsx` — unified interface with tab switching
+- `overnight-oats-panel.tsx` — OATS run records with DAG visualization
+- `prefect-ui-embed.tsx` — embedded Prefect UI iframe
+
+### Databases (`databases/`)
+- `database-dashboard.tsx` — health status, refresh controls, table inspection
+- `database-auto-refresh.tsx` — periodic background refresh trigger
+- `olap-wasm-preview.tsx` — DuckDB WASM local query tool
+
+### Plans (`plans/`)
+- `plan-viewer.tsx` — full markdown rendering with `react-markdown`
+- `plan-panel.tsx` — plan summary with metadata
+
+### Layout (`layout/`)
+- `app-sidebar.tsx` — main navigation with route highlighting
+- `page-header.tsx` — standard header with title, description, action slots
+- `breadcrumbs.tsx` — hierarchical navigation
+- `container.tsx` — page content wrapper

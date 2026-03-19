@@ -1,0 +1,87 @@
+---
+title: Getting Started
+description: Set up Helaicopter locally and start browsing your AI conversations.
+---
+
+## Prerequisites
+
+- **Node.js 20+** with npm 10+
+- **Python 3.13+** with [uv](https://docs.astral.sh/uv/) package manager
+- At least one of:
+  - `~/.claude/` directory (from using Claude Code)
+  - `~/.codex/` directory (from using OpenAI Codex)
+
+## Installation
+
+```bash
+# Clone the repo
+git clone https://github.com/2tony2/helaicopter.git
+cd helaicopter
+
+# Install frontend dependencies
+npm install
+
+# Install backend dependencies
+cd python && uv sync && cd ..
+```
+
+## Starting the backend
+
+The FastAPI backend runs on port 30000 and serves all data to the frontend:
+
+```bash
+cd python
+uv run uvicorn helaicopter_api.server.main:create_app --factory --host 127.0.0.1 --port 30000
+```
+
+The backend will automatically detect your `~/.claude/` and `~/.codex/` directories. To override:
+
+```bash
+export HELA_CLAUDE_DIR=/path/to/claude
+export HELA_CODEX_DIR=/path/to/codex
+```
+
+## Starting the frontend
+
+In a separate terminal:
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to see the analytics dashboard.
+
+## Populating the databases
+
+On first run, the databases are empty. Trigger a refresh to parse your conversation files:
+
+```bash
+npm run db:refresh
+```
+
+Or use the **Refresh Overview** button on the `/databases` page. This runs the full pipeline:
+
+1. Scans `~/.claude/` and `~/.codex/` for conversation files
+2. Parses JSONL events into structured records
+3. Writes to SQLite (operational metadata) and DuckDB (analytics)
+4. Generates schema documentation under `public/database-schemas/`
+
+## Running database migrations
+
+If the schema has changed (after a `git pull`):
+
+```bash
+npm run db:migrate:oltp   # SQLite migrations
+npm run db:migrate:olap   # DuckDB migrations
+```
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_API_BASE_URL` | Auto-detected | Backend URL for the frontend |
+| `HELA_CLAUDE_DIR` | `~/.claude` | Claude conversation directory |
+| `HELA_CODEX_DIR` | `~/.codex` | Codex conversation directory |
+| `HELA_PROJECT_ROOT` | Repo root | Project root for path resolution |
+| `HELA_PREFECT_API_URL` | `http://127.0.0.1:4200/api` | Prefect API base URL |
+| `HELA_PREFECT_API_TIMEOUT_SECONDS` | `10` | Prefect request timeout |

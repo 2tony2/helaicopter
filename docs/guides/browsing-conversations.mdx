@@ -1,0 +1,58 @@
+---
+title: Browsing Conversations
+description: How to search, filter, and inspect your AI coding sessions.
+---
+
+## The conversation list
+
+Navigate to `/conversations` to see all your sessions. The list shows:
+
+- Session title (auto-generated from the first message)
+- Project path and branch
+- Provider (Claude or Codex)
+- Token counts and estimated cost
+- Timestamp and duration
+
+### Filtering
+
+Use the controls at the top to narrow results:
+
+- **Search** — filter by title or content keywords
+- **Date range picker** — select a time window (default: last 7 days)
+- **Provider filter** — show Claude only, Codex only, or both
+
+## Conversation detail view
+
+Click any conversation to open the detail view with these tabs:
+
+### Messages tab
+The full transcript with:
+- **Human messages** — your prompts
+- **Assistant messages** — model responses with syntax-highlighted code
+- **Thinking blocks** — collapsible extended reasoning (click to expand)
+- **Tool calls** — each tool invocation with input/output, collapsible
+
+### Context tab
+Token attribution showing where context budget was spent:
+- Per-tool token breakdown (how many tokens each tool result consumed)
+- Per-step analysis (token usage across the conversation timeline)
+- Visual charts of context distribution
+
+### Sub-agents tab
+If the conversation spawned subagents, this tab shows the tree of child conversations. Click any subagent to view its full transcript.
+
+### Tasks tab
+Tool and task payloads extracted from the session — useful for understanding what the model actually executed.
+
+### DAG tab
+Visual graph of the conversation's thread structure — the main session and any subagent branches rendered as an interactive DAG.
+
+### Evaluations tab
+Results from LLM-as-judge evaluations run against this conversation. Shows scores, reasoning, and evaluation metadata.
+
+### Raw JSON tab
+The raw parsed conversation data for debugging or export.
+
+## Subagent navigation
+
+When viewing a subagent thread, breadcrumbs at the top show the navigation path back to the parent conversation. You can jump between any level of the subagent tree.

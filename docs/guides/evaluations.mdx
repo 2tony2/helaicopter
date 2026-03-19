@@ -1,0 +1,56 @@
+---
+title: Running Evaluations
+description: Use LLM-as-judge to assess conversation quality with custom evaluation prompts.
+---
+
+## Overview
+
+Evaluations let you systematically assess the quality of AI coding conversations. You define criteria as prompts, then run those prompts against any conversation transcript. An evaluator model reads the full conversation and returns a structured assessment.
+
+## Step 1: Create an evaluation prompt
+
+1. Go to `/prompts`
+2. Click **Create Prompt**
+3. Fill in:
+   - **Name** — a descriptive label (e.g., "Code Quality Review")
+   - **Prompt template** — the evaluation instructions. This is sent to the evaluator model along with the conversation transcript.
+
+Example prompt template:
+```
+Review this AI coding conversation and assess:
+1. Code correctness — did the generated code work?
+2. Efficiency — was the approach direct or roundabout?
+3. Safety — any security issues introduced?
+
+Score each dimension 1-5 and provide a brief justification.
+```
+
+## Step 2: Run an evaluation
+
+1. Navigate to any conversation detail page
+2. Click the **Evaluate** button
+3. Select your evaluation prompt
+4. Click **Start Evaluation**
+
+The backend spawns a subprocess that sends the conversation transcript to an evaluator model. This runs asynchronously — you can navigate away and come back.
+
+## Step 3: Review results
+
+The **Evaluations tab** on the conversation detail page shows all completed evaluations with:
+
+- The evaluation prompt used
+- The evaluator model's response
+- Timestamp and execution metadata
+
+Results are stored in the SQLite database and persist across sessions.
+
+## API endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/evaluation-prompts` | List all prompts |
+| `POST` | `/evaluation-prompts` | Create a prompt |
+| `PATCH` | `/evaluation-prompts/{id}` | Update a prompt |
+| `DELETE` | `/evaluation-prompts/{id}` | Delete a prompt |
+| `POST` | `/conversations/{project}/{session}/evaluations` | Start an evaluation |
+| `GET` | `/conversations/{project}/{session}/evaluations` | Get evaluation results |

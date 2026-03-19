@@ -1,24 +1,94 @@
 ---
 title: Architecture Overview
-description: High-level system design after the FastAPI/Prefect/database refresh.
+description: System design, runtime topology, and data flow through Helaicopter.
 ---
 
-At a glance:
+## System design
 
-- Frontend: Next.js 16 (App Router) + React 19 + SWR. UI components follow a shadcn/tailwind style and live under `src/components/`.
-- Backend: FastAPI app under `python/helaicopter_api/` with pydantic v2 schemas and explicit routers. The frontend talks to it over HTTP using centralized URL builders.
-- Orchestration: Prefect-first control plane with a thin OATS local runtime reader. The dashboard surfaces deployments, flow runs, workers, and repo-local OATS artifacts.
-- Data: Two artifacts owned by the backend—an OLTP SQLite metadata store and an OLAP DuckDB inspection snapshot—plus a trivial in-process cache.
-- Contracts: OpenAPI artifacts shipped in-repo at `public/openapi/` and generated via `npm run api:openapi`.
+Helaicopter is a two-process local application:
 
-Primary directories:
+| Layer | Tech | Port | Responsibility |
+|-------|------|------|----------------|
+| Frontend | Next.js 16, React 19, SWR | 3000 | UI rendering, client-side caching, chart visualization |
+| Backend | FastAPI, SQLAlchemy 2, Pydantic v2 | 30000 | Data parsing, analytics, database management, orchestration proxy |
 
-- `python/helaicopter_api/` — adapters, ports, application logic, schemas, server, and routers.
-- `python/helaicopter_db/` — refresh pipeline, alembic migrations, and schema-doc tooling for the SQLite/DuckDB artifacts.
-- `src/` — Next.js app (`src/app`), typed client layer (`src/lib/client`), and presentational components.
+The frontend never reads the filesystem directly. All conversation parsing, token aggregation, and database operations happen in the backend. The frontend consumes a typed JSON API and uses SWR for client-side caching with configurable refresh intervals.
 
-Runtime defaults:
+## Data flow
 
-- Backend serves on `127.0.0.1:30000` during local dev (`npm run api:dev`).
-- Frontend points at the backend via `NEXT_PUBLIC_API_BASE_URL`; if unset on localhost, the client layer falls back to `:30000`.
+```
+~/.claude/projects/.../*.jsonl ──┐
+                                 ├──▶ FastAPI Backend ──▶ JSON API ──▶ Next.js Frontend
+~/.codex/sessions/.../*.jsonl ───┘         │
+                                           ▼
+                                   SQLite (OLTP)
+                                   DuckDB (OLAP)
+```
 
+### Read path (hot)
+1. Frontend SWR hook calls a backend endpoint (e.g., `GET /conversations`)
+2. Backend checks in-process LRU cache
+3. On miss: reads from SQLite/DuckDB for persisted data, or parses JSONL files directly
+4. Response is serialized through Pydantic schemas
+5. Frontend normalizer maps to TypeScript types
+6. SWR caches the response client-side
+
+### Write path (refresh)
+1. User triggers `POST /databases/refresh` (or `npm run db:refresh`)
+2. Backend scans `~/.claude/` and `~/.codex/` for conversation files
+3. Streaming JSONL parser processes each file (handles 200MB+ without loading into memory)
+4. Records written to SQLite (conversations, messages, blocks, plans, tasks)
+5. Analytics materialized in DuckDB (time-series, aggregates)
+6. All backend caches invalidated, SQLAlchemy engine disposed
+7. Schema docs regenerated under `public/database-schemas/`
+
+## Backend architecture
+
+The backend follows **hexagonal architecture** (ports and adapters):
+
+```
+┌─────────────────────────────────────────────┐
+│                  Routers                     │  ← HTTP layer (FastAPI APIRouter)
+├─────────────────────────────────────────────┤
+│               Application                    │  ← Business logic, joins, shaping
+├─────────────────────────────────────────────┤
+│                 Schemas                      │  ← Pydantic v2 response models
+├─────────────────────────────────────────────┤
+│            Ports (interfaces)                │  ← Protocol classes for DI
+├─────────────────────────────────────────────┤
+│          Adapters (implementations)          │  ← File readers, SQLite, HTTP
+└─────────────────────────────────────────────┘
+```
+
+This means the business logic never imports concrete file readers or database drivers — it depends on protocol interfaces defined in `ports/`. Tests can swap in mock adapters without touching application code.
+
+## Frontend architecture
+
+```
+src/
+├── app/              # Next.js App Router pages (13 routes)
+├── components/       # React components by feature domain
+│   ├── analytics/    # Charts, KPI cards, cost breakdowns
+│   ├── conversation/ # Message cards, DAG views, evaluations
+│   ├── databases/    # Database dashboard, OLAP preview
+│   ├── evaluations/  # Prompt manager
+│   ├── layout/       # Sidebar, breadcrumbs, page header
+│   ├── orchestration/# OATS panel, Prefect embed
+│   ├── plans/        # Plan viewer, plan panel
+│   └── ui/           # shadcn/ui primitives (Card, Badge, Tabs, etc.)
+├── hooks/            # SWR data-fetching hooks (20+ hooks)
+└── lib/              # Utilities, API client, types, pricing
+    ├── client/       # HTTP client, endpoints, normalizer, mutations
+    ├── types.ts      # Core TypeScript interfaces
+    ├── pricing.ts    # Token cost calculation
+    └── constants.ts  # Model pricing tables
+```
+
+## Key design decisions
+
+- **Local-first** — zero data transmission, all processing on your machine
+- **Streaming parser** — handles 200MB+ JSONL files without loading into memory
+- **SWR caching** — conversations refresh every 3s, analytics every 15s, DB status every 5 min
+- **Dual database** — SQLite for transactional reads, DuckDB for analytical queries
+- **Normalization layer** — `normalize.ts` bridges the snake_case backend and camelCase frontend during the ongoing migration
+- **Provider abstraction** — Claude and Codex share the same data model and UI, differing only at the parser level

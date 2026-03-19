@@ -1,20 +1,68 @@
 ---
 title: API Overview
-description: How the frontend targets the FastAPI backend and where to find the OpenAPI schema.
+description: How the frontend communicates with the backend and how the API is structured.
 ---
 
-Base URL and routing:
+## Base URL
 
-- The frontend never hard-codes URLs. It imports builders from `src/lib/client/endpoints.ts`.
-- `NEXT_PUBLIC_API_BASE_URL` can point the app at any backend origin. On localhost with no env var, calls default to `http://127.0.0.1:30000`.
+The backend runs on `http://127.0.0.1:30000` during local development. The frontend resolves this automatically — if `NEXT_PUBLIC_API_BASE_URL` is not set and the page is loaded from localhost, the client falls back to `:30000`.
 
-Schema and artifacts:
+```bash
+# Override for custom deployment
+export NEXT_PUBLIC_API_BASE_URL=http://my-server:30000
+```
 
-- The FastAPI app exposes a typed OpenAPI surface and exports artifacts to `public/openapi/`.
-- Regenerate locally with `npm run api:openapi`.
+## URL builders
 
-Response shapes:
+The frontend never hard-codes API paths. All URLs are constructed through builder functions in `src/lib/client/endpoints.ts`:
 
-- Pydantic response models inherit from `CamelCaseHttpResponseModel`, so fields emit as `camelCase` even if the internal model fields are `snake_case`.
-- The client `normalize.ts` accepts both casings during the transition to all-`camelCase`.
+```typescript
+// Examples
+conversationsUrl(project, days)     // GET /conversations?project=...&days=7
+conversationUrl(projectPath, id)    // GET /conversations/{projectPath}/{id}
+analyticsUrl(days, provider)        // GET /analytics?days=7&provider=claude
+databaseStatusUrl()                 // GET /databases/status
+```
 
+This ensures a single source of truth for all API paths.
+
+## HTTP client
+
+The client layer in `src/lib/client/` provides typed helpers:
+
+| Function | Method | Description |
+|----------|--------|-------------|
+| `requestJson(url, init, normalizer)` | GET | Fetch with automatic normalization |
+| `post(url, body, normalizer)` | POST | Create/trigger operations |
+| `patch(url, body, normalizer)` | PATCH | Partial updates |
+| `del(url)` | DELETE | Resource deletion |
+
+## Response format
+
+All responses use **snake_case** field names from the Pydantic backend. The frontend normalizer in `src/lib/client/normalize.ts` maps these to TypeScript types. During the migration period, the normalizer accepts both `snake_case` and `camelCase` for backwards compatibility.
+
+## OpenAPI schema
+
+The backend generates OpenAPI artifacts at:
+- `public/openapi/helaicopter-api.json`
+- `public/openapi/helaicopter-api.yaml`
+
+Regenerate after API changes:
+```bash
+npm run api:openapi
+```
+
+## SWR data fetching
+
+The frontend uses [SWR](https://swr.vercel.app/) hooks for all data fetching with built-in caching and revalidation:
+
+| Hook | Refresh interval | Data |
+|------|-----------------|------|
+| `useConversations()` | 3 seconds | Conversation list |
+| `useConversation()` | 3 seconds | Single conversation detail |
+| `useAnalytics()` | 15 seconds | Token/cost analytics |
+| `useDatabaseStatus()` | 5 minutes | Database health |
+| `usePrefectFlowRuns()` | SWR default | Prefect flow runs |
+| `useOvernightOatsRuns()` | SWR default | OATS run records |
+
+All hooks are defined in `src/hooks/use-conversations.ts` and `src/hooks/use-plans.ts`.
