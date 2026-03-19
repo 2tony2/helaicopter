@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "d45a4b7d-5a74-4dd7-85df-4e9e287855ef",
+  "flow_run_name": "athletic-binturong",
+  "result": {
+    "attempt": 1,
+    "task_id": "cleanup_legacy_naming",
+    "title": "T001 Remove Or Rename Legacy Surfaces",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "cleanup_legacy_naming",
+  "task_title": "T001 Remove Or Rename Legacy Surfaces",
+  "updated_at": "2026-03-19T10:58:52.593713+00:00",
+  "upstream_task_ids": []
+}

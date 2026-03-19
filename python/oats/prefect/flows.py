@@ -4,12 +4,19 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+from prefect.context import get_run_context
+from prefect.exceptions import MissingContextError
 from prefect import flow
 from pydantic import BaseModel, Field
 
 from oats.prefect.artifacts import LocalArtifactCheckpointStore
 from oats.prefect.models import PrefectFlowPayload
-from oats.prefect.tasks import CompiledTaskResult, resolve_flow_run_identity, run_task_with_retries
+from oats.prefect.tasks import (
+    CompiledTaskResult,
+    prefect_compiled_task,
+    resolve_flow_run_identity,
+    run_task_with_retries,
+)
 
 
 class CompiledFlowRunResult(BaseModel):
@@ -62,22 +69,39 @@ def execute_compiled_flow_graph(
     execution_order = _topological_order(compiled_payload)
     nodes_by_id = {task.task_id: task for task in compiled_payload.tasks}
     task_results: dict[str, CompiledTaskResult] = {}
+    task_futures: dict[str, Any] = {}
 
     try:
         for task_id in execution_order:
             task_node = nodes_by_id[task_id]
-            upstream_results = {
-                upstream_task_id: task_results[upstream_task_id].result
-                for upstream_task_id in task_node.depends_on
-            }
-            task_results[task_id] = run_task_with_retries(
-                compiled_payload,
-                task_node,
-                upstream_results=upstream_results,
-                artifact_store=artifact_store,
-                max_retries=max_retries,
-                executor=executor,
-            )
+            if _in_prefect_flow_run():
+                upstream_results = {
+                    upstream_task_id: task_futures[upstream_task_id].result().result
+                    for upstream_task_id in task_node.depends_on
+                }
+                task_futures[task_id] = prefect_compiled_task.submit(
+                    compiled_payload,
+                    task_node,
+                    upstream_results=upstream_results,
+                    artifact_store=artifact_store,
+                    executor=executor,
+                    attempt=None,
+                    wait_for=[task_futures[upstream_task_id] for upstream_task_id in task_node.depends_on],
+                )
+                task_results[task_id] = task_futures[task_id].result()
+            else:
+                upstream_results = {
+                    upstream_task_id: task_results[upstream_task_id].result
+                    for upstream_task_id in task_node.depends_on
+                }
+                task_results[task_id] = run_task_with_retries(
+                    compiled_payload,
+                    task_node,
+                    upstream_results=upstream_results,
+                    artifact_store=artifact_store,
+                    max_retries=max_retries,
+                    executor=executor,
+                )
     finally:
         artifact_store.finalize()
 
@@ -128,3 +152,11 @@ def _topological_order(payload: PrefectFlowPayload) -> list[str]:
     if len(ordered) != len(ordered_task_ids):
         raise ValueError("Task graph contains a cycle or unresolved dependency")
     return ordered
+
+
+def _in_prefect_flow_run() -> bool:
+    try:
+        get_run_context()
+    except MissingContextError:
+        return False
+    return True

@@ -1,0 +1,12 @@
+{
+  "artifact_root": "/Users/tony/Code/helaicopter/.oats/prefect/flow-runs/d45a4b7d-5a74-4dd7-85df-4e9e287855ef",
+  "completed_at": "2026-03-19T10:58:52.732680+00:00",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "created_at": "2026-03-19T10:58:52.520734+00:00",
+  "flow_run_id": "d45a4b7d-5a74-4dd7-85df-4e9e287855ef",
+  "flow_run_name": "athletic-binturong",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "run_title": "Run: Cleanup, OpenAPI, And Docs Research",
+  "source_path": "/Users/tony/Code/helaicopter/examples/cleanup.md",
+  "updated_at": "2026-03-19T10:58:52.732671+00:00"
+}

@@ -4,6 +4,11 @@ from pathlib import Path
 
 from oats.models import ExecutionPlan, PlannedTask, RepoConfig, RunSpec
 from oats.pr import build_final_pr_title, build_integration_branch_name, build_task_branch_name
+from helaicopter_domain.vocab import ProviderName
+
+
+_CLAUDE_REASONING_EFFORTS = {"low", "medium", "high", "max"}
+_CODEX_REASONING_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
 
 
 class PlanError(RuntimeError):
@@ -34,12 +39,21 @@ def build_execution_plan(
             if task.validation_override
             else config.validation.commands
         )
+        resolved_agent = task.agent or config.agents.executor
+        _validate_task_execution_settings(
+            task_id=task.id,
+            agent=resolved_agent,
+            reasoning_effort=task.reasoning_effort,
+        )
         planned_tasks.append(
             PlannedTask(
                 id=task.id,
                 title=task.title or task.id.replace("_", " ").replace("-", " ").title(),
                 prompt=task.prompt,
                 depends_on=task.depends_on,
+                agent=resolved_agent,
+                model=task.model,
+                reasoning_effort=task.reasoning_effort,
                 acceptance_criteria=task.acceptance_criteria,
                 validation_commands=validation_commands,
                 branch_name=build_task_branch_name(config.git.task_branch_prefix, task.id),
@@ -85,3 +99,28 @@ def _validate_acyclic(tasks: list[PlannedTask]) -> None:
 
 def _build_integration_branch(prefix: str, run_title: str) -> str:
     return build_integration_branch_name(prefix, run_title)
+
+
+def _validate_task_execution_settings(
+    *,
+    task_id: str,
+    agent: ProviderName,
+    reasoning_effort: str | None,
+) -> None:
+    if reasoning_effort is None:
+        return
+    allowed = (
+        _CLAUDE_REASONING_EFFORTS
+        if agent == "claude"
+        else _CODEX_REASONING_EFFORTS
+        if agent == "codex"
+        else None
+    )
+    if allowed is None:
+        raise PlanError(f"Task '{task_id}' uses unsupported agent '{agent}'")
+    if reasoning_effort not in allowed:
+        joined = ", ".join(sorted(allowed))
+        raise PlanError(
+            f"Task '{task_id}' uses unsupported reasoning effort {reasoning_effort!r} for {agent}. "
+            f"Expected one of: {joined}"
+        )

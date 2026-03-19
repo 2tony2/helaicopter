@@ -61,6 +61,9 @@ def test_compile_run_definition_embeds_reusable_shared_flow_payload() -> None:
     assert deployment.flow_payload.repo_root == Path("/tmp/helaicopter")
     assert deployment.flow_payload.config_path == Path("/tmp/helaicopter/.oats/config.toml")
     assert deployment.flow_payload.task_graph.edges[0].upstream_task_id == "plan"
+    assert deployment.flow_payload.tasks[0].agent == "claude"
+    assert deployment.flow_payload.tasks[0].model == "claude-sonnet-4-5"
+    assert deployment.flow_payload.tasks[0].reasoning_effort == "max"
 
 
 def _sample_run_definition() -> CanonicalRunDefinition:
@@ -81,6 +84,9 @@ def _sample_run_definition() -> CanonicalRunDefinition:
                 task_id="plan",
                 title="Plan",
                 prompt="Write the plan.",
+                agent="claude",
+                model="claude-sonnet-4-5",
+                reasoning_effort="max",
                 validation_commands=["uv run --group dev pytest -q tests/test_plan.py"],
             ),
             CanonicalTaskDefinition(

@@ -9,7 +9,9 @@ from oats.models import RunSpec, TaskSpec
 TASKS_SECTION_RE = re.compile(r"^##\s+Tasks\s*$", re.MULTILINE)
 TASK_HEADING_RE = re.compile(r"^###\s+([A-Za-z0-9_-]+)\s*$", re.MULTILINE)
 H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
-LABEL_RE = re.compile(r"^(Title|Depends on|Acceptance criteria|Notes|Validation override):\s*(.*)$")
+LABEL_RE = re.compile(
+    r"^(Title|Depends on|Agent|Model|Reasoning effort|Acceptance criteria|Notes|Validation override):\s*(.*)$"
+)
 
 
 class RunSpecParseError(RuntimeError):
@@ -63,6 +65,9 @@ def _parse_tasks(section_text: str) -> list[TaskSpec]:
 def _parse_task(task_id: str, body: str) -> TaskSpec:
     title: str | None = None
     depends_on: list[str] = []
+    agent: str | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
     acceptance_criteria: list[str] = []
     notes: list[str] = []
     validation_override: list[str] = []
@@ -86,6 +91,15 @@ def _parse_task(task_id: str, body: str) -> TaskSpec:
                 index += 1
             elif label == "Depends on":
                 depends_on = _parse_csv_values(value.strip())
+                index += 1
+            elif label == "Agent":
+                agent = value.strip() or None
+                index += 1
+            elif label == "Model":
+                model = value.strip() or None
+                index += 1
+            elif label == "Reasoning effort":
+                reasoning_effort = value.strip() or None
                 index += 1
             elif label == "Acceptance criteria":
                 block_lines, index = _consume_block(lines, index + 1)
@@ -127,6 +141,9 @@ def _parse_task(task_id: str, body: str) -> TaskSpec:
         title=title,
         prompt=prompt,
         depends_on=depends_on,
+        agent=agent,
+        model=model,
+        reasoning_effort=reasoning_effort,
         acceptance_criteria=acceptance_criteria,
         notes=notes,
         validation_override=validation_override,

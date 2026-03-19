@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "f1d5e4ff-7a39-45f7-8828-cfa90313370e",
+  "flow_run_name": "warping-collie",
+  "result": {
+    "attempt": 1,
+    "task_id": "cleanup_legacy_naming",
+    "title": "T001 Remove Or Rename Legacy Surfaces",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "cleanup_legacy_naming",
+  "task_title": "T001 Remove Or Rename Legacy Surfaces",
+  "updated_at": "2026-03-19T10:52:45.973478+00:00",
+  "upstream_task_ids": []
+}

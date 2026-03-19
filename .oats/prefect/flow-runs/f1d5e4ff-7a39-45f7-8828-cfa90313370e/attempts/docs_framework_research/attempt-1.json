@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "f1d5e4ff-7a39-45f7-8828-cfa90313370e",
+  "flow_run_name": "warping-collie",
+  "result": {
+    "attempt": 1,
+    "task_id": "docs_framework_research",
+    "title": "T003 Research Documentation Framework Options",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "docs_framework_research",
+  "task_title": "T003 Research Documentation Framework Options",
+  "updated_at": "2026-03-19T10:52:46.124934+00:00",
+  "upstream_task_ids": []
+}

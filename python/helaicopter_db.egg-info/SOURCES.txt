@@ -11,6 +11,7 @@ python/alembic/versions/20260316_0007_remove_clickhouse_bookkeeping.py
 python/helaicopter_api/__init__.py
 python/helaicopter_api/adapters/__init__.py
 python/helaicopter_api/adapters/evaluation_jobs.py
+python/helaicopter_api/adapters/prefect_http.py
 python/helaicopter_api/adapters/app_sqlite/__init__.py
 python/helaicopter_api/adapters/app_sqlite/store.py
 python/helaicopter_api/adapters/claude_fs/__init__.py
@@ -32,6 +33,7 @@ python/helaicopter_api/application/evaluation_prompts.py
 python/helaicopter_api/application/evaluations.py
 python/helaicopter_api/application/orchestration.py
 python/helaicopter_api/application/plans.py
+python/helaicopter_api/application/prefect_orchestration.py
 python/helaicopter_api/application/subscriptions.py
 python/helaicopter_api/bootstrap/__init__.py
 python/helaicopter_api/bootstrap/services.py
@@ -41,6 +43,7 @@ python/helaicopter_api/ports/claude_fs.py
 python/helaicopter_api/ports/codex_sqlite.py
 python/helaicopter_api/ports/evaluations.py
 python/helaicopter_api/ports/orchestration.py
+python/helaicopter_api/ports/prefect.py
 python/helaicopter_api/pure/__init__.py
 python/helaicopter_api/pure/analytics.py
 python/helaicopter_api/pure/conversation_dag.py
@@ -56,6 +59,7 @@ python/helaicopter_api/router/history.py
 python/helaicopter_api/router/ops.py
 python/helaicopter_api/router/orchestration.py
 python/helaicopter_api/router/plans.py
+python/helaicopter_api/router/prefect_orchestration.py
 python/helaicopter_api/router/projects.py
 python/helaicopter_api/router/router.py
 python/helaicopter_api/router/subagents.py
@@ -69,6 +73,7 @@ python/helaicopter_api/schema/database.py
 python/helaicopter_api/schema/evaluations.py
 python/helaicopter_api/schema/orchestration.py
 python/helaicopter_api/schema/plans.py
+python/helaicopter_api/schema/prefect_orchestration.py
 python/helaicopter_api/schema/subscriptions.py
 python/helaicopter_api/server/__init__.py
 python/helaicopter_api/server/config.py
@@ -112,10 +117,15 @@ python/oats/run_definition_loader.py
 python/oats/runner.py
 python/oats/runtime_state.py
 python/oats/prefect/__init__.py
+python/oats/prefect/artifacts.py
 python/oats/prefect/client.py
 python/oats/prefect/compiler.py
+python/oats/prefect/deployments.py
+python/oats/prefect/flows.py
 python/oats/prefect/models.py
 python/oats/prefect/settings.py
+python/oats/prefect/tasks.py
+python/oats/prefect/worktree.py
 tests/test_analytics_core.py
 tests/test_api_analytics.py
 tests/test_api_bootstrap.py
@@ -125,6 +135,7 @@ tests/test_api_evaluation_prompts.py
 tests/test_api_evaluations.py
 tests/test_api_orchestration.py
 tests/test_api_plans.py
+tests/test_api_prefect_orchestration.py
 tests/test_api_smoke.py
 tests/test_api_subscriptions.py
 tests/test_backend_settings.py

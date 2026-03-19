@@ -104,6 +104,23 @@ def test_codex_command_uses_dangerous_bypass_when_requested() -> None:
     assert "--sandbox" not in command
 
 
+def test_codex_command_supports_model_and_reasoning_effort_overrides() -> None:
+    command = _build_codex_command(
+        AgentCommand(command="codex", args=["exec"]),
+        Path("."),
+        "test prompt",
+        read_only=False,
+        dangerous_bypass=False,
+        model="gpt-5",
+        reasoning_effort="high",
+    )
+
+    assert "--model" in command
+    assert "gpt-5" in command
+    assert "-c" in command
+    assert 'model_reasoning_effort="high"' in command
+
+
 def test_claude_command_uses_bypass_permissions_when_requested() -> None:
     command = _build_claude_command(
         AgentCommand(command="claude", args=[]),
@@ -118,11 +135,29 @@ def test_claude_command_uses_bypass_permissions_when_requested() -> None:
     assert "--tools" not in command
 
 
+def test_claude_command_supports_model_and_effort_overrides() -> None:
+    command = _build_claude_command(
+        AgentCommand(command="claude", args=[]),
+        Path("."),
+        requested_session_id="session-123",
+        read_only=False,
+        dangerous_bypass=False,
+        model="claude-sonnet-4-5",
+        reasoning_effort="max",
+    )
+
+    assert "--model" in command
+    assert "claude-sonnet-4-5" in command
+    assert "--effort" in command
+    assert "max" in command
+
+
 def test_prompts_switch_out_of_read_only_mode() -> None:
     task = PlannedTask(
         id="task_one",
         title="Task One",
         prompt="Implement a thing.",
+        agent="codex",
         branch_name="codex/oats/task/task-one",
         pr_base="codex/oats/overnight/run",
     )

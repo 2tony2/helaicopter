@@ -1,0 +1,12 @@
+{
+  "artifact_root": "/Users/tony/Code/helaicopter/.oats/prefect/flow-runs/ccc04292-9710-4c17-b89b-aeeb4461f2db",
+  "completed_at": "2026-03-19T11:31:48.163237+00:00",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "created_at": "2026-03-19T11:06:23.571600+00:00",
+  "flow_run_id": "ccc04292-9710-4c17-b89b-aeeb4461f2db",
+  "flow_run_name": "ochre-quokka",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "run_title": "Run: Cleanup, OpenAPI, And Docs Research",
+  "source_path": "/Users/tony/Code/helaicopter/examples/cleanup.md",
+  "updated_at": "2026-03-19T11:31:48.163214+00:00"
+}

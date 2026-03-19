@@ -105,6 +105,9 @@ class TaskSpec(BaseModel):
     title: str | None = None
     prompt: str
     depends_on: list[str] = []
+    agent: ProviderName | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
     acceptance_criteria: list[str] = []
     notes: list[str] = []
     validation_override: list[str] = []
@@ -143,6 +146,9 @@ class PlannedTask(BaseModel):
     title: str
     prompt: str
     depends_on: list[str] = []
+    agent: ProviderName
+    model: str | None = None
+    reasoning_effort: str | None = None
     acceptance_criteria: list[str] = []
     validation_commands: list[str] = []
     branch_name: str

@@ -1,0 +1,12 @@
+{
+  "artifact_root": "/Users/tony/Code/helaicopter/.oats/prefect/flow-runs/fb834084-1527-464a-afaa-66c2c72a6553",
+  "completed_at": "2026-03-19T10:57:41.670095+00:00",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "created_at": "2026-03-19T10:57:41.435825+00:00",
+  "flow_run_id": "fb834084-1527-464a-afaa-66c2c72a6553",
+  "flow_run_name": "antique-sawfish",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "run_title": "Run: Cleanup, OpenAPI, And Docs Research",
+  "source_path": "/Users/tony/Code/helaicopter/examples/cleanup.md",
+  "updated_at": "2026-03-19T10:57:41.670092+00:00"
+}

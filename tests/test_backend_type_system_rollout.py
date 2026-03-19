@@ -346,6 +346,7 @@ def test_wave_five_function_contracts_enforce_strict_inputs() -> None:
         id="strict-task",
         title="Strict task",
         prompt="Implement the strict boundary.",
+        agent="codex",
         branch_name="codex/oats/task/strict-task",
         pr_base="codex/oats/run",
     )

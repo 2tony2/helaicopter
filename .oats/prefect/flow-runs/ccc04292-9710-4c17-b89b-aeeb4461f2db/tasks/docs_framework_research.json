@@ -1,0 +1,20 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "ccc04292-9710-4c17-b89b-aeeb4461f2db",
+  "flow_run_name": "ochre-quokka",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "output_text": "Files changed: [docs/documentation-framework-research.md](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/docs-framework-research/docs/documentation-framework-research.md)\n\nValidation run:\n- `test -f docs/documentation-framework-research.md` -> passed\n- `git status --short docs/documentation-framework-research.md` -> shows `?? docs/documentation-framework-research.md`\n\nThe research note covers Sphinx, a Next.js-native path, and OpenClaw\u2019s Mintlify approach, with pros/cons, migration cost, authoring ergonomics, API docs fit, hosting fit, a recommended default (`Fumadocs` in the existing Next.js app), and a viable alternative (`Sphinx + MyST`).\n\nRemaining risks / follow-ups:\n- The recommendation is source-backed but still strategic; the next useful step is a small spike to validate `Fumadocs` against this repo\u2019s actual `openapi.json` and current Markdown docs.\n- If Python module autodoc becomes a hard requirement, re-evaluate the recommendation weight in favor of Sphinx before implementation.",
+    "session_id": "019d05d9-b547-70b0-becd-b4d7b24607db",
+    "task_id": "docs_framework_research",
+    "title": "T003 Research Documentation Framework Options",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "docs_framework_research",
+  "task_title": "T003 Research Documentation Framework Options",
+  "updated_at": "2026-03-19T11:31:48.151555+00:00",
+  "upstream_task_ids": []
+}

@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "local-cleanup-smoke",
+  "flow_run_name": "truthful-beagle",
+  "result": {
+    "attempt": 1,
+    "task_id": "docs_framework_research",
+    "title": "T003 Research Documentation Framework Options",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "docs_framework_research",
+  "task_title": "T003 Research Documentation Framework Options",
+  "updated_at": "2026-03-19T10:57:34.281946+00:00",
+  "upstream_task_ids": []
+}

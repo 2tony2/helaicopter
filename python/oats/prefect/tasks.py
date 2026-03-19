@@ -1,23 +1,29 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 import uuid
 
 from prefect import runtime, task
 from pydantic import BaseModel, Field
 
+from oats.models import PlannedTask
 from oats.prefect.artifacts import LocalArtifactCheckpointStore
 from oats.prefect.models import PrefectFlowPayload, PrefectTaskNode
 from oats.prefect.worktree import prepare_task_worktree
+from oats.repo_config import load_repo_config
+from oats.runner import AgentInvocationError, build_task_prompt, invoke_agent
 
 
 class TaskExecutor(Protocol):
     def __call__(
         self,
+        payload: PrefectFlowPayload,
         task_node: PrefectTaskNode,
         upstream_results: dict[str, dict[str, object]],
         attempt: int,
+        worktree_path: Path,
     ) -> dict[str, object]: ...
 
 
@@ -65,7 +71,7 @@ def execute_compiled_task_attempt(
     attempt: int | None = None,
 ) -> CompiledTaskResult:
     resolved_attempt = attempt if attempt is not None else _resolve_attempt()
-    prepare_task_worktree(payload, task_node)
+    prepared_worktree = prepare_task_worktree(payload, task_node)
     artifact_store.write_task_checkpoint(
         task_node,
         status="running",
@@ -74,10 +80,12 @@ def execute_compiled_task_attempt(
     )
 
     try:
-        task_result = (executor or _default_executor)(
+        task_result = (executor or _oats_executor)(
+            payload,
             task_node,
             upstream_results,
             resolved_attempt,
+            prepared_worktree.worktree_path,
         )
     except Exception as exc:
         artifact_store.write_task_checkpoint(
@@ -122,15 +130,83 @@ def resolve_flow_run_identity(
 
 
 def _default_executor(
+    payload: PrefectFlowPayload,
     task_node: PrefectTaskNode,
     upstream_results: dict[str, dict[str, object]],
     attempt: int,
+    worktree_path: Path,
 ) -> dict[str, object]:
+    del payload, worktree_path
     return {
         "task_id": task_node.task_id,
         "title": task_node.title,
         "attempt": attempt,
         "upstream_task_ids": sorted(upstream_results),
+    }
+
+
+def _oats_executor(
+    payload: PrefectFlowPayload,
+    task_node: PrefectTaskNode,
+    upstream_results: dict[str, dict[str, object]],
+    attempt: int,
+    worktree_path: Path,
+) -> dict[str, object]:
+    config = load_repo_config(payload.config_path)
+    planned_task = PlannedTask(
+        id=task_node.task_id,
+        title=task_node.title,
+        prompt=task_node.prompt,
+        depends_on=list(task_node.depends_on),
+        agent=task_node.agent,
+        model=task_node.model,
+        reasoning_effort=task_node.reasoning_effort,
+        acceptance_criteria=list(task_node.acceptance_criteria),
+        validation_commands=list(task_node.validation_commands),
+        branch_name=(task_node.repo_context.task_branch if task_node.repo_context else task_node.task_id),
+        pr_base=(
+            task_node.repo_context.integration_branch
+            if task_node.repo_context
+            else payload.repo_base_branch
+        ),
+    )
+    prompt = build_task_prompt(
+        planned_task,
+        payload.run_title,
+        read_only=False,
+    )
+    result = invoke_agent(
+        agent_name=planned_task.agent,
+        agent_command=config.agent[planned_task.agent],
+        role="executor",
+        cwd=worktree_path,
+        prompt=prompt,
+        read_only=False,
+        timeout_seconds=1800,
+        dangerous_bypass=False,
+        model=planned_task.model,
+        reasoning_effort=planned_task.reasoning_effort,
+        raise_on_nonzero=False,
+    )
+    if result.timed_out:
+        raise TimeoutError(
+            f"Executor timed out for task {task_node.task_id} on attempt {attempt}"
+        )
+    if result.exit_code != 0:
+        raise AgentInvocationError(
+            f"Executor failed for task {task_node.task_id} with exit code {result.exit_code}\n"
+            f"stderr:\n{result.raw_stderr or '<empty>'}"
+        )
+    return {
+        "task_id": task_node.task_id,
+        "title": task_node.title,
+        "attempt": attempt,
+        "upstream_task_ids": sorted(upstream_results),
+        "agent": result.agent,
+        "model": planned_task.model,
+        "reasoning_effort": planned_task.reasoning_effort,
+        "session_id": str(result.session_id) if result.session_id is not None else None,
+        "output_text": result.output_text,
     }
 
 

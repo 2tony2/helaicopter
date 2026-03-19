@@ -1,0 +1,19 @@
+╭────────────────────────────── Execution Record ──────────────────────────────╮
+│ Run: Run: Prefect Native Oats Orchestration                                  │
+│ Run ID: prefect-native-oats-orchestration-run-20260318T224539Z               │
+│ Repo: /Users/tony/Code/helaicopter                                           │
+│ Integration branch: oats/overnight/run-prefect-native-oats-orchestration     │
+│ Task PR target: oats/overnight/run-prefect-native-oats-orchestration         │
+│ Final PR target: main                                                        │
+│ Runtime state:                                                               │
+│ /Users/tony/Code/helaicopter/.oats/runtime/prefect-native-oats-orchestration │
+│ -run-20260318T224539Z/state.json                                             │
+│ Record:                                                                      │
+│ /Users/tony/Code/helaicopter/.oats/runs/prefect_native_oats_orchestration_ru │
+│ n-20260318T224841Z.json                                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━┓
+┃ Role            ┃ Agent ┃ Session Field ┃ Session ID      ┃ Exit ┃ Timed Out ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━┩
+│ executor:prefe… │ codex │ thread_id     │ 019d0320-9913-… │ 124  │ yes       │
+└─────────────────┴───────┴───────────────┴─────────────────┴──────┴───────────┘

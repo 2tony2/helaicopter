@@ -101,6 +101,8 @@ def invoke_agent(
     read_only: bool = True,
     timeout_seconds: int = 20,
     dangerous_bypass: bool = False,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
     raise_on_nonzero: bool = True,
     on_heartbeat: Callable[[], None] | None = None,
     on_progress: Callable[[InvocationProgress], None] | None = None,
@@ -114,6 +116,8 @@ def invoke_agent(
             prompt,
             read_only=read_only,
             dangerous_bypass=dangerous_bypass,
+            model=model,
+            reasoning_effort=reasoning_effort,
         )
         completed, timed_out = _run_command(
             command=command,
@@ -144,6 +148,8 @@ def invoke_agent(
             requested_session_id=requested_session_id,
             read_only=read_only,
             dangerous_bypass=dangerous_bypass,
+            model=model,
+            reasoning_effort=reasoning_effort,
         )
         completed, timed_out = _run_command(
             command=command,
@@ -325,11 +331,17 @@ def _build_codex_command(
     *,
     read_only: bool,
     dangerous_bypass: bool,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> list[str]:
     command = [agent_command.command, *agent_command.args]
     if "exec" not in agent_command.args:
         command.append("exec")
     command.extend(["-C", str(cwd), "--json"])
+    if model:
+        command.extend(["--model", model])
+    if reasoning_effort:
+        command.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
     if read_only:
         command.extend(["--sandbox", "read-only"])
     elif dangerous_bypass:
@@ -347,6 +359,8 @@ def _build_claude_command(
     requested_session_id: str,
     read_only: bool,
     dangerous_bypass: bool,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> list[str]:
     command = [agent_command.command, *agent_command.args]
     command.extend(
@@ -360,6 +374,10 @@ def _build_claude_command(
             str(cwd),
         ]
     )
+    if model:
+        command.extend(["--model", model])
+    if reasoning_effort:
+        command.extend(["--effort", reasoning_effort])
     if read_only:
         command.extend(["--tools", ""])
     elif dangerous_bypass:

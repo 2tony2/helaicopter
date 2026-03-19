@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from oats.repo_config import find_repo_config, load_repo_config
 from oats.models import RepoConfig
 from oats.parser import parse_run_spec
-from oats.planner import build_execution_plan
+from oats.planner import PlanError, build_execution_plan
 from oats.pr import (
     build_final_pr_plan,
     build_pr_create_command,
@@ -44,6 +44,67 @@ def test_execution_plan_uses_integration_branch_targeting() -> None:
     assert plan.final_pr_target == "main"
     assert plan.tasks[0].branch_name == "oats/task/auth"
     assert plan.tasks[0].pr_base == plan.integration_branch
+    assert plan.tasks[0].agent == "codex"
+
+
+def test_execution_plan_preserves_task_level_provider_model_and_effort(tmp_path: Path) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run_spec = tmp_path / "overrides.md"
+    run_spec.write_text(
+        """# Run: Overrides
+
+## Tasks
+
+### research
+Agent: claude
+Model: claude-sonnet-4-5
+Reasoning effort: max
+
+Investigate the issue.
+""",
+        encoding="utf-8",
+    )
+    run = parse_run_spec(run_spec)
+
+    plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=config_path.parent.parent,
+        config_path=config_path,
+    )
+
+    assert plan.tasks[0].agent == "claude"
+    assert plan.tasks[0].model == "claude-sonnet-4-5"
+    assert plan.tasks[0].reasoning_effort == "max"
+
+
+def test_execution_plan_rejects_invalid_reasoning_effort_for_provider(tmp_path: Path) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run_spec = tmp_path / "invalid.md"
+    run_spec.write_text(
+        """# Run: Invalid
+
+## Tasks
+
+### research
+Agent: codex
+Reasoning effort: max
+
+Investigate the issue.
+""",
+        encoding="utf-8",
+    )
+    run = parse_run_spec(run_spec)
+
+    with pytest.raises(PlanError, match="unsupported reasoning effort"):
+        build_execution_plan(
+            config=config,
+            run_spec=run,
+            repo_root=config_path.parent.parent,
+            config_path=config_path,
+        )
 
 
 def test_pr_commands_target_integration_branch_then_main() -> None:

@@ -46,6 +46,9 @@ def load_run_definition(
                 title=_task_title(task.id, task.title),
                 prompt=task.prompt,
                 depends_on=list(task.depends_on),
+                agent=task.agent,
+                model=task.model,
+                reasoning_effort=task.reasoning_effort,
                 acceptance_criteria=list(task.acceptance_criteria),
                 notes=list(task.notes),
                 validation_commands=list(

@@ -1,0 +1,20 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "ccc04292-9710-4c17-b89b-aeeb4461f2db",
+  "flow_run_name": "ochre-quokka",
+  "result": {
+    "agent": "codex",
+    "attempt": 1,
+    "output_text": "**Files changed**\n\n- [README.md](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/README.md)\n- [docs/fastapi-backend-rollout.md](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/docs/fastapi-backend-rollout.md)\n- [package.json](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/package.json)\n- [pyproject.toml](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/pyproject.toml)\n- [python/helaicopter_api/server/config.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/python/helaicopter_api/server/config.py)\n- [python/helaicopter_api/server/openapi_artifacts.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/python/helaicopter_api/server/openapi_artifacts.py)\n- [scripts/generate-openapi-artifacts.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/scripts/generate-openapi-artifacts.py)\n- [public/openapi/helaicopter-api.json](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/public/openapi/helaicopter-api.json)\n- [public/openapi/helaicopter-api.yaml](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/public/openapi/helaicopter-api.yaml)\n- [src/app/schema/page.tsx](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/src/app/schema/page.tsx)\n- [src/components/layout/app-sidebar.tsx](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/src/components/layout/app-sidebar.tsx)\n- [tests/test_api_bootstrap.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/tests/test_api_bootstrap.py)\n- [tests/test_api_orchestration.py](/Users/tony/Code/helaicopter/.oats-worktrees/run-cleanup-openapi-and-docs-research/openapi-specs-and-sidebar/tests/test_api_orchestration.py)\n\n**Validation commands run and outcomes**\n\n- `uv run pytest -q tests/test_api_bootstrap.py tests/test_api_orchestration.py tests/test_api_prefect_orchestration.py`\n  Outcome: attempted twice, but `uv` panicked in this sandboxed environment before running tests.\n- `PYTHONPATH=python pytest -q tests/test_api_bootstrap.py tests/test_api_orchestration.py tests/test_api_prefect_orchestration.py`\n  Outcome: passed, `25 passed`.\n- `npm run lint`\n  Outcome: passed.\n- `PYTHONPATH=python python scripts/generate-openapi-artifacts.py`\n  Outcome: passed, regenerated committed JSON/YAML artifacts.\n\n**Remaining risks or follow-ups**\n\n- The only incomplete item is the exact `uv run pytest ...` command under this sandbox; behavior was verified with equivalent direct `pytest` against the worktree import path.\n- If you want stricter coverage for the sidebar/API page in CI, the next follow-up is adding a small frontend test harness rather than relying on source-level assertions plus lint.",
+    "session_id": "019d05d3-28dc-7101-82a1-9ffd16177914",
+    "task_id": "openapi_specs_and_sidebar",
+    "title": "T002 Generate OpenAPI Artifacts And Add API Sidebar Links",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "openapi_specs_and_sidebar",
+  "task_title": "T002 Generate OpenAPI Artifacts And Add API Sidebar Links",
+  "updated_at": "2026-03-19T11:27:26.505612+00:00",
+  "upstream_task_ids": []
+}

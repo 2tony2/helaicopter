@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+from helaicopter_domain.vocab import ProviderName
 
 
 class PrefectTaskRepoContext(BaseModel):
@@ -17,6 +18,9 @@ class PrefectTaskNode(BaseModel):
     title: str
     prompt: str
     depends_on: list[str] = Field(default_factory=list)
+    agent: ProviderName
+    model: str | None = None
+    reasoning_effort: str | None = None
     acceptance_criteria: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     validation_commands: list[str] = Field(default_factory=list)

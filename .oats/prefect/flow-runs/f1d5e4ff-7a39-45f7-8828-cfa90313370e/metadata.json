@@ -1,0 +1,12 @@
+{
+  "artifact_root": "/Users/tony/Code/helaicopter/.oats/prefect/flow-runs/f1d5e4ff-7a39-45f7-8828-cfa90313370e",
+  "completed_at": "2026-03-19T10:52:46.128795+00:00",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "created_at": "2026-03-19T10:52:45.880485+00:00",
+  "flow_run_id": "f1d5e4ff-7a39-45f7-8828-cfa90313370e",
+  "flow_run_name": "warping-collie",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "run_title": "Run: Cleanup, OpenAPI, And Docs Research",
+  "source_path": "/Users/tony/Code/helaicopter/examples/cleanup.md",
+  "updated_at": "2026-03-19T10:52:46.128772+00:00"
+}

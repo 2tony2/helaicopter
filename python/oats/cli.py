@@ -538,8 +538,9 @@ def _execute_run(
                 state.status = "running"
                 state.active_task_id = cast(TaskId, task.id)
                 runtime_task.attempts += 1
+                task_agent = task.agent
                 runtime_task.invocation = prepare_invocation_runtime(
-                    agent=config.agents.executor,
+                    agent=task_agent,
                     role="executor",
                     cwd=execution_plan.repo_root,
                     prompt=task_prompt,
@@ -552,14 +553,16 @@ def _execute_run(
                 )
                 write_runtime_state(state)
                 result = invoke_agent(
-                    agent_name=config.agents.executor,
-                    agent_command=config.agent[config.agents.executor],
+                    agent_name=task_agent,
+                    agent_command=config.agent[task_agent],
                     role="executor",
                     cwd=execution_plan.repo_root,
                     prompt=task_prompt,
                     read_only=read_only,
                     timeout_seconds=timeout_seconds,
                     dangerous_bypass=dangerous_bypass,
+                    model=task.model,
+                    reasoning_effort=task.reasoning_effort,
                     raise_on_nonzero=False,
                     on_heartbeat=lambda inv=runtime_task.invocation, task_id=task.id: _handle_runtime_heartbeat(
                         state,

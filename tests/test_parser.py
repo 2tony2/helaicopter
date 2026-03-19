@@ -14,3 +14,28 @@ def test_parse_run_spec_extracts_tasks() -> None:
         "login returns JWT",
         "auth middleware protects private routes",
     ]
+
+
+def test_parse_run_spec_extracts_task_execution_overrides(tmp_path: Path) -> None:
+    run_spec = tmp_path / "overrides.md"
+    run_spec.write_text(
+        """# Run: Overrides
+
+## Tasks
+
+### api
+Title: API work
+Agent: claude
+Model: claude-sonnet-4-5
+Reasoning effort: high
+
+Implement the API.
+""",
+        encoding="utf-8",
+    )
+
+    run = parse_run_spec(run_spec)
+
+    assert run.tasks[0].agent == "claude"
+    assert run.tasks[0].model == "claude-sonnet-4-5"
+    assert run.tasks[0].reasoning_effort == "high"

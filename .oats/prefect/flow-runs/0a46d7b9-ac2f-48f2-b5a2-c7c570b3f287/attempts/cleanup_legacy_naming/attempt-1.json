@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "0a46d7b9-ac2f-48f2-b5a2-c7c570b3f287",
+  "flow_run_name": "fragrant-chital",
+  "result": {
+    "attempt": 1,
+    "task_id": "cleanup_legacy_naming",
+    "title": "T001 Remove Or Rename Legacy Surfaces",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "cleanup_legacy_naming",
+  "task_title": "T001 Remove Or Rename Legacy Surfaces",
+  "updated_at": "2026-03-19T10:51:05.801509+00:00",
+  "upstream_task_ids": []
+}

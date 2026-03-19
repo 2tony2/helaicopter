@@ -42,6 +42,26 @@ class PrefectHttpClient:
         first = response[0]
         return first if isinstance(first, dict) else None
 
+    def find_flow_by_name(self, flow_name: str) -> dict[str, Any] | None:
+        response = self._request(
+            "POST",
+            "/flows/filter",
+            json_body={
+                "flows": {"operator": "and_", "name": {"any_": [flow_name]}},
+                "limit": 1,
+            },
+        )
+        if not response:
+            return None
+        first = response[0]
+        return first if isinstance(first, dict) else None
+
+    def create_flow(self, flow_name: str) -> dict[str, Any]:
+        response = self._request("POST", "/flows/", json_body={"name": flow_name})
+        if not isinstance(response, dict):
+            raise PrefectApiError("Prefect create flow response was not an object")
+        return response
+
     def create_deployment(self, payload: dict[str, Any]) -> dict[str, Any]:
         response = self._request("POST", "/deployments/", json_body=payload)
         if not isinstance(response, dict):

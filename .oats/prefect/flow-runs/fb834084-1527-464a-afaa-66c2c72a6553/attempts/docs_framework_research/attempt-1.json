@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "fb834084-1527-464a-afaa-66c2c72a6553",
+  "flow_run_name": "antique-sawfish",
+  "result": {
+    "attempt": 1,
+    "task_id": "docs_framework_research",
+    "title": "T003 Research Documentation Framework Options",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "docs_framework_research",
+  "task_title": "T003 Research Documentation Framework Options",
+  "updated_at": "2026-03-19T10:57:41.666984+00:00",
+  "upstream_task_ids": []
+}

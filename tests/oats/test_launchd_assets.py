@@ -26,6 +26,8 @@ def test_worker_wrapper_uses_caffeinate_and_prefect_worker_pool() -> None:
     assert "prefect worker start" in script
     assert "--pool \"${OATS_PREFECT_WORK_POOL:-local-macos}\"" in script
     assert "PREFECT_API_URL" in script
+    assert "/opt/homebrew/bin" in script
+    assert "/usr/local/bin" in script
 
 
 def test_local_ops_runbook_covers_service_lifecycle_logs_and_env() -> None:

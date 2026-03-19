@@ -31,6 +31,7 @@ def compile_run_definition(
             worktree_dir=run_definition.execution.worktree_dir,
             task_branch_prefix=repo_config.git.task_branch_prefix,
             integration_branch_prefix=repo_config.git.integration_branch_prefix,
+            default_agent=repo_config.agents.executor,
         )
         for task in run_definition.tasks
     ]
@@ -80,12 +81,16 @@ def _compile_task_node(
     worktree_dir: str,
     task_branch_prefix: str,
     integration_branch_prefix: str,
+    default_agent: str,
 ) -> PrefectTaskNode:
     return PrefectTaskNode(
         task_id=task.task_id,
         title=task.title,
         prompt=task.prompt,
         depends_on=list(task.depends_on),
+        agent=task.agent or default_agent,
+        model=task.model,
+        reasoning_effort=task.reasoning_effort,
         acceptance_criteria=list(task.acceptance_criteria),
         notes=list(task.notes),
         validation_commands=list(task.validation_commands),

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
+from helaicopter_domain.vocab import ProviderName
 
 
 class CanonicalExecutionHints(BaseModel):
@@ -16,6 +17,9 @@ class CanonicalTaskDefinition(BaseModel):
     title: str
     prompt: str
     depends_on: list[str] = Field(default_factory=list)
+    agent: ProviderName | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
     acceptance_criteria: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     validation_commands: list[str] = Field(default_factory=list)

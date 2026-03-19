@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "d45a4b7d-5a74-4dd7-85df-4e9e287855ef",
+  "flow_run_name": "athletic-binturong",
+  "result": {
+    "attempt": 1,
+    "task_id": "openapi_specs_and_sidebar",
+    "title": "T002 Generate OpenAPI Artifacts And Add API Sidebar Links",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "openapi_specs_and_sidebar",
+  "task_title": "T002 Generate OpenAPI Artifacts And Add API Sidebar Links",
+  "updated_at": "2026-03-19T10:58:52.656537+00:00",
+  "upstream_task_ids": []
+}

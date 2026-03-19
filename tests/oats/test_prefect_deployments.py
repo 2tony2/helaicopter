@@ -22,12 +22,23 @@ from oats.run_definition import (
 
 class StubPrefectClient:
     def __init__(self) -> None:
+        self.flow_lookup_calls: list[str] = []
+        self.created_flows: list[str] = []
         self.lookup_calls: list[tuple[str, str]] = []
         self.created_payloads: list[dict[str, object]] = []
         self.updated_payloads: list[tuple[str, dict[str, object]]] = []
         self.flow_run_requests: list[tuple[str, dict[str, object]]] = []
         self.flow_run_reads: list[str] = []
+        self.flow_lookup_result: dict[str, object] | None = None
         self.deployment_lookup_result: dict[str, object] | None = None
+
+    def find_flow_by_name(self, flow_name: str) -> dict[str, object] | None:
+        self.flow_lookup_calls.append(flow_name)
+        return self.flow_lookup_result
+
+    def create_flow(self, flow_name: str) -> dict[str, object]:
+        self.created_flows.append(flow_name)
+        return {"id": "flow-created", "name": flow_name}
 
     def find_deployment_by_name(
         self,
@@ -48,7 +59,7 @@ class StubPrefectClient:
         payload: dict[str, object],
     ) -> dict[str, object]:
         self.updated_payloads.append((deployment_id, payload))
-        return {"id": deployment_id, "name": payload["name"]}
+        return {"id": deployment_id}
 
     def create_flow_run_from_deployment(
         self,
@@ -86,17 +97,24 @@ def test_deploy_run_spec_creates_a_prefect_deployment_when_missing() -> None:
         flow_name="oats-compiled-run",
         created=True,
     )
+    assert client.flow_lookup_calls == ["oats-compiled-run"]
+    assert client.created_flows == ["oats-compiled-run"]
     assert client.lookup_calls == [
         ("oats-compiled-run", "helaicopter-run-prefect-deploy-smoke")
     ]
     assert len(client.created_payloads) == 1
     assert client.updated_payloads == []
     assert client.created_payloads[0]["name"] == "helaicopter-run-prefect-deploy-smoke"
+    assert client.created_payloads[0]["flow_id"] == "flow-created"
     assert client.created_payloads[0]["work_pool_name"] == "local-macos"
 
 
 def test_deploy_run_spec_updates_existing_deployment_in_place() -> None:
     client = StubPrefectClient()
+    client.flow_lookup_result = {
+        "id": "flow-existing",
+        "name": "oats-compiled-run",
+    }
     client.deployment_lookup_result = {
         "id": "deployment-existing",
         "name": "helaicopter-run-prefect-deploy-smoke",
@@ -117,6 +135,8 @@ def test_deploy_run_spec_updates_existing_deployment_in_place() -> None:
     assert client.created_payloads == []
     assert len(client.updated_payloads) == 1
     assert client.updated_payloads[0][0] == "deployment-existing"
+    assert "flow_id" not in client.updated_payloads[0][1]
+    assert "name" not in client.updated_payloads[0][1]
     assert client.updated_payloads[0][1]["parameters"] == {
         "payload": compile_run_definition(
             _sample_run_definition(),
@@ -127,6 +147,10 @@ def test_deploy_run_spec_updates_existing_deployment_in_place() -> None:
 
 def test_trigger_run_spec_creates_manual_flow_run_from_markdown_spec() -> None:
     client = StubPrefectClient()
+    client.flow_lookup_result = {
+        "id": "flow-existing",
+        "name": "oats-compiled-run",
+    }
     client.deployment_lookup_result = {
         "id": "deployment-existing",
         "name": "helaicopter-run-prefect-deploy-smoke",

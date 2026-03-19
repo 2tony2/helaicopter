@@ -1,0 +1,12 @@
+{
+  "attempt": 1,
+  "error": "[Errno 2] No such file or directory: 'codex'",
+  "flow_run_id": "3d8e21f8-f95d-4b01-8380-c3a144382c66",
+  "flow_run_name": "amber-herring",
+  "result": null,
+  "status": "failed",
+  "task_id": "cleanup_legacy_naming",
+  "task_title": "T001 Remove Or Rename Legacy Surfaces",
+  "updated_at": "2026-03-19T11:03:14.843894+00:00",
+  "upstream_task_ids": []
+}

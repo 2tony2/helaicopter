@@ -1,0 +1,17 @@
+{
+  "attempt": 1,
+  "error": null,
+  "flow_run_id": "fb834084-1527-464a-afaa-66c2c72a6553",
+  "flow_run_name": "antique-sawfish",
+  "result": {
+    "attempt": 1,
+    "task_id": "openapi_specs_and_sidebar",
+    "title": "T002 Generate OpenAPI Artifacts And Add API Sidebar Links",
+    "upstream_task_ids": []
+  },
+  "status": "completed",
+  "task_id": "openapi_specs_and_sidebar",
+  "task_title": "T002 Generate OpenAPI Artifacts And Add API Sidebar Links",
+  "updated_at": "2026-03-19T10:57:41.595404+00:00",
+  "upstream_task_ids": []
+}

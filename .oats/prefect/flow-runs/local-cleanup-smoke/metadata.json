@@ -1,0 +1,12 @@
+{
+  "artifact_root": "/Users/tony/Code/helaicopter/.oats/prefect/flow-runs/local-cleanup-smoke",
+  "completed_at": "2026-03-19T10:57:34.287040+00:00",
+  "config_path": "/Users/tony/Code/helaicopter/.oats/config.toml",
+  "created_at": "2026-03-19T10:57:33.981996+00:00",
+  "flow_run_id": "local-cleanup-smoke",
+  "flow_run_name": "truthful-beagle",
+  "repo_root": "/Users/tony/Code/helaicopter",
+  "run_title": "Run: Cleanup, OpenAPI, And Docs Research",
+  "source_path": "/Users/tony/Code/helaicopter/examples/cleanup.md",
+  "updated_at": "2026-03-19T10:57:34.287030+00:00"
+}
