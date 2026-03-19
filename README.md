@@ -161,7 +161,7 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 
 - **SQLite** stores app-local metadata, refresh bookkeeping, evaluations, and historical detail tables.
 - **ClickHouse** is the primary analytics and event store for warehouse-style reads.
-- **DuckDB** is no longer on the primary serving path. If present, it is only a legacy/local inspection artifact surfaced on the Databases page.
+- **DuckDB** is no longer on the primary serving path. If present, it is only an optional local inspection artifact surfaced on the Databases page.
 
 ## Frontend/Backend Split
 

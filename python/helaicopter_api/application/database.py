@@ -23,8 +23,8 @@ SQLITE_NOTE = (
     "App-local metadata, refresh bookkeeping, evaluations, and historical "
     "detail tables."
 )
-LEGACY_DUCKDB_NOTE = (
-    "Legacy compatibility/debug artifact only. It is not on the primary "
+DUCKDB_NOTE = (
+    "Optional DuckDB inspection snapshot. It is not on the primary "
     "analytics serving path."
 )
 
@@ -127,7 +127,7 @@ def _status_payload_is_complete(payload: DatabaseStatusPayload | None) -> bool:
         return False
     runtime = payload.get("runtime")
     databases = payload.get("databases") or {}
-    return bool(runtime and databases.get("sqlite") and databases.get("legacyDuckdb"))
+    return bool(runtime and databases.get("sqlite") and databases.get("duckdb"))
 
 
 def _fallback_runtime_surface() -> DatabaseRuntimePayload:
@@ -142,9 +142,9 @@ def _fallback_databases_surface(
 ) -> DatabaseArtifactsPayload:
     database_settings = get_database_settings(settings)
     sqlite = database_settings.sqlite
-    legacy_duckdb = database_settings.legacy_duckdb
+    duckdb_settings = database_settings.duckdb
     sqlite_exists = sqlite.path.exists()
-    legacy_exists = legacy_duckdb.path.exists()
+    duckdb_exists = duckdb_settings.path.exists()
     return {
         "sqlite": {
             "key": sqlite.key,
@@ -161,18 +161,18 @@ def _fallback_databases_surface(
             "tableCount": 0,
             "tables": [],
         },
-        "legacyDuckdb": {
-            "key": legacy_duckdb.key,
-            "label": legacy_duckdb.label,
-            "engine": legacy_duckdb.engine,
-            "role": "legacy_debug",
-            "availability": "ready" if legacy_exists else "missing",
-            "note": LEGACY_DUCKDB_NOTE,
+        "duckdb": {
+            "key": duckdb_settings.key,
+            "label": duckdb_settings.label,
+            "engine": duckdb_settings.engine,
+            "role": "inspection",
+            "availability": "ready" if duckdb_exists else "missing",
+            "note": DUCKDB_NOTE,
             "error": None,
-            "path": str(legacy_duckdb.path),
+            "path": str(duckdb_settings.path),
             "target": None,
-            "publicPath": legacy_duckdb.public_path,
-            "docsUrl": legacy_duckdb.docs_url,
+            "publicPath": duckdb_settings.public_path,
+            "docsUrl": duckdb_settings.docs_url,
             "tableCount": 0,
             "tables": [],
         },

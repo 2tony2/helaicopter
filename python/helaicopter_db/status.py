@@ -50,7 +50,7 @@ class DatabaseArtifactPayload(TypedDict):
 
 class DatabaseArtifactsPayload(TypedDict):
     sqlite: DatabaseArtifactPayload
-    legacyDuckdb: DatabaseArtifactPayload
+    duckdb: DatabaseArtifactPayload
 
 
 class DatabaseStatusPayload(TypedDict, total=False):
@@ -115,11 +115,11 @@ def _sqlite_table_summaries(engine) -> list[DatabaseTablePayload]:
     return tables
 
 
-def _legacy_duckdb_table_summaries(settings: Settings | None = None) -> list[DatabaseTablePayload]:
+def _duckdb_table_summaries(settings: Settings | None = None) -> list[DatabaseTablePayload]:
     import duckdb
 
-    legacy_duckdb = get_database_settings(settings).legacy_duckdb
-    connection = duckdb.connect(str(legacy_duckdb.path), read_only=True)
+    duckdb_settings = get_database_settings(settings).duckdb
+    connection = duckdb.connect(str(duckdb_settings.path), read_only=True)
     try:
         tables_rows = connection.execute(
             """
@@ -128,7 +128,7 @@ def _legacy_duckdb_table_summaries(settings: Settings | None = None) -> list[Dat
             WHERE database_name = ? AND schema_name = 'main'
             ORDER BY table_name
             """,
-            [legacy_duckdb.catalog_name],
+            [duckdb_settings.catalog_name],
         ).fetchall()
 
         columns_rows = connection.execute(
@@ -138,7 +138,7 @@ def _legacy_duckdb_table_summaries(settings: Settings | None = None) -> list[Dat
             WHERE database_name = ? AND schema_name = 'main' AND internal = false
             ORDER BY table_name, column_index
             """,
-            [legacy_duckdb.catalog_name],
+            [duckdb_settings.catalog_name],
         ).fetchall()
 
         constraints_rows = connection.execute(
@@ -147,7 +147,7 @@ def _legacy_duckdb_table_summaries(settings: Settings | None = None) -> list[Dat
             FROM duckdb_constraints()
             WHERE database_name = ? AND schema_name = 'main'
             """,
-            [legacy_duckdb.catalog_name],
+            [duckdb_settings.catalog_name],
         ).fetchall()
 
         pk_columns: dict[str, set[str]] = {}
@@ -219,7 +219,7 @@ def build_status_payload(
 ) -> DatabaseStatusPayload:
     database_settings = get_database_settings(settings)
     sqlite = database_settings.sqlite
-    legacy_duckdb = database_settings.legacy_duckdb
+    duckdb_settings = database_settings.duckdb
     sqlite_tables: list[DatabaseTablePayload] = []
     sqlite_error: str | None = None
     oltp_engine = create_oltp_engine(settings)
@@ -230,13 +230,13 @@ def build_status_payload(
     finally:
         oltp_engine.dispose()
 
-    legacy_duckdb_tables: list[DatabaseTablePayload] = []
-    legacy_duckdb_error: str | None = None
-    if legacy_duckdb.path.exists():
+    duckdb_tables: list[DatabaseTablePayload] = []
+    duckdb_error: str | None = None
+    if duckdb_settings.path.exists():
         try:
-            legacy_duckdb_tables = _legacy_duckdb_table_summaries(settings)
+            duckdb_tables = _duckdb_table_summaries(settings)
         except Exception as exc:
-            legacy_duckdb_error = str(exc)
+            duckdb_error = str(exc)
 
     return {
         "status": status,
@@ -273,29 +273,29 @@ def build_status_payload(
                 "tableCount": len(sqlite_tables),
                 "tables": sqlite_tables,
             },
-            "legacyDuckdb": {
-                "key": legacy_duckdb.key,
-                "label": legacy_duckdb.label,
-                "engine": legacy_duckdb.engine,
-                "role": "legacy_debug",
+            "duckdb": {
+                "key": duckdb_settings.key,
+                "label": duckdb_settings.label,
+                "engine": duckdb_settings.engine,
+                "role": "inspection",
                 "availability": (
                     "ready"
-                    if legacy_duckdb.path.exists() and legacy_duckdb_error is None
+                    if duckdb_settings.path.exists() and duckdb_error is None
                     else "unreachable"
-                    if legacy_duckdb.path.exists()
+                    if duckdb_settings.path.exists()
                     else "missing"
                 ),
                 "note": (
-                    "Legacy compatibility/debug artifact only. It is not on the "
+                    "Optional DuckDB inspection snapshot. It is not on the "
                     "primary analytics serving path."
                 ),
-                "error": legacy_duckdb_error,
-                "path": str(legacy_duckdb.path),
+                "error": duckdb_error,
+                "path": str(duckdb_settings.path),
                 "target": None,
-                "publicPath": legacy_duckdb.public_path,
-                "docsUrl": legacy_duckdb.docs_url,
-                "tableCount": len(legacy_duckdb_tables),
-                "tables": legacy_duckdb_tables,
+                "publicPath": duckdb_settings.public_path,
+                "docsUrl": duckdb_settings.docs_url,
+                "tableCount": len(duckdb_tables),
+                "tables": duckdb_tables,
             },
         },
     }
@@ -323,9 +323,38 @@ def write_status(payload: object, settings: Settings | None = None) -> None:
 
 def parse_status_payload(payload: object) -> DatabaseStatusPayload | None:
     try:
-        return _STATUS_PAYLOAD_ADAPTER.validate_python(payload)
+        return _STATUS_PAYLOAD_ADAPTER.validate_python(_remap_legacy_database_aliases(payload))
     except ValidationError:
         return None
+
+
+def _remap_legacy_database_aliases(payload: object) -> object:
+    if not isinstance(payload, dict):
+        return payload
+
+    remapped = dict(payload)
+    databases = remapped.get("databases")
+    if not isinstance(databases, dict):
+        return remapped
+
+    normalized_databases = dict(databases)
+    legacy_payload = normalized_databases.get("legacyDuckdb")
+    if "duckdb" not in normalized_databases and isinstance(legacy_payload, dict):
+        normalized_databases["duckdb"] = legacy_payload
+    if "duckdb" not in normalized_databases and isinstance(normalized_databases.get("legacy_duckdb"), dict):
+        normalized_databases["duckdb"] = normalized_databases["legacy_duckdb"]
+
+    duckdb_payload = normalized_databases.get("duckdb")
+    if isinstance(duckdb_payload, dict):
+        artifact = dict(duckdb_payload)
+        if artifact.get("key") == "legacy_duckdb":
+            artifact["key"] = "duckdb"
+        if artifact.get("role") == "legacy_debug":
+            artifact["role"] = "inspection"
+        normalized_databases["duckdb"] = artifact
+
+    remapped["databases"] = normalized_databases
+    return remapped
 
 
 def main() -> None:

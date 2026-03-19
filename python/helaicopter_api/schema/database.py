@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from helaicopter_domain.vocab import (
     DatabaseAvailability,
     DatabaseRefreshStatus,
@@ -51,7 +51,9 @@ class DatabaseRuntimeResponse(CamelCaseHttpResponseModel):
 
 class DatabaseArtifactsResponse(CamelCaseHttpResponseModel):
     sqlite: DatabaseArtifactStatusResponse
-    legacy_duckdb: DatabaseArtifactStatusResponse
+    duckdb: DatabaseArtifactStatusResponse = Field(
+        validation_alias=AliasChoices("duckdb", "legacy_duckdb", "legacyDuckdb"),
+    )
 
 
 class DatabaseStatusResponse(CamelCaseHttpResponseModel):

@@ -76,7 +76,12 @@ class DatabaseSettings(BaseModel):
     artifacts_dir: Path
     schema_docs_dir: Path
     sqlite: DatabaseArtifactSettings
-    legacy_duckdb: DatabaseArtifactSettings
+    duckdb: DatabaseArtifactSettings
+
+    @property
+    def legacy_duckdb(self) -> DatabaseArtifactSettings:
+        """Compatibility alias for callers that still use the old name."""
+        return self.duckdb
 
 
 class PrefectApiSettings(BaseModel):
@@ -158,9 +163,9 @@ class Settings(BaseSettings):
                 public_path="/database-artifacts/oltp/helaicopter_oltp.sqlite",
                 docs_url="/database-schemas/oltp/index.html",
             ),
-            legacy_duckdb=DatabaseArtifactSettings(
-                key="legacy_duckdb",
-                label="Legacy DuckDB Snapshot",
+            duckdb=DatabaseArtifactSettings(
+                key="duckdb",
+                label="DuckDB Inspection Snapshot",
                 engine="DuckDB",
                 sqlalchemy_driver="duckdb",
                 path=artifacts_dir / "olap" / "helaicopter_olap.duckdb",
