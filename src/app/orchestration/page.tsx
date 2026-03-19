@@ -1,4 +1,5 @@
 import { OrchestrationHub } from "@/components/orchestration/orchestration-hub";
+import { resolveOrchestrationInitialTab } from "@/components/orchestration/tabs";
 
 export default async function OrchestrationPage({
   searchParams,
@@ -6,8 +7,7 @@ export default async function OrchestrationPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
-  const initialTab =
-    tab === "conversation-dags" ? "conversation-dags" : "prefect";
+  const initialTab = resolveOrchestrationInitialTab(tab);
 
   return <OrchestrationHub initialTab={initialTab} />;
 }
