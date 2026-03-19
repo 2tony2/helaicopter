@@ -4,6 +4,8 @@ This runbook covers the local Prefect control plane and the host-managed macOS w
 
 ## Environment expectations
 
+- The fastest bootstrap path is `bin/oats-prefect-up`.
+
 - Start the local control plane with `docker compose -f ops/prefect/docker-compose.yml up -d`.
 - Confirm the control plane is healthy with `docker compose -f ops/prefect/docker-compose.yml ps`.
 - Point the worker at that API with `PREFECT_API_URL=http://127.0.0.1:4200/api` unless you intentionally changed the port or host.

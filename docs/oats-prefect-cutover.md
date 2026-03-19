@@ -4,6 +4,14 @@ This runbook makes the Prefect control plane the primary orchestration surface f
 
 ## 1. Start the local Prefect control plane
 
+Preferred one-shot bootstrap:
+
+```bash
+bin/oats-prefect-up
+```
+
+Manual equivalent:
+
 ```bash
 docker compose -f ops/prefect/docker-compose.yml up -d
 docker compose -f ops/prefect/docker-compose.yml ps
@@ -78,6 +86,7 @@ Open `/orchestration?tab=prefect`.
 Expected UI state:
 
 - the Prefect tab is the primary orchestration view
+- the `Prefect UI` tab embeds the local Prefect web app from `http://127.0.0.1:4200`
 - deployments, flow runs, workers, and work pools load from `/orchestration/prefect/*`
 - repo-local Oats metadata links resolve into `.oats/prefect/flow-runs/...`
 - the legacy Oats records card is present only as a compatibility surface for `.oats/runs` and `.oats/runtime`

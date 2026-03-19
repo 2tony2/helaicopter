@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,7 @@ from helaicopter_api.ports.orchestration import OatsRunStore
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.main import app, create_app
 from helaicopter_api.server.middleware import REQUEST_ID_HEADER
+from helaicopter_api.server.openapi_artifacts import generate_openapi_artifacts
 
 
 @pytest.fixture()
@@ -51,6 +53,15 @@ class TestBuildServices:
         svc = build_services(settings)
         assert str(svc.sqlite_engine.url).startswith("sqlite")
         svc.sqlite_engine.dispose()
+
+    def test_openapi_artifacts_are_configured_under_repo_local_public_dir(self, tmp_path):
+        settings = Settings(project_root=tmp_path)
+
+        assert settings.openapi.artifacts_dir == tmp_path / "public" / "openapi"
+        assert settings.openapi.json_path == tmp_path / "public" / "openapi" / "helaicopter-api.json"
+        assert settings.openapi.yaml_path == tmp_path / "public" / "openapi" / "helaicopter-api.yaml"
+        assert settings.openapi.json_url == "/openapi/helaicopter-api.json"
+        assert settings.openapi.yaml_url == "/openapi/helaicopter-api.yaml"
 
     def test_claude_ports_are_wired(self, tmp_path):
         settings = Settings(project_root=tmp_path, claude_dir=tmp_path / ".claude")
@@ -155,3 +166,31 @@ class TestAppFactory:
         application = create_app()
         # Middleware stack is non-empty (CORS + Gzip + Timing + RequestID)
         assert len(application.user_middleware) >= 4
+
+    def test_generate_openapi_artifacts_writes_json_and_yaml(self, tmp_path: Path) -> None:
+        settings = Settings(project_root=tmp_path)
+        outputs = generate_openapi_artifacts(settings=settings)
+
+        assert outputs.json_path == tmp_path / "public" / "openapi" / "helaicopter-api.json"
+        assert outputs.yaml_path == tmp_path / "public" / "openapi" / "helaicopter-api.yaml"
+        assert outputs.json_path.exists()
+        assert outputs.yaml_path.exists()
+
+        json_text = outputs.json_path.read_text(encoding="utf-8")
+        yaml_text = outputs.yaml_path.read_text(encoding="utf-8")
+
+        assert '"title": "Helaicopter API"' in json_text
+        assert '"openapi": "3.1.0"' in json_text
+        assert "title: Helaicopter API" in yaml_text
+        assert "/orchestration/prefect/flow-runs:" in yaml_text
+
+
+class TestApiDocsNavigation:
+    def test_sidebar_and_schema_page_link_to_generated_openapi_artifacts(self) -> None:
+        sidebar_source = Path("src/components/layout/app-sidebar.tsx").read_text(encoding="utf-8")
+        schema_page_source = Path("src/app/schema/page.tsx").read_text(encoding="utf-8")
+
+        assert 'label: "API"' in sidebar_source
+        assert 'href: "/schema"' in sidebar_source
+        assert "/openapi/helaicopter-api.json" in schema_page_source
+        assert "/openapi/helaicopter-api.yaml" in schema_page_source

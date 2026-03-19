@@ -227,9 +227,9 @@ def _reset_oltp_data(session: Session) -> None:
 
 
 def _reset_olap_artifact(settings: Settings | None = None) -> None:
-    legacy_duckdb = get_database_settings(settings).legacy_duckdb
+    duckdb = get_database_settings(settings).duckdb
     with suppress(FileNotFoundError):
-        legacy_duckdb.path.unlink()
+        duckdb.path.unlink()
 
 
 def _text_preview(blocks: list[dict[str, Any]]) -> str:

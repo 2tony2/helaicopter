@@ -740,11 +740,13 @@ function normalizeDatabaseTable(value: unknown): DatabaseTableSchema {
 
 function normalizeDatabaseArtifact(value: unknown): DatabaseArtifactStatus {
   const item = asRecord(value);
+  const key = stringOr(field(item, "key"));
+  const role = stringOr(field(item, "role"));
   return {
-    key: stringOr(field(item, "key")) as DatabaseArtifactStatus["key"],
+    key: (key === "legacy_duckdb" ? "duckdb" : key) as DatabaseArtifactStatus["key"],
     label: stringOr(field(item, "label")),
     engine: stringOr(field(item, "engine")),
-    role: stringOr(field(item, "role")) as DatabaseArtifactStatus["role"],
+    role: (role === "legacy_debug" ? "inspection" : role) as DatabaseArtifactStatus["role"],
     availability: stringOr(field(item, "availability")) as DatabaseArtifactStatus["availability"],
     note:
       field(item, "note") === null ? null : nullableString(field(item, "note")),
@@ -824,8 +826,8 @@ export function normalizeDatabaseStatus(value: unknown): DatabaseStatus {
     },
     databases: {
       sqlite: normalizeDatabaseArtifact(field(databases, "sqlite")),
-      legacyDuckdb: normalizeDatabaseArtifact(
-        field(databases, "legacyDuckdb", "legacy_duckdb")
+      duckdb: normalizeDatabaseArtifact(
+        field(databases, "duckdb", "legacyDuckdb", "legacy_duckdb")
       ),
     },
   };

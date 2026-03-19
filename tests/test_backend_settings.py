@@ -48,12 +48,12 @@ def _status_payload(path: str) -> dict[str, object]:
                 "tables": [],
             },
             "legacyDuckdb": {
-                "key": "legacy_duckdb",
-                "label": "Legacy DuckDB Snapshot",
+                "key": "duckdb",
+                "label": "DuckDB Inspection Snapshot",
                 "engine": "DuckDB",
-                "role": "legacy_debug",
+                "role": "inspection",
                 "availability": "missing",
-                "note": "Legacy compatibility",
+                "note": "DuckDB inspection snapshot",
                 "error": None,
                 "path": f"{path}.duckdb",
                 "target": None,
@@ -87,9 +87,15 @@ def test_db_settings_reuse_backend_settings_contract(tmp_path) -> None:
     database_settings = db_settings.get_database_settings(backend_settings)
 
     assert database_settings.sqlite.path == backend_settings.database.sqlite.path
-    assert database_settings.legacy_duckdb.docs_dir == (
+    assert database_settings.duckdb.docs_dir == (
         tmp_path / "public" / "database-schemas" / "olap"
     )
+
+
+def test_db_settings_preserve_legacy_duckdb_alias_for_transition(tmp_path) -> None:
+    backend_settings = Settings(project_root=tmp_path)
+
+    assert backend_settings.database.legacy_duckdb is backend_settings.database.duckdb
 
 
 def test_settings_parse_hela_prefixed_environment_values(monkeypatch, tmp_path) -> None:
@@ -119,7 +125,11 @@ def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> 
     payload = _status_payload(str(tmp_path / "public" / "database-artifacts" / "oltp" / "db.sqlite"))
     status_file.write_text(json.dumps(payload), encoding="utf-8")
 
-    assert status_module.load_status() == payload
+    loaded = status_module.load_status()
+
+    assert loaded is not None
+    assert loaded["databases"]["duckdb"]["key"] == "duckdb"
+    assert "legacyDuckdb" not in loaded["databases"]
 
 
 def test_run_migrations_uses_shared_backend_project_root(monkeypatch, tmp_path) -> None:

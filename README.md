@@ -79,9 +79,27 @@ Useful local checks:
 ```bash
 curl http://127.0.0.1:30000/health
 open http://127.0.0.1:30000/openapi.json
+npm run api:openapi
 ```
 
 The migration runbook and validation checklist live in [`docs/fastapi-backend-rollout.md`](/Users/tony/Code/helaicopter/docs/fastapi-backend-rollout.md).
+
+## OpenAPI Artifacts
+
+The repo commits generated OpenAPI snapshots for the FastAPI backend under [`public/openapi/`](/Users/tony/Code/helaicopter/public/openapi). This keeps the backend contract in a stable repo-local location that the Next.js app can serve directly from the sidebar API section.
+
+Regenerate the artifacts whenever the backend router or schema surface changes:
+
+```bash
+npm run api:openapi
+```
+
+That command writes:
+
+- [`public/openapi/helaicopter-api.json`](/Users/tony/Code/helaicopter/public/openapi/helaicopter-api.json)
+- [`public/openapi/helaicopter-api.yaml`](/Users/tony/Code/helaicopter/public/openapi/helaicopter-api.yaml)
+
+For live local inspection during development, compare those generated snapshots with `http://127.0.0.1:30000/openapi.json`.
 
 ## Features
 
@@ -143,7 +161,7 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 
 - **SQLite** stores app-local metadata, refresh bookkeeping, evaluations, and historical detail tables.
 - **ClickHouse** is the primary analytics and event store for warehouse-style reads.
-- **DuckDB** is no longer on the primary serving path. If present, it is only a legacy/local inspection artifact surfaced on the Databases page.
+- **DuckDB** is no longer on the primary serving path. If present, it is only an optional local inspection artifact surfaced on the Databases page.
 
 ## Frontend/Backend Split
 

@@ -3,12 +3,14 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConversationDagList } from "@/components/conversation/conversation-dag-list";
 import { OvernightOatsPanel } from "./overnight-oats-panel";
+import { PrefectUiEmbed } from "./prefect-ui-embed";
+import type { OrchestrationTab } from "./tabs";
 import { usePrefectFlowRuns } from "@/hooks/use-conversations";
 
 export function OrchestrationHub({
   initialTab = "prefect",
 }: {
-  initialTab?: "conversation-dags" | "prefect";
+  initialTab?: OrchestrationTab;
 }) {
   const { data: prefectFlowRuns } = usePrefectFlowRuns();
   const prefectCount = prefectFlowRuns?.length ?? 0;
@@ -28,6 +30,7 @@ export function OrchestrationHub({
           <TabsTrigger value="prefect">
             Prefect {prefectCount > 0 ? `(${prefectCount})` : ""}
           </TabsTrigger>
+          <TabsTrigger value="prefect-ui">Prefect UI</TabsTrigger>
         </TabsList>
 
         <TabsContent value="conversation-dags">
@@ -36,6 +39,10 @@ export function OrchestrationHub({
 
         <TabsContent value="prefect">
           <OvernightOatsPanel />
+        </TabsContent>
+
+        <TabsContent value="prefect-ui">
+          <PrefectUiEmbed />
         </TabsContent>
       </Tabs>
     </div>

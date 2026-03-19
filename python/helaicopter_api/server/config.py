@@ -76,7 +76,12 @@ class DatabaseSettings(BaseModel):
     artifacts_dir: Path
     schema_docs_dir: Path
     sqlite: DatabaseArtifactSettings
-    legacy_duckdb: DatabaseArtifactSettings
+    duckdb: DatabaseArtifactSettings
+
+    @property
+    def legacy_duckdb(self) -> DatabaseArtifactSettings:
+        """Compatibility alias for callers that still use the old name."""
+        return self.duckdb
 
 
 class PrefectApiSettings(BaseModel):
@@ -84,6 +89,16 @@ class PrefectApiSettings(BaseModel):
 
     api_url: str
     timeout_seconds: float = 30.0
+
+
+class OpenApiArtifactSettings(BaseModel):
+    """Stable repo-local OpenAPI artifact output settings."""
+
+    artifacts_dir: Path
+    json_path: Path
+    yaml_path: Path
+    json_url: str
+    yaml_url: str
 
 
 class Settings(BaseSettings):
@@ -148,9 +163,9 @@ class Settings(BaseSettings):
                 public_path="/database-artifacts/oltp/helaicopter_oltp.sqlite",
                 docs_url="/database-schemas/oltp/index.html",
             ),
-            legacy_duckdb=DatabaseArtifactSettings(
-                key="legacy_duckdb",
-                label="Legacy DuckDB Snapshot",
+            duckdb=DatabaseArtifactSettings(
+                key="duckdb",
+                label="DuckDB Inspection Snapshot",
                 engine="DuckDB",
                 sqlalchemy_driver="duckdb",
                 path=artifacts_dir / "olap" / "helaicopter_olap.duckdb",
@@ -165,6 +180,17 @@ class Settings(BaseSettings):
         return PrefectApiSettings(
             api_url=self.prefect_api_url,
             timeout_seconds=self.prefect_api_timeout_seconds,
+        )
+
+    @cached_property
+    def openapi(self) -> OpenApiArtifactSettings:
+        artifacts_dir = self.project_root / "public" / "openapi"
+        return OpenApiArtifactSettings(
+            artifacts_dir=artifacts_dir,
+            json_path=artifacts_dir / "helaicopter-api.json",
+            yaml_path=artifacts_dir / "helaicopter-api.yaml",
+            json_url="/openapi/helaicopter-api.json",
+            yaml_url="/openapi/helaicopter-api.yaml",
         )
 
     @property

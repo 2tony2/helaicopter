@@ -268,7 +268,7 @@ def test_worker_and_pool_endpoints_report_prefect_capacity_state(tmp_path: Path)
     ]
 
 
-def test_openapi_positions_prefect_routes_as_primary_and_oats_routes_as_legacy(
+def test_openapi_positions_prefect_routes_as_primary_and_oats_routes_as_documented_surfaces(
     tmp_path: Path,
 ) -> None:
     with prefect_client(prefect_client=StubPrefectClient(), project_root=tmp_path) as client:
@@ -277,9 +277,9 @@ def test_openapi_positions_prefect_routes_as_primary_and_oats_routes_as_legacy(
     assert response.status_code == 200
     schema = response.json()
     prefect_flow_runs = schema["paths"]["/orchestration/prefect/flow-runs"]["get"]
-    legacy_oats = schema["paths"]["/orchestration/oats"]["get"]
+    oats_route = schema["paths"]["/orchestration/oats"]["get"]
 
     assert prefect_flow_runs["tags"] == ["orchestration"]
-    assert legacy_oats["tags"] == ["orchestration-legacy"]
+    assert oats_route["tags"] == ["orchestration"]
     assert prefect_flow_runs["summary"] == "List primary Prefect flow runs for orchestration."
-    assert legacy_oats["summary"] == "List legacy OATS local-runtime records."
+    assert oats_route["summary"] == "List OATS local-runtime records."

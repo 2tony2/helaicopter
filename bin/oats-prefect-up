@@ -1,0 +1,84 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR=${0:A:h}
+REPO_ROOT=${SCRIPT_DIR:h}
+ENV_EXAMPLE="${REPO_ROOT}/ops/prefect/.env.example"
+ENV_FILE="${REPO_ROOT}/ops/prefect/.env"
+COMPOSE_FILE="${REPO_ROOT}/ops/prefect/docker-compose.yml"
+PREFECT_API_URL="${PREFECT_API_URL:-http://127.0.0.1:4200/api}"
+PREFECT_UI_URL="${PREFECT_UI_URL:-http://127.0.0.1:4200}"
+WORK_POOL="${OATS_PREFECT_WORK_POOL:-local-macos}"
+LOG_DIR="${OATS_PREFECT_LOG_DIR:-${HOME}/.helaicopter/prefect-logs}"
+PLIST_TEMPLATE="${REPO_ROOT}/ops/launchd/com.helaicopter.prefect-worker.plist.template"
+PLIST_TARGET="${HOME}/Library/LaunchAgents/com.helaicopter.prefect-worker.plist"
+LAUNCHD_SERVICE="gui/$(id -u)/com.helaicopter.prefect-worker"
+
+export PREFECT_API_URL="${PREFECT_API_URL:-http://127.0.0.1:4200/api}"
+
+mkdir -p "${LOG_DIR}" "${HOME}/Library/LaunchAgents"
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  cp "${ENV_EXAMPLE}" "${ENV_FILE}"
+fi
+
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d
+
+for _ in {1..90}; do
+  if curl --fail --silent --show-error "${PREFECT_API_URL}/health" >/dev/null; then
+    break
+  fi
+  sleep 2
+done
+
+curl --fail --silent --show-error "${PREFECT_API_URL}/health" >/dev/null
+
+if ! uv run prefect work-pool inspect "${WORK_POOL}" >/dev/null 2>&1; then
+  # Default bootstrap command: uv run prefect work-pool create local-macos --type process
+  uv run prefect work-pool create "${WORK_POOL}" --type process >/dev/null
+fi
+
+python - "${PLIST_TEMPLATE}" "${PLIST_TARGET}" "${REPO_ROOT}" "${PREFECT_API_URL}" "${WORK_POOL}" "${LOG_DIR}" <<'PY'
+from pathlib import Path
+import sys
+
+template_path = Path(sys.argv[1])
+target_path = Path(sys.argv[2])
+repo_root = sys.argv[3]
+prefect_api_url = sys.argv[4]
+work_pool = sys.argv[5]
+log_dir = sys.argv[6]
+
+rendered = (
+    template_path.read_text(encoding="utf-8")
+    .replace("{{REPO_ROOT}}", repo_root)
+    .replace("{{PREFECT_API_URL}}", prefect_api_url)
+    .replace("{{WORK_POOL}}", work_pool)
+    .replace("{{LOG_DIR}}", log_dir)
+)
+target_path.write_text(rendered, encoding="utf-8")
+PY
+
+if launchctl print "${LAUNCHD_SERVICE}" >/dev/null 2>&1; then
+  launchctl kickstart -k "${LAUNCHD_SERVICE}"
+else
+  launchctl bootstrap "gui/$(id -u)" "${PLIST_TARGET}"
+  launchctl kickstart -k "${LAUNCHD_SERVICE}"
+fi
+
+# Default verification command: uv run prefect work-pool inspect local-macos
+uv run prefect work-pool inspect "${WORK_POOL}" >/dev/null
+launchctl print "${LAUNCHD_SERVICE}" >/dev/null
+
+cat <<EOF
+
+Prefect control plane is up.
+Prefect UI: ${PREFECT_UI_URL}
+Prefect API: ${PREFECT_API_URL}
+Worker log dir: ${LOG_DIR}
+
+Next steps:
+  curl http://127.0.0.1:4200/api/health
+  use the oats prefect CLI to deploy a Markdown run spec and create runs
+EOF
