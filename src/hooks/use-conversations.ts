@@ -12,6 +12,10 @@ import type {
   DatabaseStatus,
   EvaluationPrompt,
   OvernightOatsRunRecord,
+  PrefectDeploymentRecord,
+  PrefectFlowRunRecord,
+  PrefectWorkPoolRecord,
+  PrefectWorkerRecord,
   SubscriptionSettings,
 } from "@/lib/types";
 import * as endpoints from "@/lib/client/endpoints";
@@ -25,6 +29,10 @@ import {
   normalizeConversations,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompts,
+  normalizePrefectDeployments,
+  normalizePrefectFlowRuns,
+  normalizePrefectWorkPools,
+  normalizePrefectWorkers,
   normalizeProjects,
   normalizeSubscriptionSettings,
   normalizeTasks,
@@ -106,6 +114,44 @@ export function useOvernightOatsRuns() {
   return useSWR<OvernightOatsRunRecord[]>(
     endpoints.orchestrationOats(),
     (url: string) => requestJson<OvernightOatsRunRecord[]>(url),
+    conversationSwrOptions
+  );
+}
+
+export function usePrefectDeployments() {
+  return useSWR<PrefectDeploymentRecord[]>(
+    endpoints.orchestrationPrefectDeployments(),
+    (url: string) => requestJson(url, undefined, normalizePrefectDeployments),
+    conversationSwrOptions
+  );
+}
+
+export function usePrefectFlowRuns() {
+  return useSWR<PrefectFlowRunRecord[]>(
+    endpoints.orchestrationPrefectFlowRuns(),
+    (url: string) => requestJson(url, undefined, normalizePrefectFlowRuns),
+    conversationSwrOptions
+  );
+}
+
+export function usePrefectWorkers() {
+  return useSWR<PrefectWorkerRecord[]>(
+    endpoints.orchestrationPrefectWorkers(),
+    (url: string) => requestJson(url, undefined, normalizePrefectWorkers),
+    conversationSwrOptions
+  );
+}
+
+export function usePrefectWorkPools(workers?: PrefectWorkerRecord[]) {
+  const key = [
+    endpoints.orchestrationPrefectWorkPools(),
+    workers?.map((worker) => `${worker.workerId}:${worker.status ?? ""}`).join("|") ?? "",
+  ] as const;
+
+  return useSWR<PrefectWorkPoolRecord[]>(
+    key,
+    ([url]: readonly [string, string]) =>
+      requestJson(url, undefined, (value) => normalizePrefectWorkPools(value, workers ?? [])),
     conversationSwrOptions
   );
 }

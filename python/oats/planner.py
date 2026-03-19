@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from oats.models import ExecutionPlan, PlannedTask, RepoConfig, RunSpec
-from oats.pr import build_final_pr_title, build_task_branch_name
+from oats.pr import build_final_pr_title, build_integration_branch_name, build_task_branch_name
 
 
 class PlanError(RuntimeError):
@@ -84,11 +84,4 @@ def _validate_acyclic(tasks: list[PlannedTask]) -> None:
 
 
 def _build_integration_branch(prefix: str, run_title: str) -> str:
-    normalized_prefix = prefix if prefix.endswith("/") else f"{prefix}/"
-    slug = "".join(
-        char.lower() if char.isalnum() else "-"
-        for char in run_title.strip()
-    )
-    compact_slug = "-".join(segment for segment in slug.split("-") if segment)
-    compact_slug = compact_slug or "run"
-    return f"{normalized_prefix}{compact_slug}"
+    return build_integration_branch_name(prefix, run_title)

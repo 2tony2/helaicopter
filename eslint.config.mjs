@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     ".venv/**",
+    ".oats-worktrees/**",
     "next-env.d.ts",
     // Local generated output and vendored schema bundles are not app source.
     "dev/**",

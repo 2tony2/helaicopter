@@ -107,8 +107,15 @@ python/oats/parser.py
 python/oats/planner.py
 python/oats/pr.py
 python/oats/repo_config.py
+python/oats/run_definition.py
+python/oats/run_definition_loader.py
 python/oats/runner.py
 python/oats/runtime_state.py
+python/oats/prefect/__init__.py
+python/oats/prefect/client.py
+python/oats/prefect/compiler.py
+python/oats/prefect/models.py
+python/oats/prefect/settings.py
 tests/test_analytics_core.py
 tests/test_api_analytics.py
 tests/test_api_bootstrap.py

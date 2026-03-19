@@ -180,6 +180,42 @@ def test_prepare_retryable_tasks_resets_exhausted_pending_work() -> None:
     assert state.status == "pending"
 
 
+def test_prepare_retryable_tasks_resets_interrupted_running_work() -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=config_path.parent.parent,
+        config_path=config_path,
+    )
+
+    _, state = _execute_run(
+        config=config,
+        execution_plan=execution_plan,
+        read_only=True,
+        timeout_seconds=1,
+        dangerous_bypass=False,
+        skip_planner=True,
+    )
+    task = next(item for item in state.tasks if item.task_id == "auth")
+    task.status = "running"
+    task.attempts = 1
+    state.status = "running"
+    state.active_task_id = "auth"
+    state.finished_at = datetime.now(timezone.utc)
+
+    changed = _prepare_retryable_tasks(state)
+
+    assert changed is True
+    assert task.status == "pending"
+    assert task.attempts == 0
+    assert state.status == "pending"
+    assert state.active_task_id is None
+    assert state.finished_at is None
+
+
 def test_execute_run_revisits_blocked_tasks_when_dependencies_finish(monkeypatch) -> None:
     config_path = find_repo_config(Path("examples"))
     config = load_repo_config(config_path)

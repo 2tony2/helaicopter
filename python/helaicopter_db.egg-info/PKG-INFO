@@ -7,6 +7,7 @@ Requires-Dist: alembic>=1.14.1
 Requires-Dist: duckdb>=1.4.0
 Requires-Dist: duckdb-engine>=0.17.0
 Requires-Dist: fastapi>=0.115.0
+Requires-Dist: prefect>=3.0.0
 Requires-Dist: pydantic>=2.7.0
 Requires-Dist: pydantic-settings>=2.6.0
 Requires-Dist: rich>=13.7.0

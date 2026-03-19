@@ -163,6 +163,30 @@ export function orchestrationOats() {
   return api("/orchestration/oats");
 }
 
+export function orchestrationPrefectDeployments() {
+  return api("/orchestration/prefect/deployments");
+}
+
+export function orchestrationPrefectDeployment(deploymentId: string) {
+  return api(`/orchestration/prefect/deployments/${enc(deploymentId)}`);
+}
+
+export function orchestrationPrefectFlowRuns() {
+  return api("/orchestration/prefect/flow-runs");
+}
+
+export function orchestrationPrefectFlowRun(flowRunId: string) {
+  return api(`/orchestration/prefect/flow-runs/${enc(flowRunId)}`);
+}
+
+export function orchestrationPrefectWorkers() {
+  return api("/orchestration/prefect/workers");
+}
+
+export function orchestrationPrefectWorkPools() {
+  return api("/orchestration/prefect/work-pools");
+}
+
 // ---------------------------------------------------------------------------
 // History
 // ---------------------------------------------------------------------------

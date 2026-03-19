@@ -6,7 +6,8 @@ export default async function OrchestrationPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
-  const initialTab = tab === "oats" ? "oats" : "conversation-dags";
+  const initialTab =
+    tab === "conversation-dags" ? "conversation-dags" : "prefect";
 
   return <OrchestrationHub initialTab={initialTab} />;
 }

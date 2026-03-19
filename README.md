@@ -25,11 +25,16 @@ This repo now also vendors the `overnight-oats` orchestration CLI as the `oats` 
 # inspect a run spec
 uv run oats plan examples/sample_run.md
 
-# or through npm
-npm run oats -- plan examples/sample_run.md
+# primary orchestration path: register and launch through Prefect
+uv run oats prefect deploy examples/prefect_native_oats_orchestration_run.md
+uv run oats prefect run examples/prefect_native_oats_orchestration_run.md
+
+# legacy compatibility path: local runtime state under .oats/runtime
+uv run oats run examples/sample_run.md
 ```
 
 The default repo policy lives in `.oats/config.toml`, sample run specs live in `examples/`, and the Python implementation lives in `python/oats/`.
+Use [`docs/prefect-local-ops.md`](/Users/tony/Code/helaicopter/docs/prefect-local-ops.md) for local control-plane setup and [`docs/oats-prefect-cutover.md`](/Users/tony/Code/helaicopter/docs/oats-prefect-cutover.md) for the cutover and rollback checklist.
 
 ## Requirements
 
@@ -66,7 +71,7 @@ Backend settings are read from `HELA_*` environment variables in [`python/helaic
 HELA_PROJECT_ROOT=/path/to/helaicopter
 HELA_CLAUDE_DIR=/path/to/.claude
 HELA_CODEX_DIR=/path/to/.codex
-HELA_OATS_RUNTIME_DIR=/path/to/.oats/runtime
+HELA_OATS_RUNTIME_DIR=/path/to/.oats/runtime  # legacy compatibility surface
 ```
 
 Useful local checks:

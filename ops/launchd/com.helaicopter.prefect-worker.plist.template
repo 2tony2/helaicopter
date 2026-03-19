@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.helaicopter.prefect-worker</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{REPO_ROOT}}/ops/scripts/prefect-worker.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{REPO_ROOT}}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>OATS_PROJECT_ROOT</key>
+    <string>{{REPO_ROOT}}</string>
+    <key>PREFECT_API_URL</key>
+    <string>{{PREFECT_API_URL}}</string>
+    <key>OATS_PREFECT_WORK_POOL</key>
+    <string>{{WORK_POOL}}</string>
+  </dict>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{LOG_DIR}}/stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>{{LOG_DIR}}/stderr.log</string>
+</dict>
+</plist>

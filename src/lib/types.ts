@@ -297,6 +297,78 @@ export interface OvernightOatsRunRecord {
   dag: OrchestrationDag;
 }
 
+export type PrefectRunTone = "running" | "success" | "error" | "pending" | "unknown";
+export type PrefectInfraTone = "healthy" | "warning" | "offline" | "unknown";
+
+export interface PrefectOatsMetadata {
+  runTitle?: string;
+  sourcePath?: string;
+  repoRoot?: string;
+  configPath?: string;
+  localMetadataPath?: string;
+  artifactRoot?: string;
+  repoLabel?: string;
+  sourceLabel?: string;
+  sourceHref?: string;
+  configHref?: string;
+  metadataHref?: string;
+  artifactHref?: string;
+}
+
+export interface PrefectDeploymentRecord {
+  deploymentId: string;
+  deploymentName: string;
+  flowId?: string;
+  flowName?: string;
+  workPoolName?: string;
+  workQueueName?: string;
+  status?: string;
+  updatedAt?: string;
+  tags: string[];
+  oatsMetadata?: PrefectOatsMetadata;
+}
+
+export interface PrefectFlowRunRecord {
+  flowRunId: string;
+  flowRunName?: string;
+  deploymentId?: string;
+  deploymentName?: string;
+  flowId?: string;
+  flowName?: string;
+  workPoolName?: string;
+  workQueueName?: string;
+  stateType?: string;
+  stateName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  oatsMetadata?: PrefectOatsMetadata;
+  statusTone: PrefectRunTone;
+  statusLabel: string;
+  isActive: boolean;
+}
+
+export interface PrefectWorkerRecord {
+  workerId: string;
+  workerName: string;
+  workPoolName?: string;
+  status?: string;
+  lastHeartbeatAt?: string;
+  statusTone: PrefectInfraTone;
+  isOnline: boolean;
+}
+
+export interface PrefectWorkPoolRecord {
+  workPoolId: string;
+  workPoolName: string;
+  type?: string;
+  status?: string;
+  isPaused: boolean;
+  concurrencyLimit?: number;
+  workerCount: number;
+  onlineWorkerCount: number;
+  statusTone: PrefectInfraTone;
+}
+
 /** Per-tool or per-category context breakdown */
 export interface ContextBucket {
   label: string;
