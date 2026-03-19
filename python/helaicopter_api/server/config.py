@@ -86,6 +86,16 @@ class PrefectApiSettings(BaseModel):
     timeout_seconds: float = 30.0
 
 
+class OpenApiArtifactSettings(BaseModel):
+    """Stable repo-local OpenAPI artifact output settings."""
+
+    artifacts_dir: Path
+    json_path: Path
+    yaml_path: Path
+    json_url: str
+    yaml_url: str
+
+
 class Settings(BaseSettings):
     """Runtime settings, resolved from env vars prefixed ``HELA_``."""
 
@@ -165,6 +175,17 @@ class Settings(BaseSettings):
         return PrefectApiSettings(
             api_url=self.prefect_api_url,
             timeout_seconds=self.prefect_api_timeout_seconds,
+        )
+
+    @cached_property
+    def openapi(self) -> OpenApiArtifactSettings:
+        artifacts_dir = self.project_root / "public" / "openapi"
+        return OpenApiArtifactSettings(
+            artifacts_dir=artifacts_dir,
+            json_path=artifacts_dir / "helaicopter-api.json",
+            yaml_path=artifacts_dir / "helaicopter-api.yaml",
+            json_url="/openapi/helaicopter-api.json",
+            yaml_url="/openapi/helaicopter-api.yaml",
         )
 
     @property

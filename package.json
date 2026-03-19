@@ -6,6 +6,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:web": "next dev",
     "api:dev": "uv run uvicorn helaicopter_api.server.main:app --host 127.0.0.1 --port 30000",
+    "api:openapi": "uv run python scripts/generate-openapi-artifacts.py",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
