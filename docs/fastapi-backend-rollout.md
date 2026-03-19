@@ -72,6 +72,7 @@ Run the full handoff validation set before merging backend rollout work:
 npm run lint
 npm run build
 uv run --group dev pytest -q
+npm run api:openapi
 ```
 
 What these prove:
@@ -79,6 +80,24 @@ What these prove:
 - `npm run lint` checks the frontend TypeScript/React surface and client call-sites.
 - `npm run build` proves the Next.js frontend still compiles against the FastAPI-backed client layer.
 - `uv run --group dev pytest -q` covers the FastAPI routers, backend services, rollout split checks, and Python-side helpers.
+- `npm run api:openapi` refreshes the committed OpenAPI snapshots under `public/openapi/`.
+
+## OpenAPI Artifact Workflow
+
+The repo keeps generated OpenAPI artifacts in `public/openapi/` so the frontend can expose stable download links without depending on a running backend.
+
+Regenerate them after any backend route or schema change:
+
+```bash
+npm run api:openapi
+```
+
+Expected outputs:
+
+- `public/openapi/helaicopter-api.json`
+- `public/openapi/helaicopter-api.yaml`
+
+Use those committed snapshots for review and diffing, and compare them against `http://127.0.0.1:30000/openapi.json` when validating a live local server.
 
 ## Migration Notes
 
