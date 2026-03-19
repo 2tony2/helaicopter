@@ -75,6 +75,59 @@ def test_execute_compiled_task_attempt_persists_live_progress_checkpoint(
     assert checkpoint["last_progress_event_at"] is not None
 
 
+def test_execute_compiled_task_attempt_uses_dangerous_bypass_for_writable_runs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    payload = _payload(tmp_path)
+    task_node = payload.tasks[0]
+    artifact_store = LocalArtifactCheckpointStore(
+        payload=payload,
+        flow_run_id="flow-run-permissions",
+        flow_run_name="Permissions",
+    )
+    artifact_store.initialize()
+    monkeypatch.setattr(
+        "oats.prefect.tasks.load_repo_config",
+        lambda _path: SimpleNamespace(agent={"codex": SimpleNamespace(command="codex", args=["exec"])}),
+    )
+    monkeypatch.setattr(
+        "oats.prefect.tasks.prepare_task_worktree",
+        lambda _payload, _task_node: SimpleNamespace(worktree_path=tmp_path / "worktree"),
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_invoke_agent(**kwargs):
+        captured.update(kwargs)
+        return AgentInvocationResult(
+            agent="codex",
+            role="executor",
+            command=["codex", "exec"],
+            cwd=kwargs["cwd"],
+            prompt=kwargs["prompt"],
+            session_id="thread-456",
+            session_id_field="thread_id",
+            output_text="Running with full permissions.",
+            raw_stdout="",
+            raw_stderr="",
+            exit_code=0,
+        )
+
+    monkeypatch.setattr("oats.prefect.tasks.invoke_agent", fake_invoke_agent)
+
+    execute_compiled_task_attempt(
+        payload,
+        task_node,
+        upstream_results={},
+        artifact_store=artifact_store,
+        attempt=1,
+    )
+
+    assert captured["read_only"] is False
+    assert captured["dangerous_bypass"] is True
+
+
 def _payload(tmp_path: Path) -> PrefectFlowPayload:
     task = PrefectTaskNode(
         task_id="frontend_cleanup",

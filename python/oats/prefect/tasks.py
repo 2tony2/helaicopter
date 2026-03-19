@@ -228,7 +228,7 @@ def _oats_executor(
         prompt=prompt,
         read_only=False,
         timeout_seconds=1800,
-        dangerous_bypass=False,
+        dangerous_bypass=True,
         model=planned_task.model,
         reasoning_effort=planned_task.reasoning_effort,
         raise_on_nonzero=False,
