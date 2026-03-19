@@ -117,6 +117,16 @@ function spawnChild(name, command, args, env = process.env) {
 function main() {
   cleanupRepoProcesses();
 
+  if (process.env.HELA_SKIP_PREFECT_BOOTSTRAP !== "1") {
+    // Default bootstrap entrypoint: bin/oats-prefect-up
+    console.log("[dev] bootstrapping Prefect control plane and worker");
+    execFileSync(path.join(repoRoot, "bin", "oats-prefect-up"), [], {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: process.env,
+    });
+  }
+
   const children = [];
   let shuttingDown = false;
 
