@@ -194,8 +194,8 @@ export function useDatabaseStatus() {
     endpoints.databaseStatus(),
     (url: string) => requestJson(url, undefined, normalizeDatabaseStatus),
     {
-    ...swrOptions,
-    refreshInterval: 300_000,
+      ...swrOptions,
+      refreshInterval: 30_000,
     }
   );
 }

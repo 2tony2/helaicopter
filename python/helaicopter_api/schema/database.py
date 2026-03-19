@@ -25,6 +25,8 @@ class DatabaseColumnSchemaResponse(CamelCaseHttpResponseModel):
 class DatabaseTableSchemaResponse(CamelCaseHttpResponseModel):
     name: str
     row_count: int = 0
+    size_bytes: int | None = None
+    size_display: str | None = None
     columns: list[DatabaseColumnSchemaResponse] = []
     serving_class: str = "not-served"
     integration_type: str = "unclassified"
@@ -33,12 +35,20 @@ class DatabaseTableSchemaResponse(CamelCaseHttpResponseModel):
     note: str | None = None
 
 
+class DatabaseLoadMetricResponse(CamelCaseHttpResponseModel):
+    label: str
+    value: float | int | None = None
+    display_value: str | None = None
+
+
 class DatabaseArtifactStatusResponse(CamelCaseHttpResponseModel):
     key: DatabaseStatusKey
     label: str
     engine: str
     role: DatabaseRole
     availability: DatabaseAvailability
+    health: str | None = None
+    operational_status: str | None = None
     note: str | None = None
     error: str | None = None
     path: str | None = None
@@ -46,6 +56,10 @@ class DatabaseArtifactStatusResponse(CamelCaseHttpResponseModel):
     public_path: str | None = None
     docs_url: str | None = None
     table_count: int = 0
+    size_bytes: int | None = None
+    size_display: str | None = None
+    inventory_summary: str | None = None
+    load: list[DatabaseLoadMetricResponse] = []
     tables: list[DatabaseTableSchemaResponse] = []
 
 
@@ -55,9 +69,15 @@ class DatabaseRuntimeResponse(CamelCaseHttpResponseModel):
 
 
 class DatabaseArtifactsResponse(CamelCaseHttpResponseModel):
+    frontend_cache: DatabaseArtifactStatusResponse = Field(
+        validation_alias=AliasChoices("frontend_cache", "frontendCache"),
+    )
     sqlite: DatabaseArtifactStatusResponse
     duckdb: DatabaseArtifactStatusResponse = Field(
         validation_alias=AliasChoices("duckdb", "legacy_duckdb", "legacyDuckdb"),
+    )
+    prefect_postgres: DatabaseArtifactStatusResponse = Field(
+        validation_alias=AliasChoices("prefect_postgres", "prefectPostgres"),
     )
 
 

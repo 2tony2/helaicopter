@@ -11,6 +11,7 @@ import {
   Database,
   Network,
   Sparkles,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/plans", label: "Plans", icon: FileText },
   { href: "/prompts", label: "Prompts", icon: Sparkles },
   { href: "/databases", label: "Databases", icon: Database },
+  { href: "/docs", label: "Docs", icon: BookOpen },
   { href: "/pricing", label: "Pricing", icon: DollarSign },
 ];
 

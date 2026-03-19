@@ -269,12 +269,14 @@ export function ConversationViewer({
   initialTab = "messages",
   initialPlanId,
   initialSubagentId,
+  initialMessageId,
 }: {
   projectPath: string;
   sessionId: string;
   initialTab?: ConversationDetailTab;
   initialPlanId?: string;
   initialSubagentId?: string;
+  initialMessageId?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -295,6 +297,7 @@ export function ConversationViewer({
     tab: initialTab,
     plan: initialPlanId,
     subagent: initialSubagentId,
+    message: initialMessageId,
   });
 
   useEffect(() => {
@@ -318,6 +321,16 @@ export function ConversationViewer({
       element.scrollIntoView({ block: "start", behavior: "smooth" });
     }
   }, [routeState.subagent]);
+
+  useEffect(() => {
+    if (!routeState.message) {
+      return;
+    }
+    const element = document.getElementById(`message-${routeState.message}`);
+    if (element) {
+      element.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }, [routeState.message]);
 
   if (isLoading) {
     return (
@@ -347,6 +360,7 @@ export function ConversationViewer({
   );
   const selectedPlanId = routeState.plan ?? null;
   const selectedSubagentId = routeState.subagent ?? null;
+  const selectedMessageId = routeState.message ?? null;
   const activeTab = routeState.tab;
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
   const conversationEvaluations = evaluations ?? [];
@@ -356,12 +370,14 @@ export function ConversationViewer({
     tab?: ConversationDetailTab;
     plan?: string | null;
     subagent?: string | null;
+    message?: string | null;
   }) {
     router.replace(
       buildConversationRoute(projectPath, sessionId, {
         tab: next.tab ?? routeState.tab,
         plan: next.plan ?? routeState.plan,
         subagent: next.subagent ?? routeState.subagent,
+        message: next.message ?? routeState.message,
       }),
       { scroll: false }
     );
@@ -508,7 +524,19 @@ export function ConversationViewer({
         <TabsContent value="messages">
           <div className="space-y-4 mt-4">
             {conversation.messages.map((message) => (
-              <MessageCard key={message.id} message={message} provider={provider} />
+              <MessageCard
+                key={message.id}
+                message={message}
+                provider={provider}
+                href={buildConversationRoute(projectPath, sessionId, {
+                  tab: activeTab,
+                  plan: selectedPlanId ?? undefined,
+                  subagent: selectedSubagentId ?? undefined,
+                  message: message.id,
+                })}
+                isSelected={selectedMessageId === message.id}
+                onSelect={() => replaceRoute({ message: message.id })}
+              />
             ))}
           </div>
         </TabsContent>

@@ -4,13 +4,17 @@ import { use } from "react";
 import { ConversationViewer } from "@/components/conversation/conversation-viewer";
 import { projectDirToDisplayName } from "@/lib/path-encoding";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
+import { resolveConversationDetailTab } from "@/lib/routes";
 
 export default function ConversationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectPath: string; sessionId: string }>;
+  searchParams: Promise<{ tab?: string; plan?: string; subagent?: string; message?: string }>;
 }) {
   const { projectPath, sessionId } = use(params);
+  const { tab, plan, subagent, message } = use(searchParams);
   const decodedPath = decodeURIComponent(projectPath);
   const displayName = projectDirToDisplayName(decodedPath);
 
@@ -24,7 +28,14 @@ export default function ConversationPage({
         ]}
       />
 
-      <ConversationViewer projectPath={decodedPath} sessionId={sessionId} />
+      <ConversationViewer
+        projectPath={decodedPath}
+        sessionId={sessionId}
+        initialTab={resolveConversationDetailTab(tab)}
+        initialPlanId={plan}
+        initialSubagentId={subagent}
+        initialMessageId={message}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { formatDistanceToNowStrict } from "date-fns";
 import { type ReactNode, useState } from "react";
-import { Database, HardDrive, Layers2, RefreshCw, ServerStack, TriangleAlert } from "lucide-react";
+import { Database, HardDrive, Layers2, RefreshCw, Server, TriangleAlert } from "lucide-react";
 import { useDatabaseStatus } from "@/hooks/use-conversations";
 import { refreshDatabase } from "@/lib/client/mutations";
 import { Badge } from "@/components/ui/badge";
@@ -209,7 +209,8 @@ export function DatabaseDashboard() {
             <h1 className="text-2xl font-bold">Databases and Caches Overview</h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
               Health, inventory, size, and operational load for the frontend short-term cache,
-              the app SQLite store, and the Prefect Postgres backing service.
+              the app SQLite store, the DuckDB inspection snapshot, and the Prefect Postgres
+              backing service.
             </p>
             <p className="text-sm text-muted-foreground">
               {data.scopeLabel ?? "Historical conversations before today from the last 365 days"}.
@@ -228,7 +229,7 @@ export function DatabaseDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Refresh Status</CardTitle>
@@ -284,6 +285,19 @@ export function DatabaseDashboard() {
         </Card>
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">DuckDB</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <Badge variant={availabilityVariant(data.databases.duckdb.availability)}>
+              {data.databases.duckdb.availability}
+            </Badge>
+            <div>{data.databases.duckdb.tableCount} tables</div>
+            <div>{data.databases.duckdb.sizeDisplay ?? "No size reported"}</div>
+            <div className="font-mono text-xs break-all">{data.databases.duckdb.path}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Serving Path</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
@@ -322,8 +336,13 @@ export function DatabaseDashboard() {
         />
         <ResourceCard
           title="Prefect Postgres"
-          icon={<ServerStack className="h-5 w-5" />}
+          icon={<Server className="h-5 w-5" />}
           database={data.databases.prefectPostgres}
+        />
+        <ResourceCard
+          title="DuckDB Inspection Snapshot"
+          icon={<Database className="h-5 w-5" />}
+          database={data.databases.duckdb}
         />
       </div>
     </div>

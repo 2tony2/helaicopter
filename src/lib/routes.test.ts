@@ -16,8 +16,9 @@ test("conversation routes preserve deep-link state for tabs and selected entitie
     buildConversationRoute("-Users-tony-Code-helaicopter", "session-1", {
       tab: "subagents",
       subagent: "agent-1",
+      message: "message-1",
     }),
-    "/conversations/-Users-tony-Code-helaicopter/session-1?tab=subagents&subagent=agent-1"
+    "/conversations/-Users-tony-Code-helaicopter/session-1?tab=subagents&subagent=agent-1&message=message-1"
   );
   assert.equal(
     buildConversationSubagentRoute(
@@ -42,6 +43,7 @@ test("orchestration routes preserve Prefect iframe state", () => {
   );
   assert.equal(normalizePrefectUiPath("flow-runs"), "/flow-runs");
   assert.equal(normalizePrefectUiPath(""), undefined);
+  assert.equal(buildOrchestrationRoute(), "/orchestration");
 });
 
 test("conversation route state prefers current query params over stale initial props", () => {
@@ -51,6 +53,7 @@ test("conversation route state prefers current query params over stale initial p
       tab: "messages",
       plan: "plan-1",
       subagent: "agent-1",
+      message: "message-1",
     }
   );
 
@@ -58,6 +61,7 @@ test("conversation route state prefers current query params over stale initial p
     tab: "subagents",
     plan: "plan-1",
     subagent: "agent-2",
+    message: "message-1",
   });
 });
 
@@ -65,7 +69,7 @@ test("orchestration route state prefers current query params over stale initial 
   const state = getOrchestrationRouteState(
     new URLSearchParams("tab=prefect-ui&flowRunId=flow-run-2&prefectPath=/flow-runs/flow-run/flow-run-2"),
     {
-      tab: "prefect",
+      tab: "orchestration",
       flowRunId: "flow-run-1",
       prefectPath: "/flow-runs",
     }
@@ -75,5 +79,18 @@ test("orchestration route state prefers current query params over stale initial 
     tab: "prefect-ui",
     flowRunId: "flow-run-2",
     prefectPath: "/flow-runs/flow-run/flow-run-2",
+  });
+});
+
+test("conversation route state accepts per-message deep links from query params", () => {
+  const state = getConversationRouteState(
+    new URLSearchParams("tab=messages&message=assistant-uuid-1"),
+  );
+
+  assert.deepEqual(state, {
+    tab: "messages",
+    plan: undefined,
+    subagent: undefined,
+    message: "assistant-uuid-1",
   });
 });

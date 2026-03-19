@@ -7,15 +7,15 @@ import {
   resolveOrchestrationInitialTab,
 } from "./tabs";
 
-test("resolveOrchestrationInitialTab defaults to prefect and accepts prefect-ui", () => {
-  assert.equal(resolveOrchestrationInitialTab(undefined), "prefect");
-  assert.equal(resolveOrchestrationInitialTab("prefect"), "prefect");
+test("resolveOrchestrationInitialTab defaults to orchestration and accepts prefect-ui", () => {
+  assert.equal(resolveOrchestrationInitialTab(undefined), "orchestration");
+  assert.equal(resolveOrchestrationInitialTab("orchestration"), "orchestration");
   assert.equal(resolveOrchestrationInitialTab("prefect-ui"), "prefect-ui");
   assert.equal(
     resolveOrchestrationInitialTab("conversation-dags"),
     "conversation-dags"
   );
-  assert.equal(resolveOrchestrationInitialTab("unknown"), "prefect");
+  assert.equal(resolveOrchestrationInitialTab("unknown"), "orchestration");
 });
 
 test("PREFECT_UI_URL points at the local self-hosted Prefect UI", () => {

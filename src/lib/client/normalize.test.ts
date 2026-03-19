@@ -406,6 +406,16 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
       conversation_summary_read_backend: "legacy",
     },
     databases: {
+      frontend_cache: {
+        key: "frontend_cache",
+        label: "Frontend Short-Term Cache",
+        engine: "In-process memory",
+        role: "cache",
+        availability: "ready",
+        operational_status: "Warm in-process response cache",
+        table_count: 0,
+        tables: [],
+      },
       sqlite: {
         key: "sqlite",
         label: "SQLite Metadata Store",
@@ -439,17 +449,30 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         table_count: 0,
         tables: [],
       },
+      prefect_postgres: {
+        key: "prefect_postgres",
+        label: "Prefect Postgres",
+        engine: "Postgres",
+        role: "orchestration",
+        availability: "ready",
+        operational_status: "Prefect API responding",
+        table_count: 0,
+        tables: [],
+      },
     },
   });
 
   assert.equal(normalized.startedAt, "2026-03-18T10:00:00Z");
   assert.equal(normalized.durationMs, 5000);
   assert.equal(normalized.runtime.analyticsReadBackend, "legacy");
+  assert.equal(normalized.databases.frontendCache.key, "frontend_cache");
+  assert.equal(normalized.databases.frontendCache.operationalStatus, "Warm in-process response cache");
   assert.equal(normalized.databases.sqlite.tableCount, 4);
   assert.equal(normalized.databases.sqlite.tables[0].rowCount, 3);
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].defaultValue, null);
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].isPrimaryKey, true);
   assert.equal(normalized.databases.duckdb.key, "duckdb");
+  assert.equal(normalized.databases.prefectPostgres.key, "prefect_postgres");
 });
 
 test("normalizeDatabaseStatus still accepts legacy duckdb field names during transition", () => {

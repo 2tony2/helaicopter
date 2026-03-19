@@ -6,13 +6,12 @@ export default async function OrchestrationPage({
 }: {
   searchParams: Promise<{ tab?: string; flowRunId?: string; prefectPath?: string }>;
 }) {
-  const { tab, flowRunId, prefectPath } = await searchParams;
+  const { tab, prefectPath } = await searchParams;
   const initialTab = resolveOrchestrationInitialTab(tab);
 
   return (
     <OrchestrationHub
       initialTab={initialTab}
-      initialFlowRunId={flowRunId}
       prefectPath={prefectPath}
     />
   );

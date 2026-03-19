@@ -727,11 +727,24 @@ export interface DatabaseColumnSchema {
 export interface DatabaseTableSchema {
   name: string;
   rowCount: number;
+  sizeBytes?: number | null;
+  sizeDisplay?: string | null;
   columns: DatabaseColumnSchema[];
+  servingClass?: string;
+  integrationType?: string;
+  fastapiRoutes?: string[];
+  sqlalchemyModel?: string | null;
+  note?: string | null;
 }
 
-export type DatabaseStatusKey = "sqlite" | "duckdb";
-export type DatabaseRole = "metadata" | "inspection";
+export interface DatabaseLoadMetric {
+  label: string;
+  value?: number | null;
+  displayValue?: string | null;
+}
+
+export type DatabaseStatusKey = "frontend_cache" | "sqlite" | "duckdb" | "prefect_postgres";
+export type DatabaseRole = "cache" | "metadata" | "inspection" | "orchestration";
 export type DatabaseAvailability = "ready" | "missing" | "unreachable";
 
 export interface DatabaseArtifactStatus {
@@ -740,6 +753,8 @@ export interface DatabaseArtifactStatus {
   engine: string;
   role: DatabaseRole;
   availability: DatabaseAvailability;
+  health?: string | null;
+  operationalStatus?: string | null;
   note?: string | null;
   error?: string | null;
   path?: string | null;
@@ -747,6 +762,10 @@ export interface DatabaseArtifactStatus {
   publicPath?: string | null;
   docsUrl?: string | null;
   tableCount: number;
+  sizeBytes?: number | null;
+  sizeDisplay?: string | null;
+  inventorySummary?: string | null;
+  load: DatabaseLoadMetric[];
   tables: DatabaseTableSchema[];
 }
 
@@ -770,8 +789,10 @@ export interface DatabaseStatus {
     conversationSummaryReadBackend: "legacy";
   };
   databases: {
+    frontendCache: DatabaseArtifactStatus;
     sqlite: DatabaseArtifactStatus;
     duckdb: DatabaseArtifactStatus;
+    prefectPostgres: DatabaseArtifactStatus;
   };
 }
 

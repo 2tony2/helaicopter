@@ -1,0 +1,24 @@
+0 verbose cli /Users/tony/.nvm/versions/node/v22.18.0/bin/node /Users/tony/.nvm/versions/node/v22.18.0/bin/npm
+1 info using npm@10.9.3
+2 info using node@v22.18.0
+3 silly config load:file:/Users/tony/.nvm/versions/node/v22.18.0/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/tony/Code/helaicopter/.npmrc
+5 silly config load:file:/Users/tony/.npmrc
+6 silly config load:file:/Users/tony/.nvm/versions/node/v22.18.0/etc/npmrc
+7 verbose title npm run lint src/components/databases/database-dashboard.tsx
+8 verbose argv "run" "lint" "--" "src/components/databases/database-dashboard.tsx"
+9 verbose logfile logs-max:10 dir:/Users/tony/Code/helaicopter/.cache/npm/_logs/2026-03-19T15_35_41_735Z-
+10 verbose logfile /Users/tony/Code/helaicopter/.cache/npm/_logs/2026-03-19T15_35_41_735Z-debug-0.log
+11 silly logfile done cleaning log files
+12 http fetch GET 200 https://registry.npmjs.org/npm 352ms
+13 verbose cwd /Users/tony/Code/helaicopter
+14 verbose os Darwin 25.2.0
+15 verbose node v22.18.0
+16 verbose npm  v10.9.3
+17 notice
+17 notice New major version of npm available! 10.9.3 -> 11.12.0
+17 notice Changelog: https://github.com/npm/cli/releases/tag/v11.12.0
+17 notice To update run: npm install -g npm@11.12.0
+17 notice  { force: true, [Symbol(proc-log.meta)]: true }
+18 verbose exit 0
+19 info ok

@@ -27,8 +27,6 @@ import {
   useOvernightOatsRuns,
   usePrefectDeployments,
   usePrefectFlowRuns,
-  usePrefectWorkPools,
-  usePrefectWorkers,
 } from "@/hooks/use-conversations";
 import type {
   OrchestrationDagNode,
@@ -211,19 +209,6 @@ function prefectRunToneClass(tone: PrefectFlowRunRecord["statusTone"]) {
   return "";
 }
 
-function infraToneClass(tone: "healthy" | "warning" | "offline" | "unknown") {
-  if (tone === "healthy") {
-    return "border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300";
-  }
-  if (tone === "warning") {
-    return "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300";
-  }
-  if (tone === "offline") {
-    return "border-rose-300 text-rose-700 dark:border-rose-700 dark:text-rose-300";
-  }
-  return "";
-}
-
 function PrefectMetadataLinks({ metadata }: { metadata?: PrefectOatsMetadata }) {
   if (!metadata) return null;
 
@@ -399,14 +384,11 @@ export function OvernightOatsPanel() {
   const { data: runs, isLoading: oatsLoading } = useOvernightOatsRuns();
   const { data: deployments, isLoading: deploymentsLoading } = usePrefectDeployments();
   const { data: flowRuns, isLoading: flowRunsLoading } = usePrefectFlowRuns();
-  const { data: workers, isLoading: workersLoading } = usePrefectWorkers();
-  const { data: workPools, isLoading: workPoolsLoading } = usePrefectWorkPools(workers);
   const [search, setSearch] = useState("");
   const [selectedRecordPath, setSelectedRecordPath] = useState<string | null>(null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
 
-  const isPrefectLoading =
-    deploymentsLoading || flowRunsLoading || workersLoading || workPoolsLoading;
+  const isPrefectLoading = deploymentsLoading || flowRunsLoading;
 
   const filteredFlowRuns = useMemo(() => {
     return (flowRuns ?? [])
@@ -449,22 +431,13 @@ export function OvernightOatsPanel() {
 
   const prefectAggregate = useMemo(() => {
     const activeRuns = (flowRuns ?? []).filter((run) => run.isActive).length;
-    const healthyWorkers = (workers ?? []).filter((worker) => worker.isOnline).length;
-    const poolCapacity = (workPools ?? []).reduce(
-      (sum, pool) => sum + (pool.concurrencyLimit ?? 0),
-      0
-    );
 
     return {
       deployments: deployments?.length ?? 0,
       flowRuns: flowRuns?.length ?? 0,
       activeRuns,
-      workers: workers?.length ?? 0,
-      healthyWorkers,
-      workPools: workPools?.length ?? 0,
-      poolCapacity,
     };
-  }, [deployments, flowRuns, workers, workPools]);
+  }, [deployments, flowRuns]);
 
   const filteredRuns = useMemo(() => {
     return (runs ?? []).filter((run) => {
@@ -519,7 +492,7 @@ export function OvernightOatsPanel() {
         <CardContent className="flex items-start justify-between gap-4 p-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary">Prefect orchestration</Badge>
+              <Badge variant="secondary">Orchestration overview</Badge>
               {prefectAggregate.flowRuns > 0 ? (
                 <Badge
                   variant="outline"
@@ -533,33 +506,33 @@ export function OvernightOatsPanel() {
             </div>
             <div className="text-sm font-medium">
               {prefectAggregate.flowRuns > 0
-                ? `Tracking ${prefectAggregate.flowRuns} Prefect flow run${prefectAggregate.flowRuns === 1 ? "" : "s"}`
-                : "No Prefect flow runs returned yet"}
+                ? `Tracking ${prefectAggregate.flowRuns} orchestration run${prefectAggregate.flowRuns === 1 ? "" : "s"}`
+                : "No orchestration runs returned yet"}
             </div>
             <div className="text-xs text-muted-foreground">
-              Deployments, flow state, workers, and repo-local Oats artifacts joined from the backend Prefect proxy.
+              Deployments, flow state, and repo-local Oats artifacts joined from the backend orchestration proxy.
             </div>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Activity className="h-4 w-4" />
-            source: prefect
+            source: orchestration
           </div>
         </CardContent>
       </Card>
 
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Input
-          placeholder="Search Prefect runs, deployments, repos..."
+          placeholder="Search orchestration runs, deployments, repos..."
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           className="max-w-md"
         />
         <div className="text-sm text-muted-foreground">
-          {filteredFlowRuns.length} Prefect runs shown
+          {filteredFlowRuns.length} orchestration runs shown
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-2">
         <Card className="border-sky-500/20 bg-sky-500/5">
           <CardContent className="p-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -579,28 +552,6 @@ export function OvernightOatsPanel() {
             <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
               <PlaySquare className="h-5 w-5 text-violet-500" />
               {prefectAggregate.activeRuns}/{prefectAggregate.flowRuns}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-emerald-500/20 bg-emerald-500/5">
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Workers healthy
-            </div>
-            <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
-              <Bot className="h-5 w-5 text-emerald-500" />
-              {prefectAggregate.healthyWorkers}/{prefectAggregate.workers}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-500/20 bg-amber-500/5">
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Work pool capacity
-            </div>
-            <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
-              <Database className="h-5 w-5 text-amber-500" />
-              {prefectAggregate.poolCapacity}
             </div>
           </CardContent>
         </Card>
@@ -742,77 +693,6 @@ export function OvernightOatsPanel() {
                 </CardContent>
               </Card>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="mb-3 text-sm font-medium">Work pools</div>
-                    <div className="space-y-2">
-                      {(workPools ?? []).map((pool) => (
-                        <div
-                          key={pool.workPoolId}
-                          className="rounded-xl border border-border/60 bg-muted/30 p-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-medium">{pool.workPoolName}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {pool.type ?? "unknown"} pool
-                              </div>
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className={infraToneClass(pool.statusTone)}
-                            >
-                              {pool.status ?? "unknown"}
-                            </Badge>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                            <Badge variant="outline">
-                              {pool.onlineWorkerCount}/{pool.workerCount} workers online
-                            </Badge>
-                            <Badge variant="outline">
-                              concurrency {pool.concurrencyLimit ?? "n/a"}
-                            </Badge>
-                            {pool.isPaused && <Badge variant="outline">paused</Badge>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="mb-3 text-sm font-medium">Workers</div>
-                    <div className="space-y-2">
-                      {(workers ?? []).map((worker) => (
-                        <div
-                          key={worker.workerId}
-                          className="rounded-xl border border-border/60 bg-muted/30 p-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-medium">{worker.workerName}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {worker.workPoolName ?? "No pool assigned"}
-                              </div>
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className={infraToneClass(worker.statusTone)}
-                            >
-                              {worker.status ?? "unknown"}
-                            </Badge>
-                          </div>
-                          <div className="mt-3 text-xs text-muted-foreground">
-                            heartbeat {formatRelativeTimestamp(worker.lastHeartbeatAt)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
             </div>
           )}
         </div>

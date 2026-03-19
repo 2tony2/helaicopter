@@ -129,7 +129,13 @@ def _status_payload_is_complete(payload: DatabaseStatusPayload | None) -> bool:
         return False
     runtime = payload.get("runtime")
     databases = payload.get("databases") or {}
-    return bool(runtime and databases.get("sqlite") and databases.get("duckdb"))
+    return bool(
+        runtime
+        and databases.get("frontendCache")
+        and databases.get("sqlite")
+        and databases.get("duckdb")
+        and databases.get("prefectPostgres")
+    )
 
 
 def _fallback_runtime_surface() -> DatabaseRuntimePayload:
@@ -148,12 +154,39 @@ def _fallback_databases_surface(
     sqlite_exists = sqlite.path.exists()
     duckdb_exists = duckdb_settings.path.exists()
     return {
+        "frontendCache": {
+            "key": "frontend_cache",
+            "label": "Frontend Short-Term Cache",
+            "engine": "In-process memory",
+            "role": "cache",
+            "availability": "ready",
+            "health": "healthy",
+            "operationalStatus": "Backend read cache available for dashboard and conversation reads.",
+            "note": "Short-lived backend cache for active UI polling paths.",
+            "error": None,
+            "path": None,
+            "target": "BackendServices.cache",
+            "publicPath": None,
+            "docsUrl": None,
+            "tableCount": 0,
+            "sizeBytes": None,
+            "sizeDisplay": None,
+            "inventorySummary": "Ephemeral in-memory cache",
+            "load": [],
+            "tables": [],
+        },
         "sqlite": {
             "key": sqlite.key,
             "label": sqlite.label,
             "engine": sqlite.engine,
             "role": "metadata",
             "availability": "ready" if sqlite_exists else "missing",
+            "health": "healthy" if sqlite_exists else "missing",
+            "operationalStatus": (
+                "SQLite metadata store available."
+                if sqlite_exists
+                else "SQLite metadata store has not been created yet."
+            ),
             "note": SQLITE_NOTE,
             "error": None,
             "path": str(sqlite.path),
@@ -161,6 +194,10 @@ def _fallback_databases_surface(
             "publicPath": sqlite.public_path,
             "docsUrl": sqlite.docs_url,
             "tableCount": 0,
+            "sizeBytes": None,
+            "sizeDisplay": None,
+            "inventorySummary": "No table inventory recorded yet",
+            "load": [],
             "tables": [],
         },
         "duckdb": {
@@ -169,6 +206,12 @@ def _fallback_databases_surface(
             "engine": duckdb_settings.engine,
             "role": "inspection",
             "availability": "ready" if duckdb_exists else "missing",
+            "health": "healthy" if duckdb_exists else "missing",
+            "operationalStatus": (
+                "DuckDB inspection snapshot available."
+                if duckdb_exists
+                else "DuckDB inspection snapshot has not been generated yet."
+            ),
             "note": DUCKDB_NOTE,
             "error": None,
             "path": str(duckdb_settings.path),
@@ -176,6 +219,31 @@ def _fallback_databases_surface(
             "publicPath": duckdb_settings.public_path,
             "docsUrl": duckdb_settings.docs_url,
             "tableCount": 0,
+            "sizeBytes": None,
+            "sizeDisplay": None,
+            "inventorySummary": "No table inventory recorded yet",
+            "load": [],
+            "tables": [],
+        },
+        "prefectPostgres": {
+            "key": "prefect_postgres",
+            "label": "Prefect Postgres",
+            "engine": "Postgres",
+            "role": "orchestration",
+            "availability": "ready",
+            "health": "healthy",
+            "operationalStatus": "Prefect control-plane database target configured.",
+            "note": "Backing store for the self-hosted Prefect API and services stack.",
+            "error": None,
+            "path": None,
+            "target": "postgresql://prefect@127.0.0.1:5432/prefect",
+            "publicPath": None,
+            "docsUrl": None,
+            "tableCount": 0,
+            "sizeBytes": None,
+            "sizeDisplay": None,
+            "inventorySummary": "Catalog visibility is managed through Prefect/Postgres.",
+            "load": [],
             "tables": [],
         },
     }

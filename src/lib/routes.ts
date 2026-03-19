@@ -14,7 +14,7 @@ export type ConversationDetailTab = (typeof conversationDetailTabs)[number];
 
 export const orchestrationTabs = [
   "conversation-dags",
-  "prefect",
+  "orchestration",
   "prefect-ui",
 ] as const;
 
@@ -31,7 +31,7 @@ export function resolveConversationDetailTab(value?: string): ConversationDetail
 export function resolveOrchestrationInitialTab(value?: string): OrchestrationTab {
   return (orchestrationTabs as readonly string[]).includes(value ?? "")
     ? (value as OrchestrationTab)
-    : "prefect";
+    : "orchestration";
 }
 
 export function normalizePrefectUiPath(value?: string): string | undefined {
@@ -56,19 +56,23 @@ export function getConversationRouteState(
     tab?: string;
     plan?: string;
     subagent?: string;
+    message?: string;
   }
 ): {
   tab: ConversationDetailTab;
   plan?: string;
   subagent?: string;
+  message?: string;
 } {
   const plan = searchParams.get("plan") ?? initial?.plan;
   const subagent = searchParams.get("subagent") ?? initial?.subagent;
+  const message = searchParams.get("message") ?? initial?.message;
 
   return {
     tab: resolveConversationDetailTab(searchParams.get("tab") ?? initial?.tab),
     plan: plan ?? undefined,
     subagent: subagent ?? undefined,
+    message: message ?? undefined,
   };
 }
 
@@ -79,6 +83,7 @@ export function buildConversationRoute(
     tab?: ConversationDetailTab;
     plan?: string;
     subagent?: string;
+    message?: string;
   }
 ): string {
   const params = new URLSearchParams();
@@ -90,6 +95,9 @@ export function buildConversationRoute(
   }
   if (opts?.subagent) {
     params.set("subagent", opts.subagent);
+  }
+  if (opts?.message) {
+    params.set("message", opts.message);
   }
   const query = params.toString();
   const path = `/conversations/${encodeURIComponent(projectPath)}/${sessionId}`;
@@ -110,7 +118,7 @@ export function buildOrchestrationRoute(opts?: {
   prefectPath?: string;
 }): string {
   const params = new URLSearchParams();
-  if (opts?.tab && opts.tab !== "prefect") {
+  if (opts?.tab && opts.tab !== "orchestration") {
     params.set("tab", opts.tab);
   }
   if (opts?.flowRunId) {

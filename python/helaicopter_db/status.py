@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import TypedDict
 
 from pydantic import TypeAdapter, ValidationError
@@ -77,6 +78,39 @@ class DatabaseStatusPayload(TypedDict, total=False):
 
 
 _STATUS_PAYLOAD_ADAPTER = TypeAdapter(DatabaseStatusPayload)
+
+
+def _format_size(size_bytes: int | None) -> str | None:
+    if size_bytes is None:
+        return None
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(size_bytes)
+    unit_index = 0
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(size)} {units[unit_index]}"
+    return f"{size:.1f} {units[unit_index]}"
+
+
+def _path_size(path) -> int | None:
+    try:
+        if path.exists():
+            return path.stat().st_size
+    except OSError:
+        return None
+    return None
+
+
+def _prefect_postgres_target() -> str:
+    user = os.getenv("PREFECT_POSTGRES_USER", "prefect")
+    password = os.getenv("PREFECT_POSTGRES_PASSWORD")
+    host = os.getenv("PREFECT_POSTGRES_HOST", "127.0.0.1")
+    port = os.getenv("PREFECT_POSTGRES_PORT", "5432")
+    database = os.getenv("PREFECT_POSTGRES_DB", "prefect")
+    auth = user if not password else f"{user}:***"
+    return f"postgresql://{auth}@{host}:{port}/{database}"
 
 
 def _sqlite_table_summaries(engine) -> list[DatabaseTablePayload]:
@@ -242,6 +276,9 @@ def build_status_payload(
         except Exception as exc:
             duckdb_error = str(exc)
 
+    sqlite_size = _path_size(sqlite.path)
+    duckdb_size = _path_size(duckdb_settings.path)
+
     return {
         "status": status,
         "trigger": trigger,
@@ -259,12 +296,39 @@ def build_status_payload(
         "refreshIntervalMinutes": 360,
         "runtime": _runtime_surface(),
         "databases": {
+            "frontendCache": {
+                "key": "frontend_cache",
+                "label": "Frontend Short-Term Cache",
+                "engine": "In-process memory",
+                "role": "cache",
+                "availability": "ready",
+                "health": "healthy",
+                "operationalStatus": "Backend read cache available for conversation and analytics views.",
+                "note": "Short-lived backend cache used to avoid redundant reads during active UI polling.",
+                "error": None,
+                "path": None,
+                "target": "BackendServices.cache",
+                "publicPath": None,
+                "docsUrl": None,
+                "tableCount": 0,
+                "tables": [],
+                "sizeBytes": None,
+                "sizeDisplay": None,
+                "inventorySummary": "Ephemeral in-memory cache",
+                "load": [],
+            },
             "sqlite": {
                 "key": sqlite.key,
                 "label": sqlite.label,
                 "engine": sqlite.engine,
                 "role": "metadata",
                 "availability": "ready" if sqlite_error is None else "unreachable",
+                "health": "healthy" if sqlite_error is None else "error",
+                "operationalStatus": (
+                    "Readable and serving historical conversations."
+                    if sqlite_error is None
+                    else "SQLite metadata store could not be inspected."
+                ),
                 "note": (
                     "App-local metadata, refresh bookkeeping, evaluations, and "
                     "historical detail tables."
@@ -275,6 +339,10 @@ def build_status_payload(
                 "publicPath": sqlite.public_path,
                 "docsUrl": sqlite.docs_url,
                 "tableCount": len(sqlite_tables),
+                "sizeBytes": sqlite_size,
+                "sizeDisplay": _format_size(sqlite_size),
+                "inventorySummary": f"{len(sqlite_tables)} table{'s' if len(sqlite_tables) != 1 else ''}",
+                "load": [],
                 "tables": sqlite_tables,
             },
             "duckdb": {
@@ -289,6 +357,20 @@ def build_status_payload(
                     if duckdb_settings.path.exists()
                     else "missing"
                 ),
+                "health": (
+                    "healthy"
+                    if duckdb_settings.path.exists() and duckdb_error is None
+                    else "error"
+                    if duckdb_settings.path.exists()
+                    else "missing"
+                ),
+                "operationalStatus": (
+                    "Inspection snapshot available for schema and table review."
+                    if duckdb_settings.path.exists() and duckdb_error is None
+                    else "DuckDB snapshot exists but could not be read."
+                    if duckdb_settings.path.exists()
+                    else "DuckDB inspection snapshot has not been generated."
+                ),
                 "note": (
                     "Optional DuckDB inspection snapshot. It is not on the "
                     "primary analytics serving path."
@@ -299,7 +381,32 @@ def build_status_payload(
                 "publicPath": duckdb_settings.public_path,
                 "docsUrl": duckdb_settings.docs_url,
                 "tableCount": len(duckdb_tables),
+                "sizeBytes": duckdb_size,
+                "sizeDisplay": _format_size(duckdb_size),
+                "inventorySummary": f"{len(duckdb_tables)} table{'s' if len(duckdb_tables) != 1 else ''}",
+                "load": [],
                 "tables": duckdb_tables,
+            },
+            "prefectPostgres": {
+                "key": "prefect_postgres",
+                "label": "Prefect Postgres",
+                "engine": "Postgres",
+                "role": "orchestration",
+                "availability": "ready",
+                "health": "healthy",
+                "operationalStatus": "Prefect control-plane database target configured for the local server stack.",
+                "note": "Backing store for the self-hosted Prefect API and services stack.",
+                "error": None,
+                "path": None,
+                "target": _prefect_postgres_target(),
+                "publicPath": None,
+                "docsUrl": None,
+                "tableCount": 0,
+                "tables": [],
+                "sizeBytes": None,
+                "sizeDisplay": None,
+                "inventorySummary": "Catalog visibility is managed through Prefect/Postgres, not local file inspection.",
+                "load": [],
             },
         },
     }

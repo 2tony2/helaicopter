@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TokenUsageBadge } from "./token-usage-badge";
@@ -7,29 +8,41 @@ import { ThinkingBlock } from "./thinking-block";
 import { ToolCallBlock } from "./tool-call-block";
 import type { ProcessedMessage } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
+import { Link as LinkIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { cn } from "@/lib/utils";
 
 export function MessageCard({
   message,
   provider,
+  href,
+  isSelected = false,
+  onSelect,
 }: {
   message: ProcessedMessage;
   provider?: "claude" | "codex";
+  href?: string;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }) {
   const isUser = message.role === "user";
 
   return (
     <Card
+      id={`message-${message.id}`}
       className={`p-4 ${
         isUser
           ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20"
           : "border-border"
-      }`}
+      } ${isSelected ? "ring-2 ring-primary/40 border-primary/60" : ""}`}
     >
       <div className="flex items-center gap-2 mb-3">
         <Badge variant={isUser ? "default" : "secondary"}>
           {isUser ? "User" : "Assistant"}
+        </Badge>
+        <Badge variant="outline" className="font-mono text-[10px]">
+          {message.id.slice(0, 8)}
         </Badge>
         {message.model && (
           <Badge variant="outline" className="text-xs">
@@ -50,6 +63,19 @@ export function MessageCard({
         <span className="text-xs text-muted-foreground ml-auto">
           {formatDistanceToNow(message.timestamp, { addSuffix: true })}
         </span>
+        {href ? (
+          <Link
+            href={href}
+            onClick={onSelect}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
+              isSelected ? "border-primary/50 text-primary" : ""
+            )}
+          >
+            <LinkIcon className="h-3 w-3" />
+            Link
+          </Link>
+        ) : null}
       </div>
 
       <div className="space-y-3">
