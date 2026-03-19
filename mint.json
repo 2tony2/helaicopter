@@ -1,5 +1,12 @@
 {
   "name": "Helaicopter Platform Docs",
+  "theme": "prism",
+  "favicon": "/favicon.ico",
+  "colors": {
+    "primary": "#0f766e",
+    "light": "#14b8a6",
+    "dark": "#0d9488"
+  },
   "navigation": [
     { "group": "Overview", "pages": ["docs/index"] },
     {
@@ -39,4 +46,3 @@
     }
   ]
 }
-

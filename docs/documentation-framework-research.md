@@ -276,14 +276,14 @@ This keeps the change small and reversible.
 
 ## Sources
 
-- Sphinx overview: <https://www.sphinx-doc.org/en/master/>
-- Sphinx autodoc: <https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html>
-- Sphinx apidoc: <https://www.sphinx-doc.org/en/master/usage/extensions/apidoc.html>
-- MyST for Sphinx: <https://myst-parser.readthedocs.io/>
-- Sphinx OpenAPI extension: <https://sphinxcontrib-openapi.readthedocs.io/>
-- Next.js MDX guide: <https://nextjs.org/docs/app/guides/mdx>
-- Fumadocs overview: <https://fumadocs.dev/>
-- Fumadocs OpenAPI integration: <https://www.fumadocs.dev/docs/integrations/openapi/server>
-- Nextra docs theme: <https://nextra.site/docs/docs-theme/start>
-- OpenClaw docs site: <https://docs.openclaw.ai/>
-- Mintlify API playground/OpenAPI docs: <https://mintlify.com/docs/api-playground>
+- Sphinx overview: [https://www.sphinx-doc.org/en/master/](https://www.sphinx-doc.org/en/master/)
+- Sphinx autodoc: [https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html)
+- Sphinx apidoc: [https://www.sphinx-doc.org/en/master/usage/extensions/apidoc.html](https://www.sphinx-doc.org/en/master/usage/extensions/apidoc.html)
+- MyST for Sphinx: [https://myst-parser.readthedocs.io/](https://myst-parser.readthedocs.io/)
+- Sphinx OpenAPI extension: [https://sphinxcontrib-openapi.readthedocs.io/](https://sphinxcontrib-openapi.readthedocs.io/)
+- Next.js MDX guide: [https://nextjs.org/docs/app/guides/mdx](https://nextjs.org/docs/app/guides/mdx)
+- Fumadocs overview: [https://fumadocs.dev/](https://fumadocs.dev/)
+- Fumadocs OpenAPI integration: [https://www.fumadocs.dev/docs/integrations/openapi/server](https://www.fumadocs.dev/docs/integrations/openapi/server)
+- Nextra docs theme: [https://nextra.site/docs/docs-theme/start](https://nextra.site/docs/docs-theme/start)
+- OpenClaw docs site: [https://docs.openclaw.ai/](https://docs.openclaw.ai/)
+- Mintlify API playground/OpenAPI docs: [https://mintlify.com/docs/api-playground](https://mintlify.com/docs/api-playground)
