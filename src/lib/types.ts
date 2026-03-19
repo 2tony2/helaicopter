@@ -700,8 +700,8 @@ export interface DatabaseTableSchema {
   columns: DatabaseColumnSchema[];
 }
 
-export type DatabaseStatusKey = "sqlite" | "legacy_duckdb";
-export type DatabaseRole = "metadata" | "legacy_debug";
+export type DatabaseStatusKey = "sqlite" | "duckdb";
+export type DatabaseRole = "metadata" | "inspection";
 export type DatabaseAvailability = "ready" | "missing" | "unreachable";
 
 export interface DatabaseArtifactStatus {
@@ -741,7 +741,7 @@ export interface DatabaseStatus {
   };
   databases: {
     sqlite: DatabaseArtifactStatus;
-    legacyDuckdb: DatabaseArtifactStatus;
+    duckdb: DatabaseArtifactStatus;
   };
 }
 

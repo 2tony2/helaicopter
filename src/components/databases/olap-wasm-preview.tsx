@@ -38,14 +38,14 @@ type DuckDbDatabase = {
   terminate: () => Promise<void>;
 };
 
-export function LegacyDuckDbPreview({
+export function DuckDbPreview({
   database,
 }: Readonly<{
   database: DatabaseArtifactStatus;
 }>) {
   const [selectedTable, setSelectedTable] = useState(database.tables[0]?.name ?? "");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
-  const [status, setStatus] = useState("Loading legacy DuckDB preview...");
+  const [status, setStatus] = useState("Loading DuckDB preview...");
 
   useEffect(() => {
     setSelectedTable(database.tables[0]?.name ?? "");
@@ -61,17 +61,17 @@ export function LegacyDuckDbPreview({
     async function load() {
       if (!database.publicPath) {
         setRows([]);
-        setStatus("Legacy DuckDB artifact is not available for browser preview.");
+        setStatus("DuckDB artifact is not available for browser preview.");
         return;
       }
 
       if (!selectedTable) {
         setRows([]);
-        setStatus("No legacy DuckDB tables available.");
+        setStatus("No DuckDB tables available.");
         return;
       }
 
-      setStatus("Loading legacy DuckDB preview...");
+      setStatus("Loading DuckDB preview...");
 
       const duckdb = (await import(
         /* webpackIgnore: true */ DUCKDB_WASM_ESM_URL
@@ -114,7 +114,7 @@ export function LegacyDuckDbPreview({
     void load().catch((error) => {
       if (!active) return;
       setRows([]);
-      setStatus(error instanceof Error ? error.message : "Legacy DuckDB preview failed to load.");
+      setStatus(error instanceof Error ? error.message : "DuckDB preview failed to load.");
     });
 
     return () => {
@@ -135,7 +135,7 @@ export function LegacyDuckDbPreview({
       <CardHeader>
         <CardTitle className="text-base">DuckDB Artifact Preview</CardTitle>
         <CardDescription>
-          Browser-side inspection of the legacy DuckDB export artifact. This is
+          Browser-side inspection of the DuckDB export artifact. This is
           not the primary analytics backend.
         </CardDescription>
       </CardHeader>

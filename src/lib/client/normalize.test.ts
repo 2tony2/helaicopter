@@ -421,11 +421,11 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
           },
         ],
       },
-      legacy_duckdb: {
-        key: "legacy_duckdb",
-        label: "Legacy DuckDB Snapshot",
+      duckdb: {
+        key: "duckdb",
+        label: "DuckDB Inspection Snapshot",
         engine: "DuckDB",
-        role: "legacy_debug",
+        role: "inspection",
         availability: "missing",
         table_count: 0,
         tables: [],
@@ -440,7 +440,40 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
   assert.equal(normalized.databases.sqlite.tables[0].rowCount, 3);
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].defaultValue, null);
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].isPrimaryKey, true);
-  assert.equal(normalized.databases.legacyDuckdb.key, "legacy_duckdb");
+  assert.equal(normalized.databases.duckdb.key, "duckdb");
+});
+
+test("normalizeDatabaseStatus still accepts legacy duckdb field names during transition", () => {
+  const normalized = normalizeDatabaseStatus({
+    status: "completed",
+    refreshIntervalMinutes: 360,
+    runtime: {
+      analyticsReadBackend: "legacy",
+      conversationSummaryReadBackend: "legacy",
+    },
+    databases: {
+      sqlite: {
+        key: "sqlite",
+        label: "SQLite Metadata Store",
+        engine: "SQLite",
+        role: "metadata",
+        availability: "ready",
+        tableCount: 0,
+        tables: [],
+      },
+      legacyDuckdb: {
+        key: "duckdb",
+        label: "DuckDB Inspection Snapshot",
+        engine: "DuckDB",
+        role: "inspection",
+        availability: "ready",
+        tableCount: 0,
+        tables: [],
+      },
+    },
+  });
+
+  assert.equal(normalized.databases.duckdb.key, "duckdb");
 });
 
 test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt and job records", () => {
