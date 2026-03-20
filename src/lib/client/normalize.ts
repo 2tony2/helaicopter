@@ -27,10 +27,15 @@ import type {
   HistoryEntry,
   OrchestrationDag,
   OrchestrationDagNode,
+  OrchestrationFeatureBranch,
   OrchestrationInvocation,
+  OrchestrationOperationHistoryEntry,
+  OrchestrationFinalPullRequest,
   OrchestrationRunEvaluation,
   OrchestrationRunEvaluationConversation,
+  OrchestrationReviewSummary,
   OrchestrationTaskRecord,
+  OrchestrationTaskPullRequest,
   OvernightOatsRunRecord,
   PrefectDeploymentRecord,
   PrefectFlowRunRecord,
@@ -1103,14 +1108,150 @@ function normalizeInvocation(value: unknown): OrchestrationInvocation | null {
   };
 }
 
+function normalizeLooseRecord(value: unknown): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(asRecord(value)));
+}
+
+function normalizeReviewSummary(value: unknown): OrchestrationReviewSummary | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const item = asRecord(value);
+  return {
+    blockingState: stringOr(
+      field(item, "blockingState", "blocking_state"),
+      "unknown"
+    ) as OrchestrationReviewSummary["blockingState"],
+    approvals: numberOr(field(item, "approvals")),
+    changesRequested: numberOr(field(item, "changesRequested", "changes_requested")),
+  };
+}
+
+function normalizeFeatureBranch(value: unknown): OrchestrationFeatureBranch | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const item = asRecord(value);
+  return {
+    name: stringOr(field(item, "name")),
+    baseBranch:
+      field(item, "baseBranch", "base_branch") === null
+        ? null
+        : nullableString(field(item, "baseBranch", "base_branch")),
+  };
+}
+
+function normalizeTaskPullRequest(value: unknown): OrchestrationTaskPullRequest | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const item = asRecord(value);
+  return {
+    number:
+      field(item, "number") === null ? null : nullableNumber(field(item, "number")),
+    url: field(item, "url") === null ? null : nullableString(field(item, "url")),
+    state: stringOr(field(item, "state")) as OrchestrationTaskPullRequest["state"],
+    mergeGateStatus: stringOr(
+      field(item, "mergeGateStatus", "merge_gate_status")
+    ) as OrchestrationTaskPullRequest["mergeGateStatus"],
+    baseBranch:
+      field(item, "baseBranch", "base_branch") === null
+        ? null
+        : nullableString(field(item, "baseBranch", "base_branch")),
+    headBranch:
+      field(item, "headBranch", "head_branch") === null
+        ? null
+        : nullableString(field(item, "headBranch", "head_branch")),
+    mergeability:
+      field(item, "mergeability") === null
+        ? null
+        : nullableString(field(item, "mergeability")),
+    checksSummary: normalizeLooseRecord(field(item, "checksSummary", "checks_summary")),
+    reviewSummary: normalizeReviewSummary(field(item, "reviewSummary", "review_summary")),
+    snapshotSource:
+      field(item, "snapshotSource", "snapshot_source") === null
+        ? null
+        : nullableString(field(item, "snapshotSource", "snapshot_source")),
+    lastRefreshedAt:
+      field(item, "lastRefreshedAt", "last_refreshed_at") === null
+        ? null
+        : nullableString(field(item, "lastRefreshedAt", "last_refreshed_at")),
+    isStale: booleanOr(field(item, "isStale", "is_stale")),
+  };
+}
+
+function normalizeFinalPullRequest(value: unknown): OrchestrationFinalPullRequest | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const item = asRecord(value);
+  return {
+    number:
+      field(item, "number") === null ? null : nullableNumber(field(item, "number")),
+    url: field(item, "url") === null ? null : nullableString(field(item, "url")),
+    state: stringOr(field(item, "state")) as OrchestrationFinalPullRequest["state"],
+    reviewGateStatus: stringOr(
+      field(item, "reviewGateStatus", "review_gate_status")
+    ) as OrchestrationFinalPullRequest["reviewGateStatus"],
+    baseBranch:
+      field(item, "baseBranch", "base_branch") === null
+        ? null
+        : nullableString(field(item, "baseBranch", "base_branch")),
+    headBranch:
+      field(item, "headBranch", "head_branch") === null
+        ? null
+        : nullableString(field(item, "headBranch", "head_branch")),
+    checksSummary: normalizeLooseRecord(field(item, "checksSummary", "checks_summary")),
+    snapshotSource:
+      field(item, "snapshotSource", "snapshot_source") === null
+        ? null
+        : nullableString(field(item, "snapshotSource", "snapshot_source")),
+    lastRefreshedAt:
+      field(item, "lastRefreshedAt", "last_refreshed_at") === null
+        ? null
+        : nullableString(field(item, "lastRefreshedAt", "last_refreshed_at")),
+    isStale: booleanOr(field(item, "isStale", "is_stale")),
+  };
+}
+
+function normalizeOperationHistoryEntry(value: unknown): OrchestrationOperationHistoryEntry {
+  const item = asRecord(value);
+  return {
+    kind: stringOr(field(item, "kind")),
+    status: stringOr(field(item, "status")) as OrchestrationOperationHistoryEntry["status"],
+    sessionId:
+      field(item, "sessionId", "session_id") === null
+        ? null
+        : nullableString(field(item, "sessionId", "session_id")),
+    startedAt: stringOr(field(item, "startedAt", "started_at")),
+    finishedAt:
+      field(item, "finishedAt", "finished_at") === null
+        ? null
+        : nullableString(field(item, "finishedAt", "finished_at")),
+    details: normalizeLooseRecord(field(item, "details")),
+  };
+}
+
 function normalizeOrchestrationTask(value: unknown): OrchestrationTaskRecord {
   const item = asRecord(value);
   return {
     taskId: stringOr(field(item, "taskId", "task_id")),
     title: stringOr(field(item, "title")),
     dependsOn: asArray(field(item, "dependsOn", "depends_on")).map((entry) => stringOr(entry)),
+    parentBranch:
+      field(item, "parentBranch", "parent_branch") === null
+        ? null
+        : nullableString(field(item, "parentBranch", "parent_branch")),
     status: stringOr(field(item, "status")) as OrchestrationTaskRecord["status"],
     attempts: numberOr(field(item, "attempts")),
+    taskPr: normalizeTaskPullRequest(field(item, "taskPr", "task_pr")),
+    operationHistory: asArray(field(item, "operationHistory", "operation_history")).map(
+      normalizeOperationHistoryEntry
+    ),
     invocation:
       field(item, "invocation") === undefined ? null : normalizeInvocation(field(item, "invocation")),
   };
@@ -1225,43 +1366,69 @@ function normalizeOrchestrationEvaluation(value: unknown): OrchestrationRunEvalu
   };
 }
 
+export function normalizeOvernightOatsRun(value: unknown): OvernightOatsRunRecord {
+  const item = asRecord(value);
+  const contractVersion = stringOr(field(item, "contractVersion", "contract_version"));
+  return {
+    source:
+      stringOr(field(item, "source")) === "overnight-oats" ? "overnight-oats" : "overnight-oats",
+    contractVersion:
+      contractVersion === "oats-run-v1" ||
+      contractVersion === "oats-run-v2" ||
+      contractVersion === "oats-runtime-v1" ||
+      contractVersion === "oats-runtime-v2"
+        ? contractVersion
+        : "oats-runtime-v1",
+    runId: stringOr(field(item, "runId", "run_id")),
+    runTitle: stringOr(field(item, "runTitle", "run_title")),
+    repoRoot: stringOr(field(item, "repoRoot", "repo_root")),
+    configPath: stringOr(field(item, "configPath", "config_path")),
+    runSpecPath: stringOr(field(item, "runSpecPath", "run_spec_path")),
+    mode: stringOr(field(item, "mode")),
+    integrationBranch: stringOr(field(item, "integrationBranch", "integration_branch")),
+    taskPrTarget: stringOr(field(item, "taskPrTarget", "task_pr_target")),
+    finalPrTarget: stringOr(field(item, "finalPrTarget", "final_pr_target")),
+    status: stringOr(field(item, "status")) as OvernightOatsRunRecord["status"],
+    stackStatus:
+      field(item, "stackStatus", "stack_status") === null
+        ? null
+        : (nullableString(field(item, "stackStatus", "stack_status")) as
+            | OvernightOatsRunRecord["stackStatus"]
+            | undefined),
+    featureBranch: normalizeFeatureBranch(field(item, "featureBranch", "feature_branch")),
+    activeTaskId:
+      field(item, "activeTaskId", "active_task_id") === null
+        ? null
+        : nullableString(field(item, "activeTaskId", "active_task_id")),
+    heartbeatAt:
+      field(item, "heartbeatAt", "heartbeat_at") === null
+        ? null
+        : nullableString(field(item, "heartbeatAt", "heartbeat_at")),
+    finishedAt:
+      field(item, "finishedAt", "finished_at") === null
+        ? null
+        : nullableString(field(item, "finishedAt", "finished_at")),
+    planner:
+      field(item, "planner") === undefined ? null : normalizeInvocation(field(item, "planner")),
+    tasks: asArray(field(item, "tasks")).map(normalizeOrchestrationTask),
+    finalPr: normalizeFinalPullRequest(field(item, "finalPr", "final_pr")),
+    operationHistory: asArray(field(item, "operationHistory", "operation_history")).map(
+      normalizeOperationHistoryEntry
+    ),
+    createdAt: stringOr(field(item, "createdAt", "created_at")),
+    lastUpdatedAt: stringOr(field(item, "lastUpdatedAt", "last_updated_at")),
+    isRunning:
+      normalizeBooleanLike(field(item, "isRunning", "is_running")) ??
+      stringOr(field(item, "status")) === "running",
+    recordedAt: stringOr(field(item, "recordedAt", "recorded_at")),
+    recordPath: stringOr(field(item, "recordPath", "record_path")),
+    dag: normalizeOrchestrationDag(field(item, "dag")),
+    evaluation: normalizeOrchestrationEvaluation(field(item, "evaluation")),
+  };
+}
+
 export function normalizeOvernightOatsRuns(value: unknown): OvernightOatsRunRecord[] {
-  return asArray(value).map((entry) => {
-    const item = asRecord(entry);
-    return {
-      source:
-        stringOr(field(item, "source")) === "overnight-oats" ? "overnight-oats" : "overnight-oats",
-      contractVersion:
-        stringOr(field(item, "contractVersion", "contract_version")) === "oats-run-v1"
-          ? "oats-run-v1"
-          : "oats-runtime-v1",
-      runId: stringOr(field(item, "runId", "run_id")),
-      runTitle: stringOr(field(item, "runTitle", "run_title")),
-      repoRoot: stringOr(field(item, "repoRoot", "repo_root")),
-      configPath: stringOr(field(item, "configPath", "config_path")),
-      runSpecPath: stringOr(field(item, "runSpecPath", "run_spec_path")),
-      mode: stringOr(field(item, "mode")),
-      integrationBranch: stringOr(field(item, "integrationBranch", "integration_branch")),
-      taskPrTarget: stringOr(field(item, "taskPrTarget", "task_pr_target")),
-      finalPrTarget: stringOr(field(item, "finalPrTarget", "final_pr_target")),
-      status: stringOr(field(item, "status")) as OvernightOatsRunRecord["status"],
-      activeTaskId: nullableString(field(item, "activeTaskId", "active_task_id")),
-      heartbeatAt: nullableString(field(item, "heartbeatAt", "heartbeat_at")),
-      finishedAt: nullableString(field(item, "finishedAt", "finished_at")),
-      planner:
-        field(item, "planner") === undefined ? null : normalizeInvocation(field(item, "planner")),
-      tasks: asArray(field(item, "tasks")).map(normalizeOrchestrationTask),
-      createdAt: stringOr(field(item, "createdAt", "created_at")),
-      lastUpdatedAt: stringOr(field(item, "lastUpdatedAt", "last_updated_at")),
-      isRunning:
-        normalizeBooleanLike(field(item, "isRunning", "is_running")) ??
-        stringOr(field(item, "status")) === "running",
-      recordedAt: stringOr(field(item, "recordedAt", "recorded_at")),
-      recordPath: stringOr(field(item, "recordPath", "record_path")),
-      dag: normalizeOrchestrationDag(field(item, "dag")),
-      evaluation: normalizeOrchestrationEvaluation(field(item, "evaluation")),
-    };
-  });
+  return asArray(value).map(normalizeOvernightOatsRun);
 }
 
 export function normalizePrefectDeployments(value: unknown): PrefectDeploymentRecord[] {
