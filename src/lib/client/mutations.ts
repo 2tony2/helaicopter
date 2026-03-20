@@ -2,6 +2,7 @@ import type {
   ConversationEvaluation,
   DatabaseStatus,
   EvaluationPrompt,
+  OvernightOatsRunRecord,
   SubscriptionSettings,
 } from "@/lib/types";
 import * as endpoints from "./endpoints";
@@ -10,6 +11,7 @@ import {
   normalizeConversationEvaluations,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompts,
+  normalizeOvernightOatsRun,
   normalizeSubscriptionSettings,
 } from "./normalize";
 
@@ -109,4 +111,12 @@ export function saveSubscriptionSettings(
   input: SubscriptionSettings
 ): Promise<SubscriptionSettings> {
   return patch(endpoints.subscriptionSettings(), input, normalizeSubscriptionSettings);
+}
+
+export function refreshOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
+  return post(endpoints.orchestrationOatsRefresh(runId), undefined, normalizeOvernightOatsRun);
+}
+
+export function resumeOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
+  return post(endpoints.orchestrationOatsResume(runId), undefined, normalizeOvernightOatsRun);
 }
