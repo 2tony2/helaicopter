@@ -105,9 +105,19 @@ def _assert_deprecated_python_reexport(relative_path: str, target: str) -> None:
     content = path.read_text(encoding="utf-8")
     significant_lines = [line.strip() for line in content.splitlines() if line.strip()]
 
+    assert "@deprecated" in content
     assert "class " not in content
+    assert "def " not in content
     assert f"from {target} import " in content
     assert "__all__" in content
+    assert all(
+        line.startswith("#") or line.startswith("from ") or line.startswith("__all__ =")
+        for line in significant_lines
+    )
+
+    for forbidden in ("if ", "for ", "while ", "try:", "with ", "match ", "return "):
+        assert forbidden not in content
+
     assert len(significant_lines) <= 4
 
 
