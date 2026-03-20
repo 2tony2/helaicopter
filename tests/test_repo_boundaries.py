@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +48,33 @@ def _assert_thin_route_shell(
     assert default_export_count == 1
     assert content.count("function ") - default_export_count == 0
 
+    leftover_lines: list[str] = []
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("import "):
+            continue
+        if line.startswith("//") or line.startswith("/*") or line.startswith("*") or line.startswith("*/"):
+            continue
+        if rendered_view in line:
+            continue
+        if line.startswith("export default function "):
+            continue
+        if line in {"{", "}", "(", ")", ");"}:
+            continue
+        if re.fullmatch(r"[)}\]}]+\s*\{?", line):
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*,\s*", line):
+            continue
+        if re.fullmatch(r"\}:\s*\{", line):
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*:\s*.+;?", line):
+            continue
+        leftover_lines.append(line)
+
+    assert leftover_lines == []
+
 
 def _eslint_override_objects(content: str) -> list[str]:
     objects: list[str] = []
@@ -86,17 +114,15 @@ def _eslint_override_objects(content: str) -> list[str]:
     return objects
 
 
-def _ts_real_statements(content: str) -> list[str]:
-    lines = []
+def _ts_non_comment_lines(content: str) -> list[str]:
+    lines: list[str] = []
     for raw_line in content.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("//") or line.startswith("/*") or line.startswith("*") or line.startswith("*/"):
             continue
         lines.append(line)
 
-    joined = " ".join(lines)
-    statements = [statement.strip() for statement in joined.split(";") if statement.strip()]
-    return statements
+    return lines
 
 
 def _python_real_statements(content: str) -> list[str]:
@@ -110,13 +136,18 @@ def _python_real_statements(content: str) -> list[str]:
 def _assert_eslint_layer_guardrail(
     content: str,
     *,
-    files_glob: str,
+    layer_prefix: str,
     restricted_patterns: tuple[str, ...],
 ) -> None:
     matching_blocks = [
         block
         for block in _eslint_override_objects(content)
-        if files_glob in block and "no-restricted-imports" in block
+        if "no-restricted-imports" in block
+        and re.search(
+            rf"files\s*:\s*(?:\[[^\]]*{re.escape(layer_prefix)}|['\"][^'\"]*{re.escape(layer_prefix)}|`[^`]*{re.escape(layer_prefix)})",
+            block,
+            re.DOTALL,
+        )
     ]
     assert matching_blocks != []
 
@@ -134,17 +165,16 @@ def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
-    statements = _ts_real_statements(content)
+    statements = _ts_non_comment_lines(content)
 
     assert "@deprecated" in content
     assert len(statements) == 1
 
     statement = statements[0]
-    has_export_all = f'export * from "{target}"' in statement or f"export * from '{target}'" in statement
-    has_named_reexport = (
-        (f'from "{target}"' in statement or f"from '{target}'" in statement) and "export {" in statement
+    assert re.fullmatch(
+        rf"export\s+(?:\*\s+from|\{{[^}}]+\}}\s+from)\s+['\"]{re.escape(target)}['\"];?",
+        statement,
     )
-    assert has_export_all or has_named_reexport
 
     for forbidden in (
         "function ",
@@ -289,17 +319,17 @@ def test_repo_boundaries_architecture_note_and_lint() -> None:
     lint_config = _read("eslint.config.mjs")
     _assert_eslint_layer_guardrail(
         lint_config,
-        files_glob="src/views/**/*.ts?(x)",
+        layer_prefix="src/views/",
         restricted_patterns=("@/app/*",),
     )
     _assert_eslint_layer_guardrail(
         lint_config,
-        files_glob="src/features/**/*.ts?(x)",
+        layer_prefix="src/features/",
         restricted_patterns=("@/app/*", "@/views/*"),
     )
     _assert_eslint_layer_guardrail(
         lint_config,
-        files_glob="src/shared/**/*.ts?(x)",
+        layer_prefix="src/shared/",
         restricted_patterns=("@/app/*", "@/views/*", "@/features/*"),
     )
 
