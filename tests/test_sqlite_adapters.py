@@ -102,6 +102,7 @@ def _create_app_db(path: Path) -> None:
               project_name TEXT NOT NULL,
               thread_type TEXT,
               first_message TEXT NOT NULL,
+              route_slug TEXT NOT NULL,
               started_at TEXT NOT NULL,
               ended_at TEXT NOT NULL,
               message_count INTEGER NOT NULL,
@@ -257,6 +258,7 @@ def _create_app_db(path: Path) -> None:
               project_name,
               thread_type,
               first_message,
+              route_slug,
               started_at,
               ended_at,
               message_count,
@@ -272,7 +274,7 @@ def _create_app_db(path: Path) -> None:
               tool_use_count,
               subagent_count,
               task_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "codex:019cdbff-dbb7-71d0-baaf-c669c55af628",
@@ -282,6 +284,7 @@ def _create_app_db(path: Path) -> None:
                 "helaicopter",
                 "main",
                 "Build the adapters",
+                "build-the-adapters",
                 "2026-03-10T09:00:00+00:00",
                 "2026-03-10T09:05:00+00:00",
                 1,
@@ -731,6 +734,7 @@ class TestSqliteAppStore:
         summaries = store.list_historical_conversations(project_path="codex:-Users-tony-Code-helaicopter")
         assert len(summaries) == 1
         assert summaries[0].conversation_id == "codex:019cdbff-dbb7-71d0-baaf-c669c55af628"
+        assert summaries[0].route_slug == "build-the-adapters"
         assert summaries[0].failed_tool_call_count == 1
         assert summaries[0].tool_breakdown == {"Read": 1}
         assert summaries[0].subagent_type_breakdown == {"reviewer": 1}
@@ -740,6 +744,7 @@ class TestSqliteAppStore:
             session_id="019cdbff-dbb7-71d0-baaf-c669c55af628",
         )
         assert conversation is not None
+        assert conversation.route_slug == "build-the-adapters"
         assert conversation.messages[0].blocks[0].text_content == "Added adapters."
         assert conversation.plans[0].steps[0].step == "Build adapters"
         assert conversation.subagents[0].nickname == "alpha"

@@ -165,6 +165,7 @@ class ConversationRecord(ProvenanceMixin, OltpBase):
     project_name: Mapped[str] = mapped_column(Text, nullable=False)
     thread_type: Mapped[str] = mapped_column(Text, nullable=False, default="main")
     first_message: Mapped[str] = mapped_column(Text, nullable=False)
+    route_slug: Mapped[str] = mapped_column(Text, nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

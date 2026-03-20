@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import sqlite3
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -10,6 +12,8 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -453,6 +457,238 @@ def _conversation_envelope(
     }
 
 
+def _derive_route_slug(first_message: str) -> str:
+    conversation_refs = importlib.import_module("helaicopter_api.application.conversation_refs")
+    return conversation_refs.derive_route_slug(first_message)
+
+
+def _load_route_slug_migration():
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "python"
+        / "alembic"
+        / "versions"
+        / "20260320_0010_conversation_route_refs.py"
+    )
+    spec = importlib.util.spec_from_file_location("test_conversation_route_refs_migration", migration_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _create_pre_route_slug_conversations_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE conversations (
+          conversation_id TEXT PRIMARY KEY,
+          provider TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          project_path TEXT NOT NULL,
+          project_name TEXT NOT NULL,
+          thread_type TEXT NOT NULL,
+          first_message TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT NOT NULL,
+          message_count INTEGER NOT NULL,
+          model TEXT,
+          git_branch TEXT,
+          reasoning_effort TEXT,
+          speed TEXT,
+          total_input_tokens INTEGER NOT NULL,
+          total_output_tokens INTEGER NOT NULL,
+          total_cache_write_tokens INTEGER NOT NULL,
+          total_cache_read_tokens INTEGER NOT NULL,
+          total_reasoning_tokens INTEGER NOT NULL,
+          tool_use_count INTEGER NOT NULL,
+          subagent_count INTEGER NOT NULL,
+          task_count INTEGER NOT NULL,
+          estimated_input_cost TEXT,
+          estimated_output_cost TEXT,
+          estimated_cache_write_cost TEXT,
+          estimated_cache_read_cost TEXT,
+          estimated_total_cost TEXT,
+          record_source TEXT,
+          source_file_modified_at TEXT,
+          loaded_at TEXT NOT NULL,
+          first_ingested_at TEXT NOT NULL,
+          last_refreshed_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _insert_pre_route_slug_conversation(connection: sqlite3.Connection, *, conversation_id: str, first_message: str) -> None:
+    connection.execute(
+        """
+        INSERT INTO conversations (
+          conversation_id,
+          provider,
+          session_id,
+          project_path,
+          project_name,
+          thread_type,
+          first_message,
+          started_at,
+          ended_at,
+          message_count,
+          model,
+          git_branch,
+          reasoning_effort,
+          speed,
+          total_input_tokens,
+          total_output_tokens,
+          total_cache_write_tokens,
+          total_cache_read_tokens,
+          total_reasoning_tokens,
+          tool_use_count,
+          subagent_count,
+          task_count,
+          estimated_input_cost,
+          estimated_output_cost,
+          estimated_cache_write_cost,
+          estimated_cache_read_cost,
+          estimated_total_cost,
+          record_source,
+          source_file_modified_at,
+          loaded_at,
+          first_ingested_at,
+          last_refreshed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            conversation_id,
+            "claude",
+            conversation_id.removeprefix("claude:"),
+            "-Users-tony-Code-helaicopter",
+            "helaicopter",
+            "main",
+            first_message,
+            "2026-03-10T09:00:00+00:00",
+            "2026-03-10T09:05:00+00:00",
+            1,
+            "claude-sonnet-4-5",
+            "main",
+            None,
+            "standard",
+            10,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            "0.1",
+            "0.2",
+            "0.0",
+            "0.0",
+            "0.3",
+            "/tmp/source.jsonl",
+            None,
+            "2026-03-10T09:05:00+00:00",
+            "2026-03-10T09:05:00+00:00",
+            "2026-03-10T09:05:00+00:00",
+        ),
+    )
+
+
+def _upgrade_route_slug_migration(db_path: Path) -> None:
+    migration = _load_route_slug_migration()
+    engine = create_engine(f"sqlite:///{db_path}", future=True)
+    try:
+        with engine.begin() as connection:
+            operations = Operations(MigrationContext.configure(connection))
+            original_op = migration.op
+            migration.op = operations
+            try:
+                migration.upgrade_oltp()
+            finally:
+                migration.op = original_op
+    finally:
+        engine.dispose()
+
+
+class TestConversationRouteSlugMigration:
+    def test_route_slug_migration_adds_and_backfills_stored_slug_column(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "migration.sqlite"
+        try:
+            connection = sqlite3.connect(db_path)
+            _create_pre_route_slug_conversations_table(connection)
+            _insert_pre_route_slug_conversation(
+                connection,
+                conversation_id="claude:session-stored",
+                first_message="Review the backend rollout",
+            )
+            connection.commit()
+            connection.close()
+
+            _upgrade_route_slug_migration(db_path)
+
+            connection = sqlite3.connect(db_path)
+            connection.row_factory = sqlite3.Row
+
+            columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(conversations)").fetchall()
+            }
+            row = connection.execute(
+                "SELECT route_slug FROM conversations WHERE conversation_id = ?",
+                ("claude:session-stored",),
+            ).fetchone()
+        finally:
+            connection.close()
+
+        assert "route_slug" in columns
+        assert row is not None
+        assert row["route_slug"] == "review-the-backend-rollout"
+
+    def test_route_slug_migration_backfill_matches_shared_slug_derivation_for_edge_cases(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        db_path = tmp_path / "migration.sqlite"
+        try:
+            connection = sqlite3.connect(db_path)
+            _create_pre_route_slug_conversations_table(connection)
+            first_messages = {
+                "claude:session-punctuation": "  Review!!!   the---backend rollout??  ",
+                "claude:session-trim": "A" * 120,
+                "claude:session-ascii": "Crème brûlée für jalapeño",
+                "claude:session-default": "東京!!!",
+            }
+            for conversation_id, first_message in first_messages.items():
+                _insert_pre_route_slug_conversation(
+                    connection,
+                    conversation_id=conversation_id,
+                    first_message=first_message,
+                )
+
+            connection.commit()
+            connection.close()
+
+            _upgrade_route_slug_migration(db_path)
+
+            connection = sqlite3.connect(db_path)
+            connection.row_factory = sqlite3.Row
+
+            rows = connection.execute(
+                "SELECT conversation_id, first_message, route_slug FROM conversations ORDER BY conversation_id ASC"
+            ).fetchall()
+        finally:
+            connection.close()
+
+        route_slugs = {row["conversation_id"]: row["route_slug"] for row in rows}
+        assert route_slugs == {
+            conversation_id: _derive_route_slug(first_message)
+            for conversation_id, first_message in first_messages.items()
+        }
+        assert route_slugs["claude:session-punctuation"] == "review-the-backend-rollout"
+        assert route_slugs["claude:session-trim"] == "a" * 80
+        assert route_slugs["claude:session-ascii"] == "creme-brulee-fur-jalapeno"
+        assert route_slugs["claude:session-default"] == "conversation"
+
+
 class TestRefreshOperationalStore:
     def test_run_refresh_upserts_conversations_and_reconciles_removed_rows(
         self,
@@ -538,6 +774,11 @@ class TestRefreshOperationalStore:
         monkeypatch.setattr(refresh_module, "generate_schema_docs", lambda _settings=None: None)
 
         refresh_module.run_refresh(force=True, trigger="test", stale_after_seconds=0, settings=settings)
+        with Session(refresh_module.create_oltp_engine(settings)) as session:
+            original = session.get(ConversationRecord, "claude:session-a")
+        assert original is not None
+        assert original.route_slug == _derive_route_slug("First revision")
+
         current["index"] = 1
         refresh_module.run_refresh(force=False, trigger="test", stale_after_seconds=0, settings=settings)
 
@@ -549,6 +790,7 @@ class TestRefreshOperationalStore:
         assert [conversation.session_id for conversation in conversations] == ["session-a"]
         updated = conversations[0]
         assert updated.first_message == "Second revision"
+        assert updated.route_slug == _derive_route_slug("First revision")
         assert updated.ended_at.isoformat().startswith("2025-11-15T09:47:30")
         assert updated.source_file_modified_at is not None
         assert updated.source_file_modified_at.isoformat().startswith("2025-11-15T09:47:40")
@@ -669,6 +911,61 @@ def refresh_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
 
 class TestRefreshPipeline:
+    def test_run_refresh_backfills_missing_route_slug_from_first_message(self, refresh_runtime) -> None:
+        settings = refresh_runtime["settings"]
+        refresh_runtime["envelopes"][:] = [
+            _conversation_envelope(
+                session_id="session-a",
+                first_message="Normalize this title on first persistence",
+                ended_at_ms=1_763_200_010_000,
+                source_file_modified_at_ms=1_763_200_020_000,
+            )
+        ]
+
+        with Session(refresh_runtime["oltp_engine"]) as session:
+            session.add(
+                ConversationRecord(
+                    conversation_id="claude:session-a",
+                    provider="claude",
+                    session_id="session-a",
+                    project_path="-Users-tony-Code-helaicopter",
+                    project_name="helaicopter",
+                    thread_type="main",
+                    first_message="stale",
+                    route_slug="",
+                    started_at=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
+                    ended_at=datetime(2026, 3, 10, 9, 5, tzinfo=UTC),
+                    message_count=1,
+                    model="claude-sonnet-4-5",
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    total_cache_write_tokens=0,
+                    total_cache_read_tokens=0,
+                    total_reasoning_tokens=0,
+                    tool_use_count=0,
+                    subagent_count=0,
+                    task_count=0,
+                    loaded_at=datetime(2026, 3, 10, 9, 5, tzinfo=UTC),
+                    first_ingested_at=datetime(2026, 3, 10, 9, 5, tzinfo=UTC),
+                    last_refreshed_at=datetime(2026, 3, 10, 9, 5, tzinfo=UTC),
+                )
+            )
+            session.commit()
+
+        refresh_module.run_refresh(
+            force=False,
+            trigger="manual",
+            stale_after_seconds=0,
+            settings=settings,
+        )
+
+        with Session(refresh_runtime["oltp_engine"]) as session:
+            row = session.get(ConversationRecord, "claude:session-a")
+
+        assert row is not None
+        assert row.first_message == "Normalize this title on first persistence"
+        assert row.route_slug == _derive_route_slug("Normalize this title on first persistence")
+
     def test_run_refresh_reconciles_only_changed_and_deleted_conversations(self, refresh_runtime) -> None:
         settings = refresh_runtime["settings"]
         refresh_runtime["envelopes"][:] = [
