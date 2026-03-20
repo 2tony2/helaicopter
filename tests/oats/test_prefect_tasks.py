@@ -127,6 +127,7 @@ def test_execute_compiled_task_attempt_uses_repo_dangerous_bypass_setting(
         attempt=1,
     )
 
+    assert recorded["read_only"] is False
     assert recorded["dangerous_bypass"] is True
 
 

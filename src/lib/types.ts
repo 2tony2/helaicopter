@@ -117,6 +117,9 @@ export interface ConversationSummary {
   reasoningEffort?: string; // Codex: "low" | "medium" | "high"
   speed?: string; // Claude: "standard" | "fast"
   totalReasoningTokens?: number; // Codex only
+  recordSource?: string;
+  sourcePath?: string;
+  sourceFileModifiedAt?: number;
 }
 
 export interface SubagentInfo {
@@ -191,12 +194,12 @@ export interface OrchestrationInvocation {
   outputText: string;
   rawStdout: string;
   rawStderr: string;
-  exitCode: number;
+  exitCode?: number;
   timedOut: boolean;
   startedAt: string;
-  finishedAt: string;
-  projectPath?: string;
-  conversationPath?: string;
+  finishedAt?: string | null;
+  projectPath?: string | null;
+  conversationPath?: string | null;
 }
 
 export type OrchestrationTaskStatus =
@@ -216,13 +219,21 @@ export type OrchestrationRunStatus =
   | "failed"
   | "timed_out";
 
+export type OrchestrationStatusTone =
+  | "running"
+  | "success"
+  | "error"
+  | "pending"
+  | "warning"
+  | "unknown";
+
 export interface OrchestrationTaskRecord {
   taskId: string;
   title: string;
   dependsOn: string[];
   status: OrchestrationTaskStatus;
   attempts: number;
-  invocation: OrchestrationInvocation;
+  invocation: OrchestrationInvocation | null;
 }
 
 export interface OrchestrationDagNode {
@@ -233,13 +244,16 @@ export interface OrchestrationDagNode {
   role: string;
   agent: string;
   sessionId?: string | null;
-  projectPath?: string;
-  conversationPath?: string;
+  projectPath?: string | null;
+  conversationPath?: string | null;
   status: OrchestrationTaskStatus | OrchestrationRunStatus;
   isActive: boolean;
+  isStale?: boolean;
+  statusTone?: OrchestrationStatusTone;
+  statusLabel?: string;
   attempts?: number;
   lastHeartbeatAt?: string | null;
-  exitCode: number;
+  exitCode?: number | null;
   timedOut: boolean;
   depth: number;
 }
@@ -324,7 +338,7 @@ export interface OvernightOatsRunRecord {
   recordedAt: string;
   recordPath: string;
   dag: OrchestrationDag;
-  evaluation: OrchestrationRunEvaluation;
+  evaluation?: OrchestrationRunEvaluation;
 }
 
 export type PrefectRunTone = "running" | "success" | "error" | "pending" | "unknown";

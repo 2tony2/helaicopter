@@ -148,6 +148,270 @@ class TestOatsArtifactStore:
 
 
 class TestOrchestrationEndpoint:
+    def test_fact_endpoint_prefers_fresh_runtime_state_and_emits_latest_attempt_facts(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        now = datetime.now(UTC)
+        repo_root = tmp_path
+        run_id = "oats-facts-runtime"
+        state_path = repo_root / ".oats" / "runtime" / run_id / "state.json"
+        record_path = repo_root / ".oats" / "runs" / "runtime-terminal.json"
+
+        _write_model(
+            record_path,
+            RunExecutionRecord(
+                run_id=run_id,
+                run_title="Runtime should win while active",
+                repo_root=repo_root,
+                config_path=repo_root / ".oats" / "config.toml",
+                run_spec_path=repo_root / "runs" / "runtime.md",
+                mode="writable",
+                integration_branch="oats/overnight/runtime-facts",
+                task_pr_target="oats/overnight/runtime-facts",
+                final_pr_target="main",
+                tasks=[
+                    TaskExecutionRecord(
+                        task_id="task-api",
+                        title="Implement route",
+                        depends_on=[],
+                        invocation=AgentInvocationResult(
+                            agent="claude",
+                            role="executor",
+                            command=["claude", "run"],
+                            cwd=repo_root,
+                            prompt="implement route",
+                            session_id="task-api-terminal",
+                            exit_code=0,
+                            started_at=now - timedelta(minutes=12),
+                            finished_at=now - timedelta(minutes=11),
+                        ),
+                    )
+                ],
+                recorded_at=now - timedelta(minutes=10),
+            ),
+        )
+        _write_model(
+            state_path,
+            RunRuntimeState(
+                run_id=run_id,
+                run_title="Runtime should win while active",
+                repo_root=repo_root,
+                config_path=repo_root / ".oats" / "config.toml",
+                run_spec_path=repo_root / "runs" / "runtime.md",
+                mode="writable",
+                integration_branch="oats/overnight/runtime-facts",
+                task_pr_target="oats/overnight/runtime-facts",
+                final_pr_target="main",
+                runtime_dir=state_path.parent,
+                status="running",
+                active_task_id="task-api",
+                started_at=now - timedelta(minutes=6),
+                updated_at=now - timedelta(seconds=10),
+                heartbeat_at=now - timedelta(seconds=5),
+                tasks=[
+                    TaskRuntimeRecord(
+                        task_id="task-api",
+                        title="Implement route",
+                        depends_on=[],
+                        branch_name="oats/task/task-api",
+                        pr_base="oats/overnight/runtime-facts",
+                        agent="claude",
+                        status="running",
+                        attempts=2,
+                        invocation=InvocationRuntimeRecord(
+                            agent="claude",
+                            role="executor",
+                            command=["claude", "run"],
+                            cwd=repo_root,
+                            prompt="implement route",
+                            session_id="task-api-runtime",
+                            exit_code=None,
+                            started_at=now - timedelta(minutes=2),
+                            last_heartbeat_at=now - timedelta(seconds=5),
+                        ),
+                    )
+                ],
+                final_record_path=record_path,
+            ),
+        )
+
+        with orchestration_client(repo_root) as client:
+            response = client.get("/orchestration/oats/facts")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["canonicalRules"] == [
+            "prefer fresh runtime snapshots while a run is still active",
+            "prefer terminal run records when runtime snapshots are stale or missing",
+            "emit one task-attempt fact for the latest observed runtime attempt when history is incomplete",
+            "emit one terminal task-attempt fact per recorded task invocation with attempt number 1",
+        ]
+        assert payload["runFacts"] == [
+            {
+                "runId": run_id,
+                "runTitle": "Runtime should win while active",
+                "sourceKind": "runtime_snapshot",
+                "canonicalReason": "runtime snapshot is active and fresher than any terminal record",
+                "status": "running",
+                "taskCount": 1,
+                "attemptCount": 2,
+                "completedTaskCount": 0,
+                "failedTaskCount": 0,
+                "pendingTaskCount": 0,
+                "runningTaskCount": 1,
+                "timedOutTaskCount": 0,
+                "activeTaskId": "task-api",
+                "isRunning": True,
+                "isStale": False,
+                "runtimeStatePath": str(state_path),
+                "terminalRecordPath": str(record_path),
+            }
+        ]
+        assert payload["taskAttemptFacts"] == [
+            {
+                "runId": run_id,
+                "taskId": "task-api",
+                "taskTitle": "Implement route",
+                "attemptNumber": 2,
+                "sourceKind": "runtime_snapshot",
+                "status": "running",
+                "agent": "claude",
+                "sessionId": "task-api-runtime",
+                "exitCode": None,
+                "timedOut": False,
+            }
+        ]
+
+    def test_fact_endpoint_prefers_terminal_record_when_runtime_snapshot_is_stale(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        now = datetime.now(UTC)
+        repo_root = tmp_path
+        run_id = "oats-facts-terminal"
+        state_path = repo_root / ".oats" / "runtime" / run_id / "state.json"
+        record_path = repo_root / ".oats" / "runs" / "terminal.json"
+
+        _write_model(
+            state_path,
+            RunRuntimeState(
+                run_id=run_id,
+                run_title="Terminal should win after staleness",
+                repo_root=repo_root,
+                config_path=repo_root / ".oats" / "config.toml",
+                run_spec_path=repo_root / "runs" / "terminal.md",
+                mode="writable",
+                integration_branch="oats/overnight/terminal-facts",
+                task_pr_target="oats/overnight/terminal-facts",
+                final_pr_target="main",
+                runtime_dir=state_path.parent,
+                status="running",
+                active_task_id="task-api",
+                started_at=now - timedelta(minutes=20),
+                updated_at=now - timedelta(minutes=8),
+                heartbeat_at=now - timedelta(minutes=8),
+                tasks=[
+                    TaskRuntimeRecord(
+                        task_id="task-api",
+                        title="Implement route",
+                        depends_on=[],
+                        branch_name="oats/task/task-api",
+                        pr_base="oats/overnight/terminal-facts",
+                        agent="claude",
+                        status="running",
+                        attempts=1,
+                        invocation=InvocationRuntimeRecord(
+                            agent="claude",
+                            role="executor",
+                            command=["claude", "run"],
+                            cwd=repo_root,
+                            prompt="implement route",
+                            session_id="task-api-runtime",
+                            started_at=now - timedelta(minutes=10),
+                            last_heartbeat_at=now - timedelta(minutes=8),
+                        ),
+                    )
+                ],
+                final_record_path=record_path,
+            ),
+        )
+        _write_model(
+            record_path,
+            RunExecutionRecord(
+                run_id=run_id,
+                run_title="Terminal should win after staleness",
+                repo_root=repo_root,
+                config_path=repo_root / ".oats" / "config.toml",
+                run_spec_path=repo_root / "runs" / "terminal.md",
+                mode="writable",
+                integration_branch="oats/overnight/terminal-facts",
+                task_pr_target="oats/overnight/terminal-facts",
+                final_pr_target="main",
+                tasks=[
+                    TaskExecutionRecord(
+                        task_id="task-api",
+                        title="Implement route",
+                        depends_on=[],
+                        invocation=AgentInvocationResult(
+                            agent="claude",
+                            role="executor",
+                            command=["claude", "run"],
+                            cwd=repo_root,
+                            prompt="implement route",
+                            session_id="task-api-terminal",
+                            exit_code=1,
+                            raw_stderr="boom",
+                            started_at=now - timedelta(minutes=7),
+                            finished_at=now - timedelta(minutes=6),
+                        ),
+                    )
+                ],
+                recorded_at=now - timedelta(minutes=6),
+            ),
+        )
+
+        with orchestration_client(repo_root) as client:
+            response = client.get("/orchestration/oats/facts")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["runFacts"] == [
+            {
+                "runId": run_id,
+                "runTitle": "Terminal should win after staleness",
+                "sourceKind": "terminal_record",
+                "canonicalReason": "terminal record wins because the runtime snapshot is stale",
+                "status": "failed",
+                "taskCount": 1,
+                "attemptCount": 1,
+                "completedTaskCount": 0,
+                "failedTaskCount": 1,
+                "pendingTaskCount": 0,
+                "runningTaskCount": 0,
+                "timedOutTaskCount": 0,
+                "activeTaskId": None,
+                "isRunning": False,
+                "isStale": True,
+                "runtimeStatePath": str(state_path),
+                "terminalRecordPath": str(record_path),
+            }
+        ]
+        assert payload["taskAttemptFacts"] == [
+            {
+                "runId": run_id,
+                "taskId": "task-api",
+                "taskTitle": "Implement route",
+                "attemptNumber": 1,
+                "sourceKind": "terminal_record",
+                "status": "failed",
+                "agent": "claude",
+                "sessionId": "task-api-terminal",
+                "exitCode": 1,
+                "timedOut": False,
+            }
+        ]
+
     def test_runtime_state_response_is_camel_cased_and_preferred_over_stale_run_record(
         self,
         tmp_path: Path,

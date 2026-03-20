@@ -76,11 +76,15 @@ npm run db:refresh
 1. Scans `~/.claude/` and `~/.codex/` for conversation JSONL files
 2. Streaming parser processes each file (handles 200MB+ files)
 3. Extracts messages, tool calls, token counts, plans, tasks, subagent relationships
-4. Writes/updates records in SQLite
-5. Materializes analytics views in DuckDB
-6. Clears all backend in-process caches
-7. Disposes and recreates SQLAlchemy engine (fresh connections)
-8. Generates schema documentation under `public/database-schemas/`
+4. Detects changed and deleted conversations using per-conversation refresh fingerprints
+5. Upserts only changed conversation detail into SQLite and removes deleted conversations
+6. Updates DuckDB facts without dropping the warehouse file as the normal path
+7. Rebuilds derived aggregate tables from the current conversation set
+8. Invalidates only backend read-cache keys tied to database-backed analytics and conversation lookups
+9. Disposes and recreates SQLAlchemy engine (fresh connections)
+10. Generates schema documentation under `public/database-schemas/`
+
+The normal near-real-time path is incremental. A destructive full reconciliation is reserved for explicit `force` refreshes or first-time bootstrapping.
 
 ### Database migrations
 
@@ -95,9 +99,17 @@ npm run db:migrate:olap   # Run DuckDB migrations
 
 ### Backend in-process cache
 
-A lightweight key/value cache in `bootstrap/services.py`. Caches frequently-read data like conversation summaries to avoid repeated file parsing. Cleared entirely on database refresh via `invalidate_backend_read_caches(services)`.
+A lightweight key/value cache in `bootstrap/services.py`. Caches frequently-read data like conversation summaries to avoid repeated file parsing. Database refresh invalidates the database-backed read keys (`analytics`, Codex artifact maps, and database-status entries) instead of wiping unrelated cache entries.
 
 The SQLAlchemy engine is also disposed on refresh, ensuring new requests get fresh database connections.
+
+## Near-real-time analytics supplement
+
+Analytics reads use the warehouse as the authoritative source for stable history. For the newest slice, `/analytics` also checks SQLite conversation summaries for a bounded 6-hour supplement window so newly changed sessions can appear before the next warehouse refresh finishes.
+
+- Warehouse rows remain authoritative outside the 6-hour window.
+- Inside the 6-hour window, SQLite rows replace warehouse rows with the same `conversation_id` to avoid double counting.
+- SQLite-only recent conversations are included so brand-new sessions appear during near-real-time polling.
 
 ### Frontend SWR cache
 

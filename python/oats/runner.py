@@ -7,9 +7,11 @@ import subprocess
 import time
 import threading
 import uuid
-from typing import Callable, Literal, TextIO, TypedDict
+from typing import Callable, IO, Literal, TypeGuard, TypedDict
 
 from pydantic import ConfigDict, TypeAdapter, ValidationError, validate_call
+from helaicopter_domain.ids import SessionId
+from helaicopter_domain.vocab import ProviderName
 from oats.models import AgentInvocationResult, AgentCommand, PlannedTask
 
 
@@ -55,10 +57,20 @@ _CODEX_RUNNER_EVENT_ADAPTER = TypeAdapter(_CodexRunnerEvent)
 _CLAUDE_CLI_RESULT_ADAPTER = TypeAdapter(_ClaudeCliResult)
 
 
+def _is_codex_thread_started_event(payload: _CodexRunnerEvent) -> TypeGuard[_CodexThreadStartedEvent]:
+    return payload["type"] == "thread.started"
+
+
+def _is_codex_item_completed_event(
+    payload: _CodexRunnerEvent,
+) -> TypeGuard[_CodexItemCompletedEvent]:
+    return payload["type"] == "item.completed"
+
+
 class _StreamCollector:
     def __init__(
         self,
-        stream: TextIO | None,
+        stream: IO[str] | None,
         *,
         on_line: Callable[[str], None] | None = None,
     ) -> None:
@@ -97,9 +109,9 @@ class _StreamCollector:
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def invoke_agent(
     *,
-    agent_name: str,
+    agent_name: ProviderName,
     agent_command: AgentCommand,
-    role: str,
+    role: Literal["planner", "executor", "conflict_resolver", "merge_operator"],
     cwd: Path,
     prompt: str,
     read_only: bool = True,
@@ -147,7 +159,7 @@ def invoke_agent(
             timed_out=timed_out,
         )
     elif agent_name == "claude":
-        requested_session_id = str(uuid.uuid4())
+        requested_session_id = SessionId(str(uuid.uuid4()))
         command = _build_claude_command(
             agent_command,
             cwd,
@@ -397,7 +409,7 @@ def _parse_codex_result(
     command: list[str],
     cwd: Path,
     prompt: str,
-    role: str,
+    role: Literal["planner", "executor", "conflict_resolver", "merge_operator"],
     completed: subprocess.CompletedProcess[str],
     started_at: datetime,
     timed_out: bool,
@@ -409,10 +421,9 @@ def _parse_codex_result(
         payload = _parse_codex_runner_event(line)
         if payload is None:
             continue
-        payload_type = payload.get("type")
-        if payload_type == "thread.started":
+        if _is_codex_thread_started_event(payload):
             thread_id = payload["thread_id"]
-        elif payload_type == "item.completed":
+        elif _is_codex_item_completed_event(payload):
             output_text = payload["item"].get("text", output_text)
 
     return AgentInvocationResult(
@@ -421,7 +432,7 @@ def _parse_codex_result(
         command=command,
         cwd=cwd,
         prompt=prompt,
-        session_id=thread_id,
+        session_id=SessionId(thread_id) if thread_id else None,
         session_id_field="thread_id" if thread_id else None,
         output_text=output_text,
         raw_stdout=completed.stdout,
@@ -442,8 +453,7 @@ def _handle_codex_progress_line(
     payload = _parse_codex_runner_event(line)
     if payload is None:
         return
-    payload_type = payload.get("type")
-    if payload_type == "thread.started":
+    if _is_codex_thread_started_event(payload):
         thread_id = payload["thread_id"]
         if thread_id:
             on_progress(
@@ -452,7 +462,7 @@ def _handle_codex_progress_line(
                     "session_id_field": "thread_id",
                 }
             )
-    elif payload_type == "item.completed":
+    elif _is_codex_item_completed_event(payload):
         text = payload["item"].get("text")
         if text:
             on_progress({"output_text": text})
@@ -463,10 +473,10 @@ def _parse_claude_result(
     command: list[str],
     cwd: Path,
     prompt: str,
-    role: str,
+    role: Literal["planner", "executor", "conflict_resolver", "merge_operator"],
     completed: subprocess.CompletedProcess[str],
     started_at: datetime,
-    requested_session_id: str,
+    requested_session_id: SessionId,
     timed_out: bool,
 ) -> AgentInvocationResult:
     session_id: str | None = None
@@ -489,7 +499,7 @@ def _parse_claude_result(
         command=command,
         cwd=cwd,
         prompt=prompt,
-        session_id=session_id,
+        session_id=SessionId(session_id),
         session_id_field="session_id" if session_id else None,
         requested_session_id=requested_session_id,
         output_text=output_text,
@@ -577,7 +587,7 @@ def _run_command(
     stdout_collector.start()
     stderr_collector.start()
 
-    if process.stdin is not None:
+    if process.stdin is not None and prompt is not None:
         process.stdin.write(prompt)
         process.stdin.close()
 

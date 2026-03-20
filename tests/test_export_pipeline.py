@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import UTC, datetime
+
+import pytest
+
+from helaicopter_api.server.config import Settings
+from helaicopter_db import export_pipeline
+
+
+def _envelope(session_id: str, *, timestamp: int, input_tokens: int) -> dict[str, object]:
+    return {
+        "type": "conversation",
+        "summary": {
+            "sessionId": session_id,
+            "projectPath": "-Users-tony-Code-helaicopter",
+            "projectName": "helaicopter",
+            "threadType": "main",
+            "firstMessage": f"session {session_id}",
+            "timestamp": timestamp,
+            "messageCount": 1,
+            "model": "claude-sonnet-4-5-20250929",
+            "totalInputTokens": input_tokens,
+            "totalOutputTokens": 0,
+            "totalCacheCreationTokens": 0,
+            "totalCacheReadTokens": 0,
+            "totalReasoningTokens": 0,
+            "toolUseCount": 0,
+            "subagentCount": 0,
+            "taskCount": 0,
+            "toolBreakdown": {},
+            "subagentTypeBreakdown": {},
+            "recordSource": f"/tmp/{session_id}.jsonl",
+            "sourceFileModifiedAt": timestamp + 1_000,
+        },
+        "detail": {
+            "endTime": timestamp + 60_000,
+            "messages": [],
+            "plans": [],
+            "subagents": [],
+            "contextAnalytics": {"buckets": [], "steps": []},
+        },
+        "tasks": [],
+        "cost": {
+            "inputCost": 0.1,
+            "outputCost": 0.0,
+            "cacheWriteCost": 0.0,
+            "cacheReadCost": 0.0,
+            "totalCost": 0.1,
+        },
+    }
+
+
+def _stable(value: object) -> object:
+    if isinstance(value, list):
+        return [_stable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _stable(value[key]) for key in sorted(value)}
+    return value
+
+
+def test_iter_export_rows_uses_python_collectors_without_tsx(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    settings = Settings(project_root=tmp_path)
+    expected = [
+        _envelope("session-a", timestamp=1_710_000_000_000, input_tokens=100),
+        _envelope("session-b", timestamp=1_710_000_600_000, input_tokens=200),
+    ]
+
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_claude_historical_envelopes",
+        lambda _settings: iter(expected[:1]),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_codex_historical_envelopes",
+        lambda _settings: iter(expected[1:]),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        export_pipeline,
+        "tsx_binary",
+        lambda _settings=None: (_ for _ in ()).throw(AssertionError("tsx should not be invoked")),
+        raising=False,
+    )
+
+    assert list(export_pipeline.iter_export_rows(settings)) == expected
+
+
+def test_read_export_meta_hashes_python_historical_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    settings = Settings(project_root=tmp_path)
+    envelopes = [
+        _envelope("session-b", timestamp=1_710_000_600_000, input_tokens=200),
+        _envelope("session-a", timestamp=1_710_000_000_000, input_tokens=100),
+    ]
+
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_claude_historical_envelopes",
+        lambda _settings: iter(envelopes[:1]),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_codex_historical_envelopes",
+        lambda _settings: iter(envelopes[1:]),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        export_pipeline,
+        "tsx_binary",
+        lambda _settings=None: (_ for _ in ()).throw(AssertionError("tsx should not be invoked")),
+        raising=False,
+    )
+    monkeypatch.setattr(export_pipeline, "_utc_now_ms", lambda: 1_710_086_400_000, raising=False)
+
+    meta = export_pipeline.read_export_meta(settings)
+
+    sorted_summaries = sorted(
+        (_stable(envelope["summary"]) for envelope in envelopes),
+        key=lambda item: json.dumps(item, sort_keys=True),
+    )
+    expected_input_key = hashlib.sha256(json.dumps(sorted_summaries).encode("utf-8")).hexdigest()
+    cutoff_start = 1_710_086_400_000 - 365 * 24 * 60 * 60 * 1000
+    expected_window_start = datetime.fromtimestamp(
+        max(cutoff_start, 1_710_000_000_000) / 1000,
+        tz=UTC,
+    ).isoformat().replace("+00:00", "Z")
+
+    assert meta.conversation_count == 2
+    assert meta.input_key == expected_input_key
+    assert meta.window_days == 365
+    assert meta.window_start == expected_window_start
+    assert meta.window_end == datetime.fromtimestamp(1_710_086_400_000 / 1000, tz=UTC).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ).isoformat().replace("+00:00", "Z")
+    assert meta.scope_label == "Historical conversations before today from the last 365 days"

@@ -1,4 +1,8 @@
-"""Pure pricing helpers shared by analytics computations."""
+"""Pure pricing helpers shared by analytics computations.
+
+DEPRECATED: Use helaicopter_semantics.pricing instead.
+This module is kept for backward compatibility during the migration.
+"""
 
 from __future__ import annotations
 

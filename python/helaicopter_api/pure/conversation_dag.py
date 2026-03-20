@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from urllib.parse import quote
 
+from helaicopter_domain.ids import SessionId
 from helaicopter_api.schema.conversations import (
     ConversationDagEdgeResponse,
     ConversationDagNodeResponse,
@@ -12,14 +13,15 @@ from helaicopter_api.schema.conversations import (
     ConversationDagStatsResponse,
     ConversationDetailResponse,
     ConversationSubagentResponse,
+    ConversationTextBlockResponse,
 )
 
 
 def build_conversation_dag(
     *,
     project_path: str,
-    root_session_id: str,
-    load_conversation: Callable[[str, str | None], ConversationDetailResponse | None],
+    root_session_id: SessionId,
+    load_conversation: Callable[[SessionId, SessionId | None], ConversationDetailResponse | None],
 ) -> ConversationDagResponse | None:
     """Build a deterministic conversation/sub-agent DAG from shaped details."""
     nodes: dict[str, ConversationDagNodeResponse] = {}
@@ -28,10 +30,10 @@ def build_conversation_dag(
     active_path: set[str] = set()
 
     def visit(
-        session_id: str,
+        session_id: SessionId,
         depth: int,
         *,
-        parent_session_id: str | None = None,
+        parent_session_id: SessionId | None = None,
         subagent: ConversationSubagentResponse | None = None,
     ) -> None:
         if parent_session_id is not None:
@@ -68,7 +70,7 @@ def build_conversation_dag(
             if child.agent_id == session_id:
                 continue
             visit(
-                child.agent_id,
+                _child_session_id(child),
                 next_node.depth + 1,
                 parent_session_id=session_id,
                 subagent=child,
@@ -97,9 +99,9 @@ def build_conversation_dag(
 def _to_node(
     *,
     project_path: str,
-    session_id: str,
+    session_id: SessionId,
     depth: int,
-    parent_session_id: str | None,
+    parent_session_id: SessionId | None,
     conversation: ConversationDetailResponse | None,
     subagent: ConversationSubagentResponse | None,
     is_root: bool,
@@ -138,8 +140,8 @@ def _to_node(
 def _conversation_node_path(
     *,
     project_path: str,
-    parent_session_id: str | None,
-    session_id: str,
+    parent_session_id: SessionId | None,
+    session_id: SessionId,
     is_root: bool,
 ) -> str:
     encoded_project_path = quote(project_path, safe="")
@@ -154,7 +156,7 @@ def _summarize_label(conversation: ConversationDetailResponse | None, fallback: 
         return fallback
     for message in conversation.messages:
         for block in message.blocks:
-            if block.type == "text" and block.text and block.text.strip():
+            if isinstance(block, ConversationTextBlockResponse) and block.text and block.text.strip():
                 return " ".join(block.text.split())[:120]
     return fallback
 
@@ -171,9 +173,13 @@ def _conversation_total_tokens(conversation: ConversationDetailResponse | None) 
     )
 
 
+def _child_session_id(child: ConversationSubagentResponse) -> SessionId:
+    return SessionId(child.agent_id)
+
+
 def _compute_stats(
     *,
-    root_session_id: str,
+    root_session_id: SessionId,
     nodes: list[ConversationDagNodeResponse],
     edges: list[ConversationDagEdgeResponse],
 ) -> ConversationDagStatsResponse:

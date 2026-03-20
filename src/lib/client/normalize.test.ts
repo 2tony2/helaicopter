@@ -7,6 +7,7 @@ import {
   normalizeConversationDetail,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompts,
+  normalizeOvernightOatsRuns,
   normalizeProjects,
   normalizeSubscriptionSettings,
   normalizeTasks,
@@ -373,6 +374,7 @@ test("normalizeAnalytics accepts existing Next.js camelCase payloads", () => {
   assert.equal(normalized.timeSeries.daily.length, 1);
   assert.equal(normalized.costBreakdown.totalCost, 12.5);
   assert.equal(normalized.rates.spend.perDay, 2);
+  assert.equal(normalized.rates.totalTokens.perDay, 20);
 });
 
 test("normalizeTasks unwraps the FastAPI task envelope for the existing viewer", () => {
@@ -574,6 +576,89 @@ test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt
       durationMs: null,
     },
   ]);
+});
+
+test("normalizeOvernightOatsRuns removes the frontend-only required evaluation field", () => {
+  const runs = normalizeOvernightOatsRuns([
+    {
+      source: "overnight-oats",
+      contractVersion: "oats-runtime-v1",
+      runId: "run-1",
+      runTitle: "Full Program Authoritative Analytics Overnight",
+      repoRoot: "/Users/tony/Code/helaicopter",
+      configPath: "/Users/tony/Code/helaicopter/.oats/config.toml",
+      runSpecPath: "/Users/tony/Code/helaicopter/.oats/runs/run-1/spec.md",
+      mode: "full-program",
+      integrationBranch: "feature/full-program",
+      taskPrTarget: "main",
+      finalPrTarget: "main",
+      status: "running",
+      activeTaskId: "task-1",
+      heartbeatAt: "2026-03-19T10:15:00Z",
+      finishedAt: null,
+      planner: {
+        agent: "claude",
+        role: "planner",
+        command: ["codex"],
+        cwd: "/Users/tony/Code/helaicopter",
+        prompt: "Ship it",
+        sessionId: "planner-session",
+        startedAt: "2026-03-19T10:00:00Z",
+        finishedAt: null,
+      },
+      tasks: [
+        {
+          taskId: "task-1",
+          title: "Frontend simplification",
+          dependsOn: [],
+          status: "running",
+          attempts: 1,
+          invocation: null,
+        },
+      ],
+      createdAt: "2026-03-19T10:00:00Z",
+      lastUpdatedAt: "2026-03-19T10:15:00Z",
+      isRunning: true,
+      recordedAt: "2026-03-19T10:15:00Z",
+      recordPath: "/Users/tony/Code/helaicopter/.oats/runs/run-1.json",
+      dag: {
+        nodes: [
+          {
+            id: "task-1",
+            kind: "task",
+            label: "Frontend simplification",
+            role: "implementer",
+            agent: "codex",
+            status: "running",
+            isActive: true,
+            attempts: 1,
+            lastHeartbeatAt: "2026-03-19T10:15:00Z",
+            exitCode: null,
+            timedOut: false,
+            depth: 1,
+          },
+        ],
+        edges: [],
+        stats: {
+          totalNodes: 1,
+          totalEdges: 0,
+          maxDepth: 1,
+          maxBreadth: 1,
+          rootCount: 1,
+          providerBreakdown: { codex: 1 },
+          timedOutCount: 0,
+          activeCount: 1,
+          pendingCount: 0,
+          failedCount: 0,
+          succeededCount: 0,
+        },
+      },
+    },
+  ]);
+
+  assert.equal(runs[0].evaluation, undefined);
+  assert.equal(runs[0].tasks[0].invocation, null);
+  assert.equal(runs[0].dag.nodes[0].exitCode, undefined);
 });
 
 test("normalizeSubscriptionSettings maps provider records for analytics settings", () => {

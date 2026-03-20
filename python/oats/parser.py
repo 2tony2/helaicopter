@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from typing import cast
 
+from helaicopter_domain.vocab import ProviderName
 from oats.models import RunSpec, TaskSpec
 
 
@@ -65,7 +67,7 @@ def _parse_tasks(section_text: str) -> list[TaskSpec]:
 def _parse_task(task_id: str, body: str) -> TaskSpec:
     title: str | None = None
     depends_on: list[str] = []
-    agent: str | None = None
+    agent: ProviderName | None = None
     model: str | None = None
     reasoning_effort: str | None = None
     acceptance_criteria: list[str] = []
@@ -93,7 +95,7 @@ def _parse_task(task_id: str, body: str) -> TaskSpec:
                 depends_on = _parse_csv_values(value.strip())
                 index += 1
             elif label == "Agent":
-                agent = value.strip() or None
+                agent = cast("ProviderName | None", value.strip() or None)
                 index += 1
             elif label == "Model":
                 model = value.strip() or None

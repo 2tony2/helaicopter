@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from prefect.testing.utilities import prefect_test_harness
 
+from oats.prefect.analytics import load_local_flow_run_analytics
 from oats.prefect.flows import execute_compiled_flow_graph, run_compiled_oats_flow
 from oats.prefect.models import PrefectFlowPayload, PrefectTaskEdge, PrefectTaskGraph, PrefectTaskNode
 from oats.prefect.tasks import CompiledTaskResult
@@ -246,6 +247,131 @@ def test_run_compiled_oats_flow_uses_oats_executor_for_deployed_tasks(
     assert result.task_results["plan"].result["session_id"] == "session-123"
     assert result.task_results["plan"].result["model"] == "gpt-5"
     assert result.task_results["plan"].result["reasoning_effort"] == "high"
+
+
+def test_local_flow_run_analytics_summarize_task_attempt_facts(tmp_path: Path) -> None:
+    flow_run_dir = tmp_path / ".oats" / "prefect" / "flow-runs" / "flow-run-analytics"
+    (flow_run_dir / "tasks").mkdir(parents=True, exist_ok=True)
+    (flow_run_dir / "attempts" / "plan").mkdir(parents=True, exist_ok=True)
+    (flow_run_dir / "attempts" / "build").mkdir(parents=True, exist_ok=True)
+
+    (flow_run_dir / "metadata.json").write_text(
+        """
+        {
+          "flow_run_id": "flow-run-analytics",
+          "flow_run_name": "analytics-run",
+          "run_title": "Run: Analytics",
+          "source_path": "/repo/examples/analytics.md",
+          "repo_root": "/repo",
+          "config_path": "/repo/.oats/config.toml",
+          "artifact_root": "/repo/.oats/prefect/flow-runs/flow-run-analytics",
+          "created_at": "2026-03-18T10:00:00Z",
+          "updated_at": "2026-03-18T10:07:00Z",
+          "completed_at": null
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    (flow_run_dir / "tasks" / "plan.json").write_text(
+        """
+        {
+          "flow_run_id": "flow-run-analytics",
+          "flow_run_name": "analytics-run",
+          "task_id": "plan",
+          "task_title": "Plan",
+          "status": "completed",
+          "attempt": 2,
+          "upstream_task_ids": [],
+          "session_id": "session-plan",
+          "result": {"ok": true},
+          "error": null,
+          "updated_at": "2026-03-18T10:06:00Z"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    (flow_run_dir / "tasks" / "build.json").write_text(
+        """
+        {
+          "flow_run_id": "flow-run-analytics",
+          "flow_run_name": "analytics-run",
+          "task_id": "build",
+          "task_title": "Build",
+          "status": "running",
+          "attempt": 1,
+          "upstream_task_ids": ["plan"],
+          "session_id": "session-build",
+          "result": null,
+          "error": null,
+          "updated_at": "2026-03-18T10:07:00Z"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    (flow_run_dir / "attempts" / "plan" / "attempt-1.json").write_text(
+        """
+        {
+          "flow_run_id": "flow-run-analytics",
+          "flow_run_name": "analytics-run",
+          "task_id": "plan",
+          "task_title": "Plan",
+          "status": "failed",
+          "attempt": 1,
+          "upstream_task_ids": [],
+          "session_id": "session-plan-a1",
+          "result": null,
+          "error": "transient failure",
+          "updated_at": "2026-03-18T10:03:00Z"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    (flow_run_dir / "attempts" / "plan" / "attempt-2.json").write_text(
+        """
+        {
+          "flow_run_id": "flow-run-analytics",
+          "flow_run_name": "analytics-run",
+          "task_id": "plan",
+          "task_title": "Plan",
+          "status": "completed",
+          "attempt": 2,
+          "upstream_task_ids": [],
+          "session_id": "session-plan-a2",
+          "result": {"ok": true},
+          "error": null,
+          "updated_at": "2026-03-18T10:06:00Z"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    (flow_run_dir / "attempts" / "build" / "attempt-1.json").write_text(
+        """
+        {
+          "flow_run_id": "flow-run-analytics",
+          "flow_run_name": "analytics-run",
+          "task_id": "build",
+          "task_title": "Build",
+          "status": "running",
+          "attempt": 1,
+          "upstream_task_ids": ["plan"],
+          "session_id": "session-build-a1",
+          "result": null,
+          "error": null,
+          "updated_at": "2026-03-18T10:07:00Z"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    analytics = load_local_flow_run_analytics(tmp_path)["flow-run-analytics"]
+
+    assert analytics.run_status == "running"
+    assert analytics.task_count == 2
+    assert analytics.completed_task_count == 1
+    assert analytics.running_task_count == 1
+    assert analytics.failed_task_count == 0
+    assert analytics.task_attempt_count == 3
+    assert analytics.last_updated_at == "2026-03-18T10:07:00Z"
 
 
 def _sample_payload(tmp_path: Path) -> PrefectFlowPayload:

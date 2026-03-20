@@ -29,6 +29,7 @@ import {
   normalizeConversations,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompts,
+  normalizeOvernightOatsRuns,
   normalizePrefectDeployments,
   normalizePrefectFlowRuns,
   normalizePrefectWorkPools,
@@ -113,7 +114,7 @@ export function useConversationDagSummaries(
 export function useOvernightOatsRuns() {
   return useSWR<OvernightOatsRunRecord[]>(
     endpoints.orchestrationOats(),
-    (url: string) => requestJson<OvernightOatsRunRecord[]>(url),
+    (url: string) => requestJson(url, undefined, normalizeOvernightOatsRuns),
     conversationSwrOptions
   );
 }

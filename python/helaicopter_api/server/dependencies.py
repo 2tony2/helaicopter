@@ -10,9 +10,9 @@ from .config import Settings
 
 def get_settings(request: Request) -> Settings:
     """Retrieve the ``Settings`` instance stored on ``app.state``."""
-    return request.app.state.settings  # type: ignore[no-any-return]
+    return request.app.state.settings
 
 
 def get_services(request: Request) -> BackendServices:
     """Retrieve the ``BackendServices`` bag stored on ``app.state``."""
-    return request.app.state.services  # type: ignore[no-any-return]
+    return request.app.state.services

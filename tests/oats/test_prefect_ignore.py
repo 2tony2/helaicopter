@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import warnings
 
-from prefect.utilities.filesystem import filter_files
+from oats.prefect.ignore import filter_prefect_files
 
 
-def test_prefectignore_excludes_volatile_runtime_artifacts(tmp_path: Path) -> None:
+def test_prefectignore_excludes_volatile_runtime_artifacts_without_deprecation_warnings(
+    tmp_path: Path,
+) -> None:
     ignore_file = Path(__file__).resolve().parents[2] / ".prefectignore"
     patterns = ignore_file.read_text().splitlines()
 
@@ -20,7 +23,9 @@ def test_prefectignore_excludes_volatile_runtime_artifacts(tmp_path: Path) -> No
     (repo / ".oats-worktrees").mkdir()
     (repo / ".oats-worktrees" / "task.txt").write_text("task\n")
 
-    included = filter_files(root=repo, ignore_patterns=patterns)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        included = filter_prefect_files(root=repo, ignore_patterns=patterns)
 
     assert "python/app.py" in included
     assert ".next/dev/cache/volatile.sst" not in included

@@ -10,7 +10,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -24,7 +24,7 @@ from ..adapters.claude_fs import (
     FileTaskReader,
 )
 from ..adapters.codex_sqlite import FileCodexStore
-from ..adapters.evaluation_jobs import LocalCliEvaluationRunner
+from ..adapters.evaluation_jobs import LocalCliEvaluationRunner, SupportsSubprocessRun
 from ..adapters.oats_artifacts import FileOatsRunStore
 from ..adapters.prefect_http import PrefectHttpAdapter
 from ..ports.app_sqlite import AppSqliteStore
@@ -58,6 +58,10 @@ class LocalCache:
 
     def clear(self) -> None:
         self._store.clear()
+
+    def delete_many(self, keys: list[str]) -> None:
+        for key in keys:
+            self.delete(key)
 
 
 # ---------------------------------------------------------------------------
@@ -114,13 +118,28 @@ class BackendServices:
     evaluation_job_runner: EvaluationJobRunner | None = None
 
 
+READ_CACHE_KEYS = [
+    "analytics",
+    "codex_session_artifacts",
+    "codex_threads_by_id",
+    "database_status",
+]
+
+
 def invalidate_backend_read_caches(services: BackendServices) -> None:
     """Drop in-process read caches after database artifacts change.
 
     The SQLite engine is also disposed so subsequent requests reopen fresh
     connections instead of reusing pooled handles created before a refresh.
     """
-    services.cache.clear()
+    delete_many = getattr(services.cache, "delete_many", None)
+    if callable(delete_many):
+        delete_many(READ_CACHE_KEYS)
+    elif hasattr(services.cache, "delete"):
+        for key in READ_CACHE_KEYS:
+            services.cache.delete(key)
+    else:
+        services.cache.clear()
     services.sqlite_engine.dispose()
 
 
@@ -164,6 +183,7 @@ def build_services(settings: Settings) -> BackendServices:
         runtime_dir=settings.runtime_dir,
     )
     subprocess_runner = SubprocessRunner()
+    evaluation_subprocess_runner = cast(SupportsSubprocessRun, subprocess_runner)
     return BackendServices(
         settings=settings,
         sqlite_engine=engine,
@@ -176,5 +196,7 @@ def build_services(settings: Settings) -> BackendServices:
         oats_run_store=oats_run_store,
         prefect_client=prefect_client,
         subprocess_runner=subprocess_runner,
-        evaluation_job_runner=LocalCliEvaluationRunner(subprocess_runner=subprocess_runner),
+        evaluation_job_runner=LocalCliEvaluationRunner(
+            subprocess_runner=evaluation_subprocess_runner
+        ),
     )

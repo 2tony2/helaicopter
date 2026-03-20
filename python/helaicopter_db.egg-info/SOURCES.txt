@@ -126,6 +126,7 @@ python/oats/prefect/client.py
 python/oats/prefect/compiler.py
 python/oats/prefect/deployments.py
 python/oats/prefect/flows.py
+python/oats/prefect/ignore.py
 python/oats/prefect/models.py
 python/oats/prefect/settings.py
 python/oats/prefect/tasks.py

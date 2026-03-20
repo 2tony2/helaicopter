@@ -8,6 +8,7 @@ import time
 
 import typer
 from helaicopter_domain.ids import TaskId
+from helaicopter_domain.vocab import RunRuntimeStatus
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -191,7 +192,7 @@ def _print_execution_record(record: RunExecutionRecord, runtime_state: RunRuntim
     console.print(table)
 
 
-def _resolve_terminal_status(state: RunRuntimeState) -> str:
+def _resolve_terminal_status(state: RunRuntimeState) -> RunRuntimeStatus:
     task_statuses = {task.status for task in state.tasks}
     if state.status in {"failed", "timed_out"}:
         return state.status

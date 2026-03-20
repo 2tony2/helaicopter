@@ -514,6 +514,9 @@ export async function listRawConversations(
             taskCount,
             gitBranch: summary.gitBranch,
             speed: summary.speed,
+            recordSource: filePath,
+            sourcePath: filePath,
+            sourceFileModifiedAt: stats?.mtimeMs ?? summary.endTimestamp,
             _summaryCacheVersion: 3,
           } as ConversationSummary & { _summaryCacheVersion: number };
 

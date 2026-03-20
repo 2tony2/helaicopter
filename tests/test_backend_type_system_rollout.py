@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import tomllib
 from pathlib import Path
@@ -13,17 +12,12 @@ from pydantic import ValidationError
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 BASELINE_DOC = ROOT / "docs" / "python-backend-type-system-baseline.md"
-BASELINE_JSON = ROOT / "docs" / "superpowers" / "baselines" / "2026-03-18-python-backend-pyright-baseline.json"
 WORKFLOW = ROOT / ".github" / "workflows" / "backend-quality.yml"
 ROLLOUT_DOC = ROOT / "docs" / "fastapi-backend-rollout.md"
 
-EXPECTED_DEV_DEPENDENCIES = {"httpx", "pyright", "pytest", "pytest-cov", "ruff"}
-EXPECTED_PYRIGHT_INCLUDE = [
-    "python/helaicopter_api/server",
-    "python/helaicopter_api/schema",
-    "python/helaicopter_api/ports",
-    "python/oats/models.py",
-]
+EXPECTED_DEV_DEPENDENCIES = {"httpx", "pytest", "pytest-cov", "ruff", "ty"}
+EXPECTED_TY_ROOTS = ["python"]
+LEGACY_TYPE_CHECKER = "py" + "right"
 TARGETED_CAMEL_SCHEMA_PATHS = {
     "python/helaicopter_api/schema/database.py",
     "python/helaicopter_api/schema/evaluations.py",
@@ -60,37 +54,36 @@ def test_pyproject_commits_backend_tooling_baseline() -> None:
 
     dev_group = pyproject["dependency-groups"]["dev"]
     assert EXPECTED_DEV_DEPENDENCIES.issubset(_package_names(dev_group))
+    assert LEGACY_TYPE_CHECKER not in _package_names(dev_group)
 
-    pyright = pyproject["tool"]["pyright"]
-    assert pyright["pythonVersion"] == "3.13"
-    assert pyright["typeCheckingMode"] == "strict"
-    assert pyright["include"] == EXPECTED_PYRIGHT_INCLUDE
+    ty_environment = pyproject["tool"]["ty"]["environment"]
+    assert ty_environment["python-version"] == "3.13"
+    assert ty_environment["root"] == EXPECTED_TY_ROOTS
+    assert LEGACY_TYPE_CHECKER not in pyproject["tool"]
 
     ruff = pyproject["tool"]["ruff"]
     assert ruff["target-version"] == "py313"
     assert ruff["src"] == ["python", "tests"]
 
 
-def test_baseline_docs_capture_scope_and_initial_pyright_results() -> None:
+def test_baseline_docs_capture_required_ty_scope() -> None:
     assert BASELINE_DOC.exists()
-    assert BASELINE_JSON.exists()
 
     content = BASELINE_DOC.read_text(encoding="utf-8")
-    for path in EXPECTED_PYRIGHT_INCLUDE:
-        assert path in content
-
-    baseline = json.loads(BASELINE_JSON.read_text(encoding="utf-8"))
-    assert baseline["summary"]["errorCount"] > 0
-    assert f"{baseline['summary']['errorCount']} errors" in content
+    assert "`ty` is the only required type checker" in content
+    assert "all `python/**`" in content
+    assert "`tests/**` remain outside required type checking" in content
+    assert "`uv run --group dev ty check python --error-on-warning`" in content
 
 
-def test_backend_quality_workflow_requires_pyright_for_the_scoped_backend_surface() -> None:
+def test_backend_quality_workflow_requires_ty_for_python_sources() -> None:
     assert WORKFLOW.exists()
 
     content = WORKFLOW.read_text(encoding="utf-8")
     assert "uv run --group dev ruff check python tests" in content
     assert "uv run --group dev pytest -q" in content
-    assert "uv run --group dev pyright" in content
+    assert "uv run --group dev ty check python --error-on-warning" in content
+    assert LEGACY_TYPE_CHECKER not in content
     assert "continue-on-error: true" not in content
 
 
@@ -411,10 +404,9 @@ def test_wave_ten_schema_alias_policy_serializes_responses_and_rejects_wrong_inp
     }
 
 
-def test_wave_ten_documents_green_required_scope_and_next_pyright_expansion_schedule() -> None:
+def test_wave_ten_documents_green_required_scope_and_test_deferral() -> None:
     content = BASELINE_DOC.read_text(encoding="utf-8")
 
-    assert "pyright is required for the scoped backend surface." in content
-    assert "Next planned pyright expansion, only after this required scope stays green:" in content
-    assert "`tests/`" in content
-    assert "`python/helaicopter_db`" in content
+    assert "`ty` is the only required type checker" in content
+    assert "all `python/**`" in content
+    assert "`tests/**` remain outside required type checking" in content
