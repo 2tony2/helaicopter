@@ -146,4 +146,84 @@ def test_read_export_meta_hashes_python_historical_rows(
         second=0,
         microsecond=0,
     ).isoformat().replace("+00:00", "Z")
-    assert meta.scope_label == "Historical conversations before today from the last 365 days"
+
+
+def test_iter_export_rows_omits_optional_null_fields_before_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    settings = Settings(project_root=tmp_path)
+    envelope = _envelope("session-a", timestamp=1_710_000_000_000, input_tokens=100)
+    envelope["summary"]["reasoningEffort"] = None
+    envelope["detail"]["messages"] = [
+        {
+            "role": "user",
+            "timestamp": 1_710_000_000_000,
+            "model": None,
+            "reasoningTokens": 0,
+            "speed": None,
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+            "blocks": [{"type": "text", "text": "hello"}],
+        }
+    ]
+
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_claude_historical_envelopes",
+        lambda _settings: iter([envelope]),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_codex_historical_envelopes",
+        lambda _settings: iter(()),
+        raising=False,
+    )
+
+    rows = list(export_pipeline.iter_export_rows(settings))
+
+    assert len(rows) == 1
+    summary = rows[0]["summary"]
+    message = rows[0]["detail"]["messages"][0]
+    assert "reasoningEffort" not in summary
+    assert "model" not in message
+    assert "speed" not in message
+
+
+def test_iter_export_rows_deduplicates_same_conversation_key_to_latest_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    settings = Settings(project_root=tmp_path)
+    older = _envelope("session-a", timestamp=1_710_000_000_000, input_tokens=100)
+    newer = _envelope("session-a", timestamp=1_710_000_100_000, input_tokens=200)
+    older["summary"]["sourceFileModifiedAt"] = 10
+    older["summary"]["recordSource"] = "/tmp/older.jsonl"
+    older["summary"]["sourcePath"] = "/tmp/older.jsonl"
+    newer["summary"]["sourceFileModifiedAt"] = 20
+    newer["summary"]["recordSource"] = "/tmp/newer.jsonl"
+    newer["summary"]["sourcePath"] = "/tmp/newer.jsonl"
+
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_claude_historical_envelopes",
+        lambda _settings: iter([older, newer]),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        export_pipeline,
+        "_iter_codex_historical_envelopes",
+        lambda _settings: iter(()),
+        raising=False,
+    )
+
+    rows = list(export_pipeline.iter_export_rows(settings))
+
+    assert len(rows) == 1
+    assert rows[0]["summary"]["totalInputTokens"] == 200
+    assert rows[0]["summary"]["recordSource"] == "/tmp/newer.jsonl"

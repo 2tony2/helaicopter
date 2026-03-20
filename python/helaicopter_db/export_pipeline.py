@@ -31,6 +31,7 @@ from .export_types import (
     ExportConversationEnvelope,
     parse_export_conversation_envelope,
 )
+from .utils import conversation_id, provider_for_project_path
 
 MAX_WINDOW_DAYS = 365
 MILLIS_PER_DAY = 24 * 60 * 60 * 1000
@@ -68,16 +69,33 @@ def _stable(value: object) -> object:
     return value
 
 
+def _drop_none_fields(value: object) -> object:
+    if isinstance(value, list):
+        return [_drop_none_fields(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _drop_none_fields(nested)
+            for key, nested in value.items()
+            if nested is not None
+        }
+    return value
+
+
 def _iter_historical_envelopes(settings: Settings | None = None) -> Iterable[ExportConversationEnvelope]:
     backend_settings = settings or load_settings()
+    deduped: dict[str, ExportConversationEnvelope] = {}
     for iterator in (
         _iter_claude_historical_envelopes(backend_settings),
         _iter_codex_historical_envelopes(backend_settings),
     ):
         for envelope in iterator:
-            parsed = parse_export_conversation_envelope(envelope)
+            parsed = parse_export_conversation_envelope(_drop_none_fields(envelope))
             if parsed is not None and parsed.get("type") == "conversation":
-                yield parsed
+                key = _conversation_key(parsed)
+                existing = deduped.get(key)
+                if existing is None or _envelope_rank(parsed) >= _envelope_rank(existing):
+                    deduped[key] = parsed
+    yield from deduped.values()
 
 
 def iter_export_rows(settings: Settings | None = None) -> Iterable[ExportConversationEnvelope]:
@@ -361,3 +379,16 @@ def _context_analytics_payload(analytics: ConversationContextAnalyticsResponse) 
 
 def _finite_number(value: object) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(value)
+
+
+def _conversation_key(envelope: ExportConversationEnvelope) -> str:
+    summary = envelope["summary"]
+    provider = provider_for_project_path(summary["projectPath"])
+    return conversation_id(provider, summary["sessionId"])
+
+
+def _envelope_rank(envelope: ExportConversationEnvelope) -> tuple[int, int]:
+    summary = envelope["summary"]
+    modified_at = int(summary.get("sourceFileModifiedAt") or 0)
+    timestamp = int(summary.get("timestamp") or 0)
+    return modified_at, timestamp

@@ -8,6 +8,8 @@ python/alembic/versions/20260311_0004_subscription_settings.py
 python/alembic/versions/20260311_0005_conversation_thread_type.py
 python/alembic/versions/20260316_0006_clickhouse_backfill_bookkeeping.py
 python/alembic/versions/20260316_0007_remove_clickhouse_bookkeeping.py
+python/alembic/versions/20260319_0008_operational_store_provenance.py
+python/alembic/versions/20260319_0008_orchestration_analytics_facts.py
 python/helaicopter_api/__init__.py
 python/helaicopter_api/adapters/__init__.py
 python/helaicopter_api/adapters/evaluation_jobs.py
@@ -48,6 +50,7 @@ python/helaicopter_api/ports/prefect.py
 python/helaicopter_api/pure/__init__.py
 python/helaicopter_api/pure/analytics.py
 python/helaicopter_api/pure/conversation_dag.py
+python/helaicopter_api/pure/orchestration_analytics.py
 python/helaicopter_api/pure/pricing.py
 python/helaicopter_api/router/__init__.py
 python/helaicopter_api/router/analytics.py
@@ -91,6 +94,7 @@ python/helaicopter_db/__init__.py
 python/helaicopter_db/db.py
 python/helaicopter_db/export_pipeline.py
 python/helaicopter_db/export_types.py
+python/helaicopter_db/orchestration_facts.py
 python/helaicopter_db/refresh.py
 python/helaicopter_db/schemaspy.py
 python/helaicopter_db/settings.py
@@ -109,6 +113,12 @@ python/helaicopter_domain/__init__.py
 python/helaicopter_domain/ids.py
 python/helaicopter_domain/paths.py
 python/helaicopter_domain/vocab.py
+python/helaicopter_semantics/__init__.py
+python/helaicopter_semantics/models.py
+python/helaicopter_semantics/pricing.py
+python/helaicopter_semantics/py.typed
+python/helaicopter_semantics/status.py
+python/helaicopter_semantics/token_aliases.py
 python/oats/__init__.py
 python/oats/cli.py
 python/oats/models.py
@@ -121,6 +131,7 @@ python/oats/run_definition_loader.py
 python/oats/runner.py
 python/oats/runtime_state.py
 python/oats/prefect/__init__.py
+python/oats/prefect/analytics.py
 python/oats/prefect/artifacts.py
 python/oats/prefect/client.py
 python/oats/prefect/compiler.py
@@ -147,10 +158,13 @@ tests/test_backend_settings.py
 tests/test_backend_type_system_rollout.py
 tests/test_claude_fs_adapters.py
 tests/test_cli_runtime.py
+tests/test_export_pipeline.py
 tests/test_export_types.py
 tests/test_frontend_backend_split.py
+tests/test_orchestration_analytics.py
 tests/test_parser.py
 tests/test_repo_config.py
 tests/test_runner.py
 tests/test_runtime_state.py
+tests/test_semantics.py
 tests/test_sqlite_adapters.py

@@ -5,7 +5,6 @@ import { ConversationDagList } from "@/components/conversation/conversation-dag-
 import { OvernightOatsPanel } from "./overnight-oats-panel";
 import { PrefectUiEmbed } from "./prefect-ui-embed";
 import type { OrchestrationTab } from "./tabs";
-import { usePrefectFlowRuns } from "@/hooks/use-conversations";
 import { PageHeader } from "@/components/layout/page-header";
 
 export function OrchestrationHub({
@@ -15,22 +14,17 @@ export function OrchestrationHub({
   initialTab?: OrchestrationTab;
   prefectPath?: string;
 }) {
-  const { data: prefectFlowRuns } = usePrefectFlowRuns();
-  const prefectCount = prefectFlowRuns?.length ?? 0;
-
   return (
     <div className="space-y-8">
       <PageHeader
         title="Orchestration"
-        description="Unified orchestration state for Prefect-backed runs, legacy Oats artifacts, and conversation DAG relationships."
+        description="Overnight Oats runs, conversation DAG relationships, and Prefect UI."
       />
 
       <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="conversation-dags">Conversation DAGs</TabsTrigger>
-          <TabsTrigger value="orchestration">
-            Orchestration {prefectCount > 0 ? `(${prefectCount})` : ""}
-          </TabsTrigger>
+          <TabsTrigger value="orchestration">Orchestration</TabsTrigger>
           <TabsTrigger value="prefect-ui">Prefect UI</TabsTrigger>
         </TabsList>
 

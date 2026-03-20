@@ -14,7 +14,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from helaicopter_api.server.config import Settings, load_settings
@@ -300,20 +300,22 @@ def _delete_conversations(session: Session, conversation_ids: set[str]) -> None:
 
 
 def _reset_olap_data(session: Session) -> None:
-    for model in (
-        FactOrchestrationTaskAttempt,
-        FactOrchestrationRun,
-        FactSubagentUsage,
-        FactToolUsage,
-        FactDailyUsage,
-        FactConversation,
-        DimSubagentType,
-        DimTool,
-        DimModel,
-        DimProject,
-        DimDate,
+    # Use raw SQL to avoid duckdb-engine FK constraint check issues
+    # with the ORM delete() path.
+    for table in (
+        "fact_orchestration_task_attempts",
+        "fact_orchestration_runs",
+        "fact_subagent_usage",
+        "fact_tool_usage",
+        "fact_daily_usage",
+        "fact_conversations",
+        "dim_subagent_types",
+        "dim_tools",
+        "dim_models",
+        "dim_projects",
+        "dim_dates",
     ):
-        session.execute(delete(model))
+        session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
 
 
 def _delete_olap_conversations(session: Session, conversation_ids: set[str]) -> None:
@@ -323,14 +325,14 @@ def _delete_olap_conversations(session: Session, conversation_ids: set[str]) -> 
 
 
 def _reset_olap_derived_tables(session: Session) -> None:
-    for model in (
-        FactOrchestrationTaskAttempt,
-        FactOrchestrationRun,
-        FactSubagentUsage,
-        FactToolUsage,
-        FactDailyUsage,
+    for table in (
+        "fact_orchestration_task_attempts",
+        "fact_orchestration_runs",
+        "fact_subagent_usage",
+        "fact_tool_usage",
+        "fact_daily_usage",
     ):
-        session.execute(delete(model))
+        session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
 
 
 def _reset_oltp_orchestration_facts(session: Session) -> None:
