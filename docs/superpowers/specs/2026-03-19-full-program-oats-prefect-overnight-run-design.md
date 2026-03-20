@@ -98,7 +98,7 @@ This includes:
 - warehouse dimension cleanup and enrichment
 - conversation fact loading aligned to Python semantics
 - analytics endpoint cutover to DuckDB for historical reads
-- bounded current-window supplement support as in-scope work for this overnight program
+- bounded current-window supplement support if required by the final plan
 
 ### Group 5: Orchestration analytics
 
@@ -109,7 +109,7 @@ This includes:
 - run-level orchestration facts
 - task-attempt facts
 - canonical reconciliation between runtime snapshots and terminal run records
-- analytics/API exposure required for the initial orchestration analytics cutover
+- analytics/API exposure as appropriate for the final plan
 
 ### Group 6: Frontend simplification
 
@@ -143,13 +143,6 @@ The run must encode dependencies conservatively enough to avoid invalid work, bu
 - Warehouse authority and orchestration analytics can proceed in parallel once their prerequisites are met.
 - Frontend simplification depends on backend contract stabilization.
 - Final cutover depends on all terminal groups but must tolerate partial completion and summarize it accurately.
-
-`backend contract stabilization` means:
-
-- canonical Python semantics are wired into backend responses
-- historical analytics endpoints read DuckDB for historical ranges
-- orchestration analytics contracts needed by the frontend are present
-- known unsound required frontend fields are removed or intentionally supplied by the backend
 
 ### Continuation policy
 
@@ -244,8 +237,6 @@ Failure handling is central to this design.
 - record the failed task, reason, and affected downstream tasks
 - preserve completed branches and PRs
 - make the final summary explicit about what remains unfinished or risky
-
-Merge-conflict handling and limited flaky-test retries should rely on the existing OATS and Prefect runtime policy rather than separate authored plan tasks, unless implementation work reveals a missing runtime capability that itself needs a dedicated task.
 
 ### Final summary requirements
 

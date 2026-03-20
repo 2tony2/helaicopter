@@ -25,6 +25,7 @@ def test_load_repo_config() -> None:
     assert config.agent["codex"].command == "codex"
     assert config.git.final_pr_target == "main"
     assert config.git.auto_merge_task_prs_into_integration is False
+    assert config.execution.dangerous_bypass is True
 
 
 def test_execution_plan_uses_integration_branch_targeting() -> None:

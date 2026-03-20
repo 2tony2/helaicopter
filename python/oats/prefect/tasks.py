@@ -220,6 +220,7 @@ def _oats_executor(
         payload.run_title,
         read_only=False,
     )
+    dangerous_bypass = getattr(getattr(config, "execution", None), "dangerous_bypass", False)
     result = invoke_agent(
         agent_name=planned_task.agent,
         agent_command=config.agent[planned_task.agent],
@@ -228,7 +229,7 @@ def _oats_executor(
         prompt=prompt,
         read_only=False,
         timeout_seconds=1800,
-        dangerous_bypass=True,
+        dangerous_bypass=dangerous_bypass,
         model=planned_task.model,
         reasoning_effort=planned_task.reasoning_effort,
         raise_on_nonzero=False,
