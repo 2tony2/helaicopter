@@ -96,6 +96,12 @@ GitHub-derived fields such as mergeability, checks summary, review state, and me
 
 Codex CLI remains the merge operator. If a task PR merge fails, Oats launches a conflict-resolution step, records its session and output as first-class operation history, and retries according to repo policy. Merge failure after the configured retry budget leaves the run in a blocked state visible in the UI.
 
+First-rollout repo-policy boundary:
+- task PRs merge with merge commits only
+- squash merges and rebase merges are out of scope
+- task PRs may merge without human approval if they satisfy the configured automated merge policy
+- repository protections that require mandatory human review on task PRs are unsupported in the first rollout because they break the intended automation model
+
 ### 5. The final feature PR remains a human gate
 
 The final PR from the feature branch to `main` is always created and tracked by Oats, but it is never auto-merged. Helaicopter should clearly present when the run is ready for final review.
@@ -116,8 +122,6 @@ If the refreshed snapshot satisfies merge policy, the same refresh or resume ope
 ### 8. Cleanup is retain-by-default in the first rollout
 
 In the first rollout, merged task branches and task worktrees are retained by default until the run reaches `ready_for_final_review` or a terminal blocked / failed state. Cleanup is an explicit later operation, not an immediate side effect of each successful task merge.
-
-## Target Architecture
 
 ## Component Model
 
@@ -264,6 +268,7 @@ First-rollout merge policy for task PRs:
 - mergeability must be clean
 - all required GitHub checks must be passing
 - there must be no unresolved blocking review state such as `changes_requested`
+- merge method must be `merge_commit`
 
 Task PRs do not require human approval in the first rollout. The only mandatory human gate is the final feature PR to `main`.
 
@@ -273,6 +278,27 @@ Backend serving rules:
 - treat refresh as an explicit orchestration operation, not ambient background polling in the first rollout
 - expose `awaiting_task_merge` and related waiting-state summaries so the UI can show why a task PR has not advanced
 
+### Orchestration action contract
+
+The first rollout supports one explicit mutation family for waiting-state advancement:
+- `refresh_run` / `resume_run`, modeled as run-scoped orchestration actions
+
+Run-scoped means:
+- one invocation targets a single Oats `run_id`
+- the action refreshes GitHub snapshots for all waiting PRs in that run
+- the action may advance multiple merge-ready task PRs in topological order within that same invocation
+- the action also refreshes the final feature PR snapshot if it exists
+
+Ownership and surface:
+- Oats CLI owns the underlying runtime behavior
+- Helaicopter backend exposes the action
+- Helaicopter UI invokes the backend action for operator-driven refresh / resume
+
+Final PR completion detection:
+- there is no background polling in the first rollout
+- the run transitions from `ready_for_final_review` to `completed` only when an explicit run-scoped refresh observes that the final feature PR is merged
+- until that explicit refresh happens, the run remains visible as waiting for final review even if the merge happened externally
+
 ## Runtime Flow
 
 1. Oats planning builds the task DAG and the branch-stack plan.
@@ -281,12 +307,13 @@ Backend serving rules:
 4. The executor agent performs code changes in the task worktree.
 5. Validation runs for the task.
 6. Oats creates or updates the task PR and records the PR snapshot.
-7. If the task PR does not yet satisfy merge policy, the run records `awaiting_task_merge` and waits for an explicit refresh or resume.
-8. If the task PR is mergeable and checks satisfy policy, that refresh or resume operation immediately invokes Codex for the merge attempt.
+7. If the task PR does not yet satisfy merge policy, the run records `awaiting_task_merge` and waits for an explicit run-scoped refresh or resume action.
+8. If the task PR is mergeable and checks satisfy policy, that same run-scoped refresh or resume action immediately invokes Codex for the merge attempt and may continue through other merge-ready waiting tasks in topological order.
 9. On merge failure, Oats launches conflict resolution, records the attempt, and retries the merge within configured limits.
 10. When a task PR merges, Oats retargets any open direct-child PRs to the feature branch before parent-branch cleanup eligibility.
 11. Once all task PRs required by the run have merged upward into the feature branch, Oats creates the final PR to `main`.
 12. The run transitions to `ready_for_final_review` and waits for human approval outside Oats auto-merge.
+13. After the final feature PR is merged by a human, a later explicit run-scoped refresh observes that merged state and marks the run `completed`.
 
 ## API and Serving Design
 
