@@ -9,6 +9,7 @@ from typing import Iterator
 from fastapi.testclient import TestClient
 
 from helaicopter_api.application import analytics as analytics_application
+from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.server.dependencies import get_services
@@ -32,6 +33,7 @@ def _summary(
         project_path=project_path,
         project_name="helaicopter",
         first_message="Ship the analytics API",
+        route_slug=derive_route_slug("Ship the analytics API"),
         started_at=started_at,
         ended_at=ended_at,
         message_count=3,

@@ -58,19 +58,20 @@ def upgrade_oltp() -> None:
         .execute(sa.text("SELECT conversation_id, first_message FROM conversations"))
         .mappings()
     ]
-    if not updates:
-        return
+    if updates:
+        op.get_bind().execute(
+            sa.text(
+                """
+                UPDATE conversations
+                SET route_slug = :route_slug
+                WHERE conversation_id = :conversation_id
+                """
+            ),
+            updates,
+        )
 
-    op.get_bind().execute(
-        sa.text(
-            """
-            UPDATE conversations
-            SET route_slug = :route_slug
-            WHERE conversation_id = :conversation_id
-            """
-        ),
-        updates,
-    )
+    with op.batch_alter_table("conversations", recreate="always") as batch_op:
+        batch_op.alter_column("route_slug", existing_type=sa.Text(), nullable=False)
 
 
 def downgrade_oltp() -> None:

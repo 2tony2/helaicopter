@@ -688,6 +688,57 @@ class TestConversationRouteSlugMigration:
         assert route_slugs["claude:session-ascii"] == "creme-brulee-fur-jalapeno"
         assert route_slugs["claude:session-default"] == "conversation"
 
+    def test_route_slug_migration_enforces_not_null_column(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "migration.sqlite"
+        try:
+            connection = sqlite3.connect(db_path)
+            connection.row_factory = sqlite3.Row
+            _create_pre_route_slug_conversations_table(connection)
+            _insert_pre_route_slug_conversation(
+                connection,
+                conversation_id="claude:session-not-null",
+                first_message="Persist the invariant",
+            )
+            connection.commit()
+            connection.close()
+
+            _upgrade_route_slug_migration(db_path)
+
+            connection = sqlite3.connect(db_path)
+            connection.row_factory = sqlite3.Row
+            route_slug_column = next(
+                row
+                for row in connection.execute("PRAGMA table_info(conversations)").fetchall()
+                if row["name"] == "route_slug"
+            )
+        finally:
+            connection.close()
+
+        assert route_slug_column["notnull"] == 1
+
+    def test_route_slug_migration_enforces_not_null_column_on_empty_tables(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "migration.sqlite"
+        try:
+            connection = sqlite3.connect(db_path)
+            connection.row_factory = sqlite3.Row
+            _create_pre_route_slug_conversations_table(connection)
+            connection.commit()
+            connection.close()
+
+            _upgrade_route_slug_migration(db_path)
+
+            connection = sqlite3.connect(db_path)
+            connection.row_factory = sqlite3.Row
+            route_slug_column = next(
+                row
+                for row in connection.execute("PRAGMA table_info(conversations)").fetchall()
+                if row["name"] == "route_slug"
+            )
+        finally:
+            connection.close()
+
+        assert route_slug_column["notnull"] == 1
+
 
 class TestRefreshOperationalStore:
     def test_run_refresh_upserts_conversations_and_reconciles_removed_rows(
