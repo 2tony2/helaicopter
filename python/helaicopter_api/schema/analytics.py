@@ -25,6 +25,8 @@ class AnalyticsQueryParams(BaseModel):
 
 
 class AnalyticsCostBreakdownResponse(BaseModel):
+    """Itemised cost breakdown across input, output, cache, and long-context charges."""
+
     input_cost: float = 0.0
     output_cost: float = 0.0
     cache_write_cost: float = 0.0
@@ -35,11 +37,15 @@ class AnalyticsCostBreakdownResponse(BaseModel):
 
 
 class ProviderBreakdownResponse(BaseModel):
+    """Per-provider count breakdown (Claude vs Codex) for a single metric."""
+
     claude: int = 0
     codex: int = 0
 
 
 class AnalyticsRateValueResponse(BaseModel):
+    """Usage rate for a single metric expressed across multiple time horizons."""
+
     per_hour: float = 0.0
     per_day: float = 0.0
     per_week: float = 0.0
@@ -47,6 +53,8 @@ class AnalyticsRateValueResponse(BaseModel):
 
 
 class AnalyticsRatesResponse(BaseModel):
+    """Aggregated usage rates for all tracked metrics over multiple time horizons."""
+
     spend: AnalyticsRateValueResponse
     total_tokens: AnalyticsRateValueResponse
     input_tokens: AnalyticsRateValueResponse
@@ -61,6 +69,8 @@ class AnalyticsRatesResponse(BaseModel):
 
 
 class AnalyticsTimeSeriesPointResponse(BaseModel):
+    """Token, cost, and activity metrics for a single time-series bucket (hourly/daily/weekly/monthly)."""
+
     key: str
     label: str
     start: str
@@ -104,6 +114,8 @@ class AnalyticsTimeSeriesPointResponse(BaseModel):
 
 
 class AnalyticsTimeSeriesResponse(BaseModel):
+    """Time-series data grouped by granularity (hourly, daily, weekly, monthly)."""
+
     hourly: list[AnalyticsTimeSeriesPointResponse] = []
     daily: list[AnalyticsTimeSeriesPointResponse] = []
     weekly: list[AnalyticsTimeSeriesPointResponse] = []
@@ -111,6 +123,8 @@ class AnalyticsTimeSeriesResponse(BaseModel):
 
 
 class DailyUsageResponse(BaseModel):
+    """Token and conversation counts for a single calendar day, split by provider."""
+
     date: str
     input_tokens: int = 0
     output_tokens: int = 0

@@ -6,6 +6,8 @@ from helaicopter_api.schema.common import CamelCaseHttpResponseModel
 
 
 class GatewaySurfaceResponse(CamelCaseHttpResponseModel):
+    """Descriptor for a single API surface registered with the platform gateway."""
+
     key: str
     owner: str
     serving_class: str
@@ -16,6 +18,8 @@ class GatewaySurfaceResponse(CamelCaseHttpResponseModel):
 
 
 class GatewayDirectionResponse(CamelCaseHttpResponseModel):
+    """Overall gateway routing direction and registered API surfaces."""
+
     gateway_direction: str = "fastapi-first"
     frontend_calls_via: str = "fastapi"
     backend_entrypoint: str = "fastapi"

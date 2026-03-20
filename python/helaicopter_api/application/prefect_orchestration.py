@@ -24,6 +24,19 @@ _RUNNING_CHECKPOINT_STATES = {"running", "pending", "blocked"}
 
 
 def list_prefect_deployments(services: BackendServices) -> list[PrefectDeploymentResponse]:
+    """Return all Prefect deployments with OATS metadata annotations.
+
+    Fetches deployments from the Prefect client and shapes each record into a
+    ``PrefectDeploymentResponse``, attaching any available OATS payload
+    metadata.
+
+    Args:
+        services: Initialised backend services providing the Prefect client.
+
+    Returns:
+        List of ``PrefectDeploymentResponse`` objects for all configured
+        deployments.
+    """
     return [
         PrefectDeploymentResponse(
             deployment_id=item.deployment_id,
@@ -42,6 +55,20 @@ def list_prefect_deployments(services: BackendServices) -> list[PrefectDeploymen
 
 
 def list_prefect_flow_runs(services: BackendServices) -> list[PrefectFlowRunResponse]:
+    """Return all Prefect flow runs enriched with local OATS artifact metadata.
+
+    Loads local flow-run artifacts from the project root to reconcile state
+    discrepancies, then shapes each Prefect flow run record into a
+    ``PrefectFlowRunResponse``.
+
+    Args:
+        services: Initialised backend services providing the Prefect client and
+            project settings for local artifact resolution.
+
+    Returns:
+        List of ``PrefectFlowRunResponse`` objects with reconciled state and
+        optional OATS metadata and analytics.
+    """
     metadata_by_run_id = load_local_flow_run_artifacts(services.settings.project_root)
     return [
         _shape_flow_run(item, metadata_by_run_id.get(item.flow_run_id))
@@ -50,6 +77,17 @@ def list_prefect_flow_runs(services: BackendServices) -> list[PrefectFlowRunResp
 
 
 def get_prefect_flow_run(services: BackendServices, flow_run_id: str) -> PrefectFlowRunResponse:
+    """Return a single Prefect flow run enriched with local OATS artifact metadata.
+
+    Args:
+        services: Initialised backend services providing the Prefect client and
+            project settings for local artifact resolution.
+        flow_run_id: UUID string identifying the Prefect flow run.
+
+    Returns:
+        A ``PrefectFlowRunResponse`` with reconciled state and optional OATS
+        metadata and analytics.
+    """
     metadata_by_run_id = load_local_flow_run_artifacts(services.settings.project_root)
     return _shape_flow_run(
         services.prefect_client.read_flow_run(flow_run_id),
@@ -58,6 +96,14 @@ def get_prefect_flow_run(services: BackendServices, flow_run_id: str) -> Prefect
 
 
 def list_prefect_workers(services: BackendServices) -> list[PrefectWorkerResponse]:
+    """Return all Prefect workers registered with the configured work pools.
+
+    Args:
+        services: Initialised backend services providing the Prefect client.
+
+    Returns:
+        List of ``PrefectWorkerResponse`` objects for all known workers.
+    """
     return [
         PrefectWorkerResponse(
             worker_id=item.worker_id,
@@ -71,6 +117,14 @@ def list_prefect_workers(services: BackendServices) -> list[PrefectWorkerRespons
 
 
 def list_prefect_work_pools(services: BackendServices) -> list[PrefectWorkPoolResponse]:
+    """Return all Prefect work pools.
+
+    Args:
+        services: Initialised backend services providing the Prefect client.
+
+    Returns:
+        List of ``PrefectWorkPoolResponse`` objects describing each work pool.
+    """
     return [
         PrefectWorkPoolResponse(
             work_pool_id=item.work_pool_id,

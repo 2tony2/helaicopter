@@ -22,7 +22,19 @@ async def subagents_detail(
     agent_id: str,
     services: BackendServices = Depends(get_services),
 ) -> ConversationDetailResponse:
-    """Return one subagent transcript for the conversation viewer."""
+    """Return one subagent transcript for the conversation viewer.
+
+    Args:
+        project_path: URL-encoded path of the project the conversation belongs to.
+        session_id: ID of the parent session that spawned the subagent.
+        agent_id: ID of the subagent whose conversation transcript is requested.
+
+    Returns:
+        Full conversation detail including messages and metadata for the subagent.
+
+    Raises:
+        HTTPException: 404 if no matching subagent conversation is found.
+    """
     conversation = get_subagent_conversation(
         services,
         project_path=project_path,

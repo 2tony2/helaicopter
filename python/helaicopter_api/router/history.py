@@ -22,5 +22,14 @@ async def history_index(
     ],
     services: BackendServices = Depends(get_services),
 ) -> list[HistoryEntryResponse]:
-    """Return combined CLI history from Claude and Codex sources."""
+    """Return combined CLI command history from Claude and Codex sources.
+
+    Args:
+        params: Query parameters controlling the history lookup, including
+            an optional ``limit`` on the number of entries returned.
+
+    Returns:
+        A list of history entries merged from Claude and Codex CLI sources,
+        ordered from most recent to oldest, up to the requested limit.
+    """
     return list_history(services, limit=params.limit)

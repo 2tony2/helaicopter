@@ -22,7 +22,11 @@ subscriptions_router = APIRouter(prefix="/subscription-settings", tags=["subscri
 async def subscriptions_index(
     services: BackendServices = Depends(get_services),
 ) -> SubscriptionSettingsResponse:
-    """Return the current provider subscription settings."""
+    """Return the current provider subscription settings.
+
+    Returns:
+        The active subscription settings including configured provider options.
+    """
     return get_subscription_settings(services)
 
 
@@ -31,5 +35,13 @@ async def subscriptions_update(
     body: SubscriptionSettingsUpdateRequest = Body(default_factory=SubscriptionSettingsUpdateRequest),
     services: BackendServices = Depends(get_services),
 ) -> SubscriptionSettingsResponse:
-    """Persist provider subscription settings and return the merged result."""
+    """Persist provider subscription settings and return the merged result.
+
+    Args:
+        body: Partial or full subscription settings to apply. Unset fields are
+            merged with the existing configuration rather than overwritten.
+
+    Returns:
+        The updated subscription settings after the patch has been applied.
+    """
     return update_subscription_settings(services, body)

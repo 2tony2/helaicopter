@@ -27,7 +27,12 @@ async def ops_health() -> dict[str, str]:
 async def ops_ready(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """Readiness probe – verifies that critical services are reachable."""
+    """Readiness probe that verifies critical runtime dependencies are reachable.
+
+    Returns:
+        A dict with a boolean ``ready`` field indicating overall readiness and a
+        ``checks`` mapping of individual dependency names to their pass/fail status.
+    """
     checks: dict[str, bool] = {
         "runtime_dir_exists": settings.runtime_dir.exists(),
     }
@@ -39,7 +44,12 @@ async def ops_ready(
 async def ops_info(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """Build / runtime information for dashboards and debugging."""
+    """Return build and runtime metadata for dashboards and debugging.
+
+    Returns:
+        A dict containing the API version string, Python version, debug flag,
+        server uptime in seconds, and the resolved project root path.
+    """
     return {
         "version": VERSION,
         "python": sys.version,

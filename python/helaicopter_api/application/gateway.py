@@ -196,12 +196,32 @@ _TABLE_INTEGRATIONS: tuple[TableIntegration, ...] = (
 
 
 def describe_gateway_direction() -> GatewayDirectionResponse:
-    """Return the backend-owned gateway direction for the platform."""
+    """Return the backend-owned gateway direction for the platform.
+
+    Returns:
+        A ``GatewayDirectionResponse`` listing all configured gateway surfaces
+        (FastAPI, frontend, SQLite, Prefect, OATS, DuckDB, cache).
+    """
     return GatewayDirectionResponse(surfaces=list(_GATEWAY_SURFACES))
 
 
 def annotate_database_artifacts(databases: object) -> object:
-    """Add table-level integration metadata to database status payloads."""
+    """Add table-level integration metadata to database status payloads.
+
+    Iterates over each artifact key in the ``databases`` mapping and enriches
+    every table entry with ``servingClass``, ``integrationType``,
+    ``fastapiRoutes``, ``sqlalchemyModel``, and ``note`` fields sourced from
+    the declared ``_TABLE_INTEGRATIONS`` registry.
+
+    Args:
+        databases: A raw database artifacts payload dict as returned by
+            ``helaicopter_db.status``. Non-dict values are passed through
+            unchanged.
+
+    Returns:
+        The enriched databases payload with table integration metadata added
+        to each table entry.
+    """
     if not isinstance(databases, dict):
         return databases
 

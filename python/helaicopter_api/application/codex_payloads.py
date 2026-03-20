@@ -122,6 +122,18 @@ _CODEX_SESSION_SOURCE_ADAPTER = TypeAdapter(CodexSessionSource)
 
 
 def parse_codex_session_lines(content: str) -> list[CodexSessionLine]:
+    """Parse a multi-line JSONL string into validated Codex session line objects.
+
+    Each non-empty line is parsed as JSON and validated against the
+    ``CodexSessionLine`` schema. Lines that fail JSON parsing or Pydantic
+    validation are silently skipped.
+
+    Args:
+        content: Raw JSONL content where each line is a Codex session event.
+
+    Returns:
+        List of successfully parsed and validated session line dicts.
+    """
     lines: list[CodexSessionLine] = []
     for raw_line in content.splitlines():
         stripped = raw_line.strip()
@@ -136,18 +148,61 @@ def parse_codex_session_lines(content: str) -> list[CodexSessionLine]:
 
 
 def parse_codex_update_plan_arguments(raw_value: object) -> CodexUpdatePlanArguments | None:
+    """Parse and validate a raw ``update_plan`` function-call argument payload.
+
+    Args:
+        raw_value: A JSON string or mapping representing the ``update_plan``
+            arguments emitted by a Codex agent.
+
+    Returns:
+        Validated ``CodexUpdatePlanArguments`` dict, or ``None`` if the value
+        is absent, cannot be parsed as JSON, or fails schema validation.
+    """
     return _parse_json_mapping(raw_value, _CODEX_UPDATE_PLAN_ARGUMENTS_ADAPTER)
 
 
 def parse_codex_spawn_agent_arguments(raw_value: object) -> CodexSpawnAgentArguments | None:
+    """Parse and validate a raw ``spawn_agent`` function-call argument payload.
+
+    Args:
+        raw_value: A JSON string or mapping representing the ``spawn_agent``
+            arguments emitted by a Codex agent.
+
+    Returns:
+        Validated ``CodexSpawnAgentArguments`` dict, or ``None`` if the value
+        is absent, cannot be parsed as JSON, or fails schema validation.
+    """
     return _parse_json_mapping(raw_value, _CODEX_SPAWN_AGENT_ARGUMENTS_ADAPTER)
 
 
 def parse_codex_spawn_agent_output(raw_value: object) -> CodexSpawnAgentOutput | None:
+    """Parse and validate a raw ``spawn_agent`` function-call output payload.
+
+    Args:
+        raw_value: A JSON string or mapping representing the output returned
+            by a Codex ``spawn_agent`` tool call.
+
+    Returns:
+        Validated ``CodexSpawnAgentOutput`` dict, or ``None`` if the value
+        is absent, cannot be parsed as JSON, or fails schema validation.
+    """
     return _parse_json_mapping(raw_value, _CODEX_SPAWN_AGENT_OUTPUT_ADAPTER)
 
 
 def parse_codex_session_source(raw_value: object) -> CodexSessionSource | None:
+    """Parse and validate a Codex session source descriptor.
+
+    Accepts either a JSON-encoded string or an already-decoded mapping.
+    Returns ``None`` for falsy inputs or values that fail validation.
+
+    Args:
+        raw_value: A JSON string or mapping representing a ``CodexSessionSource``
+            payload from a ``session_meta`` line.
+
+    Returns:
+        Validated ``CodexSessionSource`` dict, or ``None`` if the input is
+        empty, cannot be decoded, or fails schema validation.
+    """
     if not raw_value:
         return None
     if isinstance(raw_value, str):
@@ -159,6 +214,15 @@ def parse_codex_session_source(raw_value: object) -> CodexSessionSource | None:
 
 
 def payload_for_line(line: CodexSessionLine) -> CodexPayload:
+    """Extract the ``payload`` field from a Codex session line, defaulting to an empty dict.
+
+    Args:
+        line: A parsed Codex session line dict.
+
+    Returns:
+        The ``payload`` value from the line, or an empty dict when the field
+        is absent or ``None``.
+    """
     payload = line.get("payload")
     if payload is None:
         return {}

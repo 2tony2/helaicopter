@@ -40,7 +40,24 @@ class DatabaseOperationError(RuntimeError):
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def read_database_status(services: InstanceOf[BackendServices]) -> DatabaseStatusResponse:
-    """Return the current database status, bootstrapping on first read."""
+    """Return the current database status, bootstrapping on first read.
+
+    If the persisted status payload is complete, it is returned immediately
+    after annotation. Otherwise a forced refresh is triggered, caches are
+    invalidated, and the result is coerced to a ``DatabaseStatusResponse``.
+
+    Args:
+        services: Initialised backend services used to access settings and
+            invalidate read caches.
+
+    Returns:
+        Current ``DatabaseStatusResponse`` describing database availability,
+        health, and table inventory.
+
+    Raises:
+        DatabaseOperationError: If the bootstrap refresh fails; the exception
+            carries the latest known status payload in its ``payload`` attribute.
+    """
     settings = _service_settings_or_none(services)
     payload = parse_status_payload(_load_status_with_optional_settings(settings))
     if payload is not None and _status_payload_is_complete(payload):
@@ -78,7 +95,29 @@ def trigger_database_refresh(
     trigger: str,
     stale_after_seconds: int,
 ) -> DatabaseStatusResponse:
-    """Run the backend-owned refresh flow and invalidate backend caches."""
+    """Run the backend-owned refresh flow and invalidate backend caches.
+
+    Delegates to the underlying ``run_refresh`` utility with the supplied
+    parameters, invalidates all backend read caches on completion, and
+    returns the updated database status.
+
+    Args:
+        services: Initialised backend services used to access settings and
+            invalidate read caches.
+        force: When ``True``, the refresh runs even if the existing data is
+            not yet stale.
+        trigger: Human-readable label identifying the call-site (e.g.
+            ``"manual"``, ``"schedule"``).
+        stale_after_seconds: Age threshold in seconds beyond which cached
+            data is considered stale and a refresh is warranted.
+
+    Returns:
+        Updated ``DatabaseStatusResponse`` after the refresh completes.
+
+    Raises:
+        DatabaseOperationError: If the refresh fails; the exception carries
+            the latest known status payload in its ``payload`` attribute.
+    """
     settings = _service_settings_or_none(services)
     try:
         payload = _run_refresh_with_optional_settings(

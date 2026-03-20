@@ -19,7 +19,11 @@ plans_router = APIRouter(prefix="/plans", tags=["plans"])
 async def plans_index(
     services: BackendServices = Depends(get_services),
 ) -> list[PlanSummaryResponse]:
-    """List saved plans from Claude and Codex sources."""
+    """List saved plans from Claude and Codex sources.
+
+    Returns:
+        A list of plan summaries aggregated from all configured plan sources.
+    """
     return list_plans(services)
 
 
@@ -28,7 +32,17 @@ async def plans_detail(
     slug: str,
     services: BackendServices = Depends(get_services),
 ) -> PlanDetailResponse:
-    """Return one plan by encoded id or legacy Claude slug."""
+    """Return one plan by encoded id or legacy Claude slug.
+
+    Args:
+        slug: The encoded plan id or legacy Claude slug identifying the plan.
+
+    Returns:
+        Full plan detail including content and metadata.
+
+    Raises:
+        HTTPException: 404 if no plan matching the given slug is found.
+    """
     plan = get_plan(services, slug)
     if plan is None:
         raise HTTPException(status_code=404, detail="Plan not found")
