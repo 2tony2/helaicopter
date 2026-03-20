@@ -407,9 +407,11 @@ def test_repo_boundaries_architecture_note_and_lint() -> None:
 def test_repo_boundaries_backend_plans_layers() -> None:
     from helaicopter_api.contracts.plans import (
         PlanDetailResponse,
+        PlanProvider,
         PlanStepResponse,
         PlanSummaryResponse,
     )
+    from helaicopter_api.schema.plans import PlanProvider as LegacyPlanProvider
 
     _assert_paths_exist(
         [
@@ -421,6 +423,7 @@ def test_repo_boundaries_backend_plans_layers() -> None:
     )
 
     assert PlanDetailResponse.__module__ == "helaicopter_api.contracts.plans"
+    assert LegacyPlanProvider is PlanProvider
     assert PlanSummaryResponse.__module__ == "helaicopter_api.contracts.plans"
     assert PlanStepResponse.__module__ == "helaicopter_api.contracts.plans"
 
