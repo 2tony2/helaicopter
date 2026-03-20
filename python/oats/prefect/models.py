@@ -44,6 +44,7 @@ class PrefectTaskGraph(BaseModel):
 
 
 class PrefectFlowPayload(BaseModel):
+    run_id: str | None = None
     run_title: str
     source_path: Path
     repo_root: Path

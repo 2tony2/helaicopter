@@ -55,6 +55,17 @@ def test_prepare_task_worktree_is_safe_to_rerun_when_worktree_already_exists(
     assert _git(context.worktree_path, "status", "--short") == "?? rerun-marker.txt"
 
 
+def test_prepare_task_worktree_uses_parent_branch_as_upstream(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    payload = compile_run_definition(_sample_run_definition(tmp_path), _repo_config()).flow_payload
+    verify_task = payload.tasks[1]
+
+    context = prepare_task_worktree(payload, verify_task)
+
+    assert context.task_branch == "oats/task/verify"
+    assert _git(context.worktree_path, "rev-parse", "--abbrev-ref", "HEAD@{upstream}") == "oats/task/plan"
+
+
 def test_compiled_payload_attaches_repo_execution_context_for_each_task(tmp_path: Path) -> None:
     deployment = compile_run_definition(_sample_run_definition(tmp_path), _repo_config())
     plan_task, verify_task = deployment.flow_payload.tasks

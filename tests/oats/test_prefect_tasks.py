@@ -131,6 +131,60 @@ def test_execute_compiled_task_attempt_uses_repo_dangerous_bypass_setting(
     assert recorded["dangerous_bypass"] is True
 
 
+def test_task_checkpoint_persists_run_id_parent_branch_and_task_pr_snapshot(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    payload = _payload(tmp_path)
+    task_node = payload.tasks[0]
+    artifact_store = LocalArtifactCheckpointStore(
+        payload=payload,
+        flow_run_id="flow-run-run-id",
+        flow_run_name="Run Id",
+    )
+    artifact_store.initialize()
+    monkeypatch.setattr(
+        "oats.prefect.tasks.load_repo_config",
+        lambda _path: SimpleNamespace(
+            agent={"codex": SimpleNamespace(command="codex", args=["exec"])},
+            execution=SimpleNamespace(dangerous_bypass=False),
+        ),
+    )
+    monkeypatch.setattr(
+        "oats.prefect.tasks.prepare_task_worktree",
+        lambda _payload, _task_node: SimpleNamespace(worktree_path=tmp_path / "worktree"),
+    )
+    monkeypatch.setattr(
+        "oats.prefect.tasks.invoke_agent",
+        lambda **kwargs: AgentInvocationResult(
+            agent="codex",
+            role="executor",
+            command=["codex", "exec"],
+            cwd=kwargs["cwd"],
+            prompt=kwargs["prompt"],
+            session_id="thread-123",
+            session_id_field="thread_id",
+            output_text="Implemented the live progress slice.",
+            raw_stdout="",
+            raw_stderr="",
+            exit_code=0,
+        ),
+    )
+
+    execute_compiled_task_attempt(
+        payload,
+        task_node,
+        upstream_results={},
+        artifact_store=artifact_store,
+        attempt=1,
+    )
+
+    checkpoint = json.loads((artifact_store.paths.tasks_dir / "frontend_cleanup.json").read_text())
+    assert checkpoint["run_id"] == "run-123"
+    assert checkpoint["parent_branch"] == "oats/task/plan"
+    assert checkpoint["task_pr"]["state"] == "open"
+
+
 def _payload(tmp_path: Path) -> PrefectFlowPayload:
     task = PrefectTaskNode(
         task_id="frontend_cleanup",
@@ -139,8 +193,16 @@ def _payload(tmp_path: Path) -> PrefectFlowPayload:
         agent="codex",
         model="gpt-5",
         reasoning_effort="high",
+        repo_context={
+            "integration_branch": "oats/overnight/live-progress",
+            "parent_branch": "oats/task/plan",
+            "pr_base": "oats/task/plan",
+            "task_branch": "oats/task/frontend-cleanup",
+            "worktree_path": ".oats-worktrees/live-progress/frontend-cleanup",
+        },
     )
     return PrefectFlowPayload(
+        run_id="run-123",
         run_title="Run: Live Progress",
         source_path=tmp_path / "examples" / "live_progress.md",
         repo_root=tmp_path,

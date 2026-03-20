@@ -55,6 +55,7 @@ def compile_run_definition(
         ],
     )
     flow_payload = PrefectFlowPayload(
+        run_id=None,
         run_title=run_definition.title,
         source_path=run_definition.source_path,
         repo_root=run_definition.repo_root,

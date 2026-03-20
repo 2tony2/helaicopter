@@ -12,6 +12,7 @@ from oats.pr import build_integration_branch_name, build_task_branch_name, slugi
 class PreparedTaskWorktree(BaseModel):
     repo_root: Path
     integration_branch: str
+    parent_branch: str
     task_branch: str
     worktree_path: Path
 
@@ -68,10 +69,12 @@ def prepare_task_worktree(
     task_node.repo_context = repo_context
 
     worktree_path = payload.repo_root / repo_context.worktree_path
+    parent_branch = repo_context.parent_branch or repo_context.integration_branch
     if not _is_git_repository(payload.repo_root):
         return PreparedTaskWorktree(
             repo_root=payload.repo_root,
             integration_branch=repo_context.integration_branch,
+            parent_branch=parent_branch,
             task_branch=repo_context.task_branch,
             worktree_path=worktree_path,
         )
@@ -80,6 +83,11 @@ def prepare_task_worktree(
         repo_root=payload.repo_root,
         branch_name=repo_context.integration_branch,
         start_point=payload.repo_base_branch,
+    )
+    _ensure_local_branch(
+        repo_root=payload.repo_root,
+        branch_name=parent_branch,
+        start_point=repo_context.integration_branch,
     )
 
     if worktree_path.exists():
@@ -100,17 +108,18 @@ def prepare_task_worktree(
                 "-b",
                 repo_context.task_branch,
                 str(worktree_path),
-                repo_context.integration_branch,
+                parent_branch,
             )
 
     _set_branch_upstream(
         worktree_path=worktree_path,
         task_branch=repo_context.task_branch,
-        upstream_branch=repo_context.integration_branch,
+        upstream_branch=parent_branch,
     )
     return PreparedTaskWorktree(
         repo_root=payload.repo_root,
         integration_branch=repo_context.integration_branch,
+        parent_branch=parent_branch,
         task_branch=repo_context.task_branch,
         worktree_path=worktree_path,
     )
