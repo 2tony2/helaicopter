@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shlex
+from subprocess import CompletedProcess
 from datetime import UTC, datetime
 from threading import Lock, Thread
 from time import monotonic
@@ -22,7 +23,7 @@ class SupportsSubprocessRun(Protocol):
         capture_output: bool = True,
         input_text: str | None = None,
         env: dict[str, str] | None = None,
-    ) -> object:
+    ) -> CompletedProcess[str]:
         ...
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from pydantic import ConfigDict, InstanceOf, validate_call
 
@@ -12,11 +13,23 @@ from helaicopter_api.application.conversations import get_conversation
 from helaicopter_api.application.evaluation_prompts import resolve_evaluation_prompt
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.evaluations import EvaluationJobRequest, EvaluationJobResult
-from helaicopter_api.schema.conversations import ConversationDetailResponse, ConversationMessageBlockResponse
+from helaicopter_api.schema.conversations import (
+    ConversationDetailResponse,
+    ConversationMessageBlockResponse,
+    ConversationTextBlockResponse,
+    ConversationThinkingBlockResponse,
+    ConversationToolCallBlockResponse,
+)
 from helaicopter_api.schema.evaluations import (
     ConversationEvaluationCreateRequest,
     ConversationEvaluationResponse,
 )
+from helaicopter_domain.ids import ConversationId, EvaluationId, PromptId, SessionId
+
+
+@runtime_checkable
+class _ModelDumpable(Protocol):
+    def model_dump(self, *, mode: str = "python") -> object: ...
 
 
 class ConversationEvaluationConversationNotFoundError(LookupError):
@@ -59,7 +72,7 @@ def create_conversation_evaluation(
     prompt_id, prompt_name, prompt_text = _resolve_prompt_content(services, body)
     workspace = _resolve_workspace(services, project_path)
     job_request = EvaluationJobRequest(
-        evaluation_id=f"pending-{session_id}",
+        evaluation_id=EvaluationId(f"pending-{session_id}"),
         provider=body.provider,
         model=body.model,
         workspace=workspace,
@@ -77,7 +90,7 @@ def create_conversation_evaluation(
         model=body.model,
         status="running",
         scope=body.scope,
-        prompt_id=prompt_id,
+        prompt_id=PromptId(prompt_id) if prompt_id is not None else None,
         prompt_name=prompt_name,
         prompt_text=prompt_text,
         selection_instruction=body.selection_instruction,
@@ -183,7 +196,10 @@ def _render_conversation_transcript(conversation: ConversationDetailResponse, *,
     if scope == "failed_tool_calls":
         segments: list[str] = []
         for index, message in enumerate(conversation.messages):
-            has_failure = any(block.type == "tool_call" and block.is_error for block in message.blocks)
+            has_failure = any(
+                isinstance(block, ConversationToolCallBlockResponse) and bool(block.is_error)
+                for block in message.blocks
+            )
             if not has_failure:
                 continue
             for contextual_message in conversation.messages[max(0, index - 1) : index + 1]:
@@ -208,11 +224,12 @@ def _render_message(message: object) -> str:
 
 
 def _format_block(block: ConversationMessageBlockResponse) -> str:
-    if block.type == "text":
+    if isinstance(block, ConversationTextBlockResponse):
         return f"message text:\n{block.text or ''}"
-    if block.type == "thinking":
+    if isinstance(block, ConversationThinkingBlockResponse):
         return f"message thinking:\n{block.thinking or ''}"
 
+    assert isinstance(block, ConversationToolCallBlockResponse)
     tool_input = block.input.root
     parts = [
         f"message tool call: {block.tool_name or 'unknown'}",
@@ -264,9 +281,9 @@ def _resolve_workspace(services: BackendServices, project_path: str) -> Path:
     return services.settings.project_root
 
 
-def _conversation_id_for(project_path: str, session_id: str) -> str:
+def _conversation_id_for(project_path: str, session_id: str) -> ConversationId:
     provider = "codex" if project_path.startswith("codex:") else "claude"
-    return f"{provider}:{session_id}"
+    return ConversationId(f"{provider}:{SessionId(session_id)}")
 
 
 def _isoformat_epoch_ms(timestamp_ms: float) -> str:
@@ -274,7 +291,7 @@ def _isoformat_epoch_ms(timestamp_ms: float) -> str:
 
 
 def _to_response(record: object) -> ConversationEvaluationResponse:
-    if hasattr(record, "model_dump"):
+    if isinstance(record, _ModelDumpable):
         return ConversationEvaluationResponse.model_validate(record.model_dump(mode="python"))
     return ConversationEvaluationResponse.model_validate(record)
 

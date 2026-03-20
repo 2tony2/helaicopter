@@ -8,11 +8,8 @@ from pydantic import TypeAdapter
 
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.prefect import (
-    PrefectDeploymentRecord,
     PrefectFlowRunRecord,
     PrefectOatsPayload,
-    PrefectWorkPoolRecord,
-    PrefectWorkerRecord,
 )
 from helaicopter_api.schema.prefect_orchestration import (
     PrefectDeploymentResponse,

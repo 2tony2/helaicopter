@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any
-
 from helaicopter_db.models.oltp import OltpBase
 
 from helaicopter_api.schema.gateway import GatewayDirectionResponse, GatewaySurfaceResponse
@@ -274,7 +272,9 @@ def _table_integration_map() -> dict[tuple[str, str], TableIntegration]:
 
 @lru_cache(maxsize=1)
 def _sqlalchemy_models_by_table() -> dict[str, str]:
-    return {
-        mapper.local_table.name: mapper.class_.__name__
-        for mapper in OltpBase.registry.mappers
-    }
+    models: dict[str, str] = {}
+    for mapper in OltpBase.registry.mappers:
+        table_name = getattr(mapper.local_table, "name", None)
+        if isinstance(table_name, str):
+            models[table_name] = mapper.class_.__name__
+    return models

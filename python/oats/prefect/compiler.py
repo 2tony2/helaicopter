@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from helaicopter_domain.vocab import ProviderName
 from oats.models import RepoConfig
 from oats.prefect.models import (
     PrefectDeploymentSpec,
@@ -81,7 +82,7 @@ def _compile_task_node(
     worktree_dir: str,
     task_branch_prefix: str,
     integration_branch_prefix: str,
-    default_agent: str,
+    default_agent: ProviderName,
 ) -> PrefectTaskNode:
     return PrefectTaskNode(
         task_id=task.task_id,

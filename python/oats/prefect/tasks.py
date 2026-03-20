@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any, Protocol
 import uuid
 
-from prefect import runtime, task
+from prefect import task
+from prefect.runtime import flow_run, task_run
 from pydantic import BaseModel, Field
 
 from oats.models import PlannedTask
@@ -163,8 +164,8 @@ def resolve_flow_run_identity(
     flow_run_id: str | None = None,
     flow_run_name: str | None = None,
 ) -> tuple[str, str | None]:
-    resolved_id = flow_run_id or _runtime_value(runtime.flow_run.id) or f"local-{uuid.uuid4().hex}"
-    resolved_name = flow_run_name or _runtime_value(runtime.flow_run.name)
+    resolved_id = flow_run_id or _runtime_value(lambda: flow_run.id) or f"local-{uuid.uuid4().hex}"
+    resolved_name = flow_run_name or _runtime_value(lambda: flow_run.name)
     return resolved_id, resolved_name
 
 
@@ -220,6 +221,7 @@ def _oats_executor(
         payload.run_title,
         read_only=False,
     )
+    dangerous_bypass = getattr(getattr(config, "execution", None), "dangerous_bypass", False)
     result = invoke_agent(
         agent_name=planned_task.agent,
         agent_command=config.agent[planned_task.agent],
@@ -228,7 +230,7 @@ def _oats_executor(
         prompt=prompt,
         read_only=False,
         timeout_seconds=1800,
-        dangerous_bypass=False,
+        dangerous_bypass=dangerous_bypass,
         model=planned_task.model,
         reasoning_effort=planned_task.reasoning_effort,
         raise_on_nonzero=False,
@@ -277,7 +279,7 @@ def _oats_executor(
 
 
 def _resolve_attempt() -> int:
-    value = _runtime_value(runtime.task_run.run_count)
+    value = _runtime_value(task_run.run_count)
     if isinstance(value, int) and value >= 1:
         return value
     return 1

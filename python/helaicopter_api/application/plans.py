@@ -7,9 +7,12 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, cast
 
 from pydantic import ConfigDict, InstanceOf, TypeAdapter, ValidationError, validate_call
+from helaicopter_domain.ids import PlanId, SessionId
+from helaicopter_domain.paths import EncodedProjectKey
+from helaicopter_domain.vocab import ProviderName
 
 from helaicopter_api.application.codex_payloads import (
     CodexSessionLine,
@@ -36,14 +39,14 @@ class FilePlanSource(TypedDict):
 
 class ClaudeSessionPlanSource(TypedDict):
     kind: Literal["claude-session"]
-    projectPath: str
-    sessionId: str
+    projectPath: EncodedProjectKey
+    sessionId: SessionId
     eventId: str
 
 
 class CodexSessionPlanSource(TypedDict):
     kind: Literal["codex-session"]
-    sessionId: str
+    sessionId: SessionId
     callId: str
 
 
@@ -53,17 +56,17 @@ _PLAN_SOURCE_ADAPTER = TypeAdapter(PlanSource)
 
 @dataclass(frozen=True, slots=True)
 class _ExtractedPlan:
-    id: str
+    id: PlanId
     slug: str
     title: str
     preview: str
     content: str
-    provider: str
+    provider: ProviderName
     timestamp: float
     model: str | None = None
     source_path: str | None = None
-    session_id: str | None = None
-    project_path: str | None = None
+    session_id: SessionId | None = None
+    project_path: EncodedProjectKey | None = None
     explanation: str | None = None
     steps: list[PlanStepResponse] | None = None
 
@@ -89,18 +92,21 @@ def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailR
 
     kind = source["kind"]
     if kind == "file":
-        return _get_claude_file_plan(services, source["slug"], plan_id)
+        file_source = cast(FilePlanSource, source)
+        return _get_claude_file_plan(services, file_source["slug"], plan_id)
     if kind == "claude-session":
+        claude_source = cast(ClaudeSessionPlanSource, source)
         return _get_claude_session_plan(
             services,
-            project_path=source["projectPath"],
-            session_id=source["sessionId"],
-            event_id=source["eventId"],
+            project_path=claude_source["projectPath"],
+            session_id=claude_source["sessionId"],
+            event_id=claude_source["eventId"],
         )
+    codex_source = cast(CodexSessionPlanSource, source)
     return _get_codex_session_plan(
         services,
-        session_id=source["sessionId"],
-        call_id=source["callId"],
+        session_id=codex_source["sessionId"],
+        call_id=codex_source["callId"],
     )
 
 
@@ -110,7 +116,7 @@ def _list_claude_file_plans(services: BackendServices) -> list[PlanSummaryRespon
         metadata = _summarize_plan_content(plan_file.content, plan_file.slug)
         plans.append(
             PlanSummaryResponse(
-                id=_encode_plan_id({"kind": "file", "slug": plan_file.slug}),
+                id=PlanId(_encode_plan_id({"kind": "file", "slug": plan_file.slug})),
                 slug=metadata["slug"],
                 title=metadata["title"],
                 preview=metadata["preview"],
@@ -132,7 +138,7 @@ def _get_claude_file_plan(
         return None
     metadata = _summarize_plan_content(plan_file.content, slug)
     return PlanDetailResponse(
-        id=plan_id,
+        id=PlanId(plan_id),
         slug=metadata["slug"],
         title=metadata["title"],
         content=plan_file.content,
@@ -164,8 +170,8 @@ def _list_claude_session_plans(services: BackendServices) -> list[PlanSummaryRes
 def _get_claude_session_plan(
     services: BackendServices,
     *,
-    project_path: str,
-    session_id: str,
+    project_path: EncodedProjectKey,
+    session_id: SessionId,
     event_id: str,
 ) -> PlanDetailResponse | None:
     events = services.claude_conversation_reader.read_session_events(project_path, session_id)
@@ -193,9 +199,9 @@ def _get_claude_session_plan(
 def _extract_claude_session_plans(
     events: list[RawConversationEvent],
     *,
-    session_id: str,
-    project_path: str,
-    source_path: str,
+    session_id: SessionId,
+    project_path: EncodedProjectKey,
+    source_path: str | None,
 ) -> list[PlanSummaryResponse]:
     return [
         _plan_summary_response(plan)
@@ -211,9 +217,9 @@ def _extract_claude_session_plans(
 def _extract_claude_session_details(
     events: list[RawConversationEvent],
     *,
-    session_id: str,
-    project_path: str,
-    source_path: str,
+    session_id: SessionId,
+    project_path: EncodedProjectKey,
+    source_path: str | None,
 ) -> list[PlanDetailResponse]:
     return [
         _plan_detail_response(plan)
@@ -229,9 +235,9 @@ def _extract_claude_session_details(
 def _extract_claude_session_plan_data(
     events: list[RawConversationEvent],
     *,
-    session_id: str,
-    project_path: str,
-    source_path: str,
+    session_id: SessionId,
+    project_path: EncodedProjectKey,
+    source_path: str | None,
 ) -> list[_ExtractedPlan]:
     plans: list[_ExtractedPlan] = []
     latest_model: str | None = None
@@ -277,10 +283,11 @@ def _list_codex_session_plans(services: BackendServices) -> list[PlanSummaryResp
     for artifact in services.codex_store.list_session_artifacts():
         lines = _parse_codex_lines(artifact.content)
         project_path = _codex_project_path(lines, thread_by_id.get(artifact.session_id))
+        session_id = SessionId(artifact.session_id)
         plans.extend(
             _extract_codex_session_plans(
                 lines,
-                session_id=artifact.session_id,
+                session_id=session_id,
                 project_path=project_path,
                 source_path=artifact.path,
             )
@@ -291,7 +298,7 @@ def _list_codex_session_plans(services: BackendServices) -> list[PlanSummaryResp
 def _get_codex_session_plan(
     services: BackendServices,
     *,
-    session_id: str,
+    session_id: SessionId,
     call_id: str,
 ) -> PlanDetailResponse | None:
     artifact = services.codex_store.read_session_artifact(session_id)
@@ -320,8 +327,8 @@ def _get_codex_session_plan(
 def _extract_codex_session_plans(
     lines: list[CodexSessionLine],
     *,
-    session_id: str,
-    project_path: str,
+    session_id: SessionId,
+    project_path: EncodedProjectKey,
     source_path: str,
 ) -> list[PlanSummaryResponse]:
     return [
@@ -338,8 +345,8 @@ def _extract_codex_session_plans(
 def _extract_codex_session_details(
     lines: list[CodexSessionLine],
     *,
-    session_id: str,
-    project_path: str,
+    session_id: SessionId,
+    project_path: EncodedProjectKey,
     source_path: str,
 ) -> list[PlanDetailResponse]:
     return [
@@ -356,8 +363,8 @@ def _extract_codex_session_details(
 def _extract_codex_session_plan_data(
     lines: list[CodexSessionLine],
     *,
-    session_id: str,
-    project_path: str,
+    session_id: SessionId,
+    project_path: EncodedProjectKey,
     source_path: str,
 ) -> list[_ExtractedPlan]:
     plans: list[_ExtractedPlan] = []
@@ -420,8 +427,8 @@ def _extract_codex_session_plan_data(
 
 def _session_source_path(
     services: BackendServices,
-    project_path: str,
-    session_id: str,
+    project_path: EncodedProjectKey,
+    session_id: SessionId,
 ) -> str | None:
     sessions = services.claude_conversation_reader.list_sessions(project_path)
     for session in sessions:
@@ -523,7 +530,7 @@ def _parse_codex_plan_steps(raw_plan: list[dict[str, object]] | list[CodexUpdate
 def _codex_project_path(
     lines: list[CodexSessionLine],
     thread: CodexThreadRecord | None,
-) -> str:
+) -> EncodedProjectKey:
     for line in lines:
         if line.get("type") != "session_meta":
             continue
@@ -554,9 +561,9 @@ def _summarize_plan_content(content: str, fallback_slug: str) -> dict[str, str]:
     return {"slug": fallback_slug, "title": title, "preview": preview}
 
 
-def _encode_plan_id(source: PlanSource) -> str:
+def _encode_plan_id(source: PlanSource) -> PlanId:
     payload = json.dumps(source, separators=(",", ":")).encode("utf-8")
-    return base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
+    return PlanId(base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("="))
 
 
 def _decode_plan_id(plan_id: str) -> PlanSource | None:

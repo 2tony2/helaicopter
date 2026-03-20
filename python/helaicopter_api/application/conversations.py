@@ -7,9 +7,10 @@ import re
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import ConfigDict, InstanceOf, validate_call
+from helaicopter_domain.ids import AgentId, PlanId, SessionId
 
 from helaicopter_api.application.codex_payloads import (
     CodexSessionLine,
@@ -33,6 +34,7 @@ from helaicopter_api.ports.claude_fs import RawConversationEvent
 from helaicopter_api.ports.codex_sqlite import CodexSessionArtifact, CodexThreadRecord
 from helaicopter_api.pure.conversation_dag import build_conversation_dag
 from helaicopter_api.schema.conversations import (
+    ContextCategory,
     ConversationContextAnalyticsResponse,
     ConversationContextBucketResponse,
     ConversationContextStepResponse,
@@ -49,6 +51,7 @@ from helaicopter_api.schema.conversations import (
     ConversationSummaryResponse,
     ConversationTaskResponse,
     ConversationTextBlockResponse,
+    ConversationThreadType,
     ConversationThinkingBlockResponse,
     ConversationToolCallBlockResponse,
     ConversationToolInputResponse,
@@ -107,7 +110,7 @@ def get_conversation(
     """Return one conversation detail view from persisted data or live artifacts."""
     if historical := services.app_sqlite_store.get_historical_conversation(
         project_path=project_path,
-        session_id=session_id,
+        session_id=_session_id(session_id),
     ):
         return _shape_historical_detail(historical)
 
@@ -189,9 +192,12 @@ def get_conversation_dag(
     session_id: str,
 ) -> ConversationDagResponse | None:
     """Return the backend-owned DAG for one main or subagent conversation tree."""
-    cache: dict[tuple[str, str | None, str], ConversationDetailResponse | None] = {}
+    cache: dict[tuple[str, SessionId | None, SessionId], ConversationDetailResponse | None] = {}
 
-    def load_conversation(child_session_id: str, parent_session_id: str | None) -> ConversationDetailResponse | None:
+    def load_conversation(
+        child_session_id: SessionId,
+        parent_session_id: SessionId | None,
+    ) -> ConversationDetailResponse | None:
         cache_key = (project_path, parent_session_id, child_session_id)
         if cache_key not in cache:
             cache[cache_key] = _load_conversation_for_dag(
@@ -204,7 +210,7 @@ def get_conversation_dag(
 
     return build_conversation_dag(
         project_path=project_path,
-        root_session_id=session_id,
+        root_session_id=_session_id(session_id),
         load_conversation=load_conversation,
     )
 
@@ -269,11 +275,12 @@ def get_tasks(
     session_id: str,
 ) -> TaskListResponse:
     """Return task payloads for a session from persisted storage or Claude artifacts."""
-    tasks = services.app_sqlite_store.get_historical_tasks_for_session(session_id)
+    typed_session_id = _session_id(session_id)
+    tasks = services.app_sqlite_store.get_historical_tasks_for_session(typed_session_id)
     if tasks is None:
-        tasks = services.claude_task_reader.read_tasks(session_id)
+        tasks = services.claude_task_reader.read_tasks(typed_session_id)
     return TaskListResponse(
-        session_id=session_id,
+        session_id=typed_session_id,
         tasks=[_shape_conversation_task(task) for task in tasks or []],
     )
 
@@ -330,7 +337,7 @@ def _shape_historical_summary(summary: HistoricalConversationSummary) -> Convers
         session_id=summary.session_id,
         project_path=summary.project_path,
         project_name=summary.project_name,
-        thread_type=summary.thread_type if summary.thread_type in {"main", "subagent"} else "main",
+        thread_type=_conversation_thread_type(summary.thread_type),
         first_message=summary.first_message,
         timestamp=created_at,
         created_at=created_at,
@@ -371,7 +378,7 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
             index=step.ordinal,
             role=step.role,
             label=step.label,
-            category=_normalize_context_category(step.category),
+            category=_context_category(step.category),
             timestamp=_to_epoch_ms(step.timestamp),
             input_tokens=step.input_tokens,
             output_tokens=step.output_tokens,
@@ -391,14 +398,14 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
     return ConversationDetailResponse(
         session_id=record.session_id,
         project_path=record.project_path,
-        thread_type=record.thread_type if record.thread_type in {"main", "subagent"} else "main",
+        thread_type=_conversation_thread_type(record.thread_type),
         created_at=created_at,
         last_updated_at=last_updated_at,
         is_running=False,
         messages=messages,
         plans=[
             ConversationPlanResponse(
-                id=plan.plan_id,
+                id=_plan_id(plan.plan_id),
                 slug=plan.slug,
                 title=plan.title,
                 preview=plan.preview,
@@ -418,7 +425,7 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
         end_time=last_updated_at,
         subagents=[
             ConversationSubagentResponse(
-                agent_id=subagent.agent_id,
+                agent_id=_agent_id(subagent.agent_id),
                 description=subagent.description,
                 subagent_type=subagent.subagent_type,
                 nickname=subagent.nickname,
@@ -432,7 +439,7 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
             buckets=[
                 ConversationContextBucketResponse(
                     label=bucket.label,
-                    category=_normalize_context_category(bucket.category),
+                    category=_context_category(bucket.category),
                     input_tokens=bucket.input_tokens,
                     output_tokens=bucket.output_tokens,
                     cache_write_tokens=bucket.cache_write_tokens,
@@ -468,7 +475,11 @@ def _shape_history_pasted_contents(
     data = getattr(payload, "root", payload)
     if not isinstance(data, dict):
         return None
-    return HistoryPastedContentsResponse(root=data)
+    return HistoryPastedContentsResponse(root=_object_dict(cast(object, data)))
+
+
+class _SupportsModelDump(Protocol):
+    def model_dump(self, *, mode: Literal["python"]) -> object: ...
 
 
 def _shape_conversation_task(task: object) -> ConversationTaskResponse:
@@ -482,7 +493,7 @@ def _shape_conversation_task(task: object) -> ConversationTaskResponse:
             _fields_set={"task_id", "title"} | set(extras),
             **extras,
         )
-    dump = task.model_dump(mode="python") if hasattr(task, "model_dump") else task
+    dump = cast(_SupportsModelDump, task).model_dump(mode="python") if hasattr(task, "model_dump") else task
     return ConversationTaskResponse.model_validate(dump)
 
 
@@ -661,7 +672,7 @@ def _summarize_claude_session(
 
     last_updated_at = max(end_timestamp, modified_at_ms)
     return ConversationSummaryResponse(
-        session_id=session_id,
+        session_id=_session_id(session_id),
         project_path=project_path,
         project_name=_project_display_name(project_path),
         thread_type="main",
@@ -681,7 +692,7 @@ def _summarize_claude_session(
         tool_breakdown=tool_breakdown,
         subagent_count=sum(subagent_type_breakdown.values()),
         subagent_type_breakdown=subagent_type_breakdown,
-        task_count=len(services.claude_task_reader.read_tasks(session_id)),
+        task_count=len(services.claude_task_reader.read_tasks(_session_id(session_id))),
         git_branch=git_branch,
         speed=speed,
     )
@@ -693,7 +704,7 @@ def _get_claude_live_conversation(
     project_path: str,
     session_id: str,
 ) -> ConversationDetailResponse | None:
-    events = services.claude_conversation_reader.read_session_events(project_path, session_id)
+    events = services.claude_conversation_reader.read_session_events(project_path, _session_id(session_id))
     if not events:
         return None
     return _shape_claude_live_conversation_detail(
@@ -874,7 +885,7 @@ def _shape_claude_live_conversation_detail(
                 index=next_step_index,
                 role="assistant",
                 label=label,
-                category=category,
+                category=_context_category(category),
                 timestamp=ts,
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
@@ -894,9 +905,9 @@ def _shape_claude_live_conversation_detail(
         default=0,
     )
     return ConversationDetailResponse(
-        session_id=session_id,
+        session_id=_session_id(session_id),
         project_path=project_path,
-        thread_type=thread_type if thread_type in {"main", "subagent"} else "main",
+        thread_type=_conversation_thread_type(thread_type),
         created_at=created_at,
         last_updated_at=last_updated_at,
         is_running=_is_likely_active(last_updated_at),
@@ -968,13 +979,13 @@ def _discover_claude_subagents(
         meta = discovered_meta.get(agent_id, {})
         subagents.append(
             ConversationSubagentResponse(
-                agent_id=agent_id,
+                agent_id=_agent_id(agent_id),
                 description=_string_or_none(meta.get("description")),
                 subagent_type=_string_or_none(meta.get("subagent_type")),
                 nickname=_string_or_none(meta.get("nickname")),
                 has_file=agent_id in existing_files,
                 project_path=project_path,
-                session_id=session_id,
+                session_id=_session_id(session_id),
             )
         )
     return subagents
@@ -1121,7 +1132,7 @@ def _extract_claude_plans(
                 provider="claude",
                 timestamp=_to_epoch_ms(event.timestamp),
                 model=latest_model,
-                session_id=session_id,
+                session_id=_session_id(session_id),
                 project_path=project_path,
             )
         )
@@ -1193,7 +1204,7 @@ def _summarize_codex_artifact(
     first_message = ""
     message_count = 0
     model = "gpt-5"
-    cwd = thread.cwd or ""
+    cwd = thread.cwd if thread is not None and thread.cwd else ""
     total_input_tokens = 0
     total_output_tokens = 0
     total_cache_read_tokens = 0
@@ -1247,7 +1258,7 @@ def _summarize_codex_artifact(
                 if _string_or_none(payload.get("name")) == "spawn_agent":
                     args = parse_codex_spawn_agent_arguments(payload.get("arguments"))
                     pending_spawn_calls[_string_or_none(payload.get("call_id")) or ""] = (
-                        _spawn_agent_type(args or {})
+                        _spawn_agent_type(args)
                     )
             elif item_type == "custom_tool_call":
                 tool_use_count += 1
@@ -1290,12 +1301,13 @@ def _summarize_codex_artifact(
         artifact.modified_at * 1000,
         float((thread.updated_at or 0) * 1000 if thread and thread.updated_at else 0),
     )
+    first_user_message = thread.first_user_message if thread is not None else None
     summary = ConversationSummaryResponse(
-        session_id=session_id,
+        session_id=_session_id(session_id),
         project_path=project_path,
         project_name=project_name,
         thread_type="subagent" if parent_thread_id else "main",
-        first_message=(thread.first_user_message or first_message or "")[:200],
+        first_message=(first_user_message or first_message or "")[:200],
         timestamp=timestamp,
         created_at=timestamp,
         last_updated_at=last_updated_at,
@@ -1465,7 +1477,7 @@ def _get_codex_live_conversation(
                             id=f"user-{len(messages)}",
                             role="user",
                             timestamp=ts,
-                            blocks=text_blocks,
+                            blocks=cast(list[ConversationMessageBlockResponse], text_blocks),
                         )
                     )
             elif role == "assistant":
@@ -1563,7 +1575,7 @@ def _get_codex_live_conversation(
         default=0,
     )
     return ConversationDetailResponse(
-        session_id=session_id,
+        session_id=_session_id(session_id),
         project_path=project_path,
         thread_type="subagent" if _parse_parent_thread_id(thread.source if thread else None) else "main",
         created_at=created_at,
@@ -1644,7 +1656,7 @@ def _extract_codex_plans(
                 provider="codex",
                 timestamp=_to_epoch_ms(line.get("timestamp")),
                 model=latest_model,
-                session_id=session_id,
+                session_id=_session_id(session_id),
                 project_path=project_path,
                 explanation=explanation,
                 steps=steps,
@@ -1687,13 +1699,13 @@ def _discover_codex_subagents(
             continue
         thread = thread_by_id.get(agent_id)
         subagents[agent_id] = ConversationSubagentResponse(
-            agent_id=agent_id,
+            agent_id=_agent_id(agent_id),
             description=pending["description"],
             subagent_type=thread.agent_role if thread else pending["subagent_type"],
             nickname=thread.agent_nickname if thread else spawn["nickname"],
             has_file=agent_id in thread_by_id,
             project_path=project_path,
-            session_id=session_id,
+            session_id=_session_id(session_id),
         )
 
     for agent_id, thread in thread_by_id.items():
@@ -1701,13 +1713,13 @@ def _discover_codex_subagents(
             continue
         existing = subagents.get(agent_id)
         subagents[agent_id] = ConversationSubagentResponse(
-            agent_id=agent_id,
+            agent_id=_agent_id(agent_id),
             description=existing.description if existing else None,
             subagent_type=thread.agent_role or (existing.subagent_type if existing else None),
             nickname=thread.agent_nickname or (existing.nickname if existing else None),
             has_file=True,
             project_path=project_path,
-            session_id=session_id,
+            session_id=_session_id(session_id),
         )
 
     return sorted(subagents.values(), key=lambda item: item.agent_id)
@@ -1827,7 +1839,7 @@ def _add_bucket(
     bucket_totals: dict[str, _BucketTotals],
     *,
     label: str,
-    category: str,
+    category: ContextCategory,
     usage: _UsageTotals,
 ) -> None:
     existing = bucket_totals.get(label)
@@ -1841,7 +1853,7 @@ def _add_bucket(
     existing.calls += 1
 
 
-def _tool_category(tool_name: str) -> str:
+def _tool_category(tool_name: str) -> ContextCategory:
     if tool_name.startswith("mcp__"):
         return "mcp"
     if tool_name == "Task":
@@ -1913,8 +1925,9 @@ def _codex_tool_display_name(raw_name: str) -> str:
     }.get(raw_name, raw_name)
 
 
-def _first_codex_user_message(payload: dict[str, Any]) -> str:
-    for text in _codex_message_texts(payload.get("content"), input_mode=True):
+def _first_codex_user_message(payload: object) -> str:
+    payload_dict = _dict_or_none(payload)
+    for text in _codex_message_texts(payload_dict.get("content"), input_mode=True):
         if text:
             return text
     return ""
@@ -1966,12 +1979,12 @@ def _extract_custom_tool_output(raw_output: str) -> str:
     return raw_output
 
 
-def _spawn_agent_type(args: dict[str, Any]) -> str | None:
-    return _string_or_none(args.get("agent_type"))
+def _spawn_agent_type(args: object | None) -> str | None:
+    return _string_or_none(_dict_or_none(args).get("agent_type"))
 
 
-def _summarize_spawn_agent_message(args: dict[str, Any]) -> str | None:
-    message = _string_or_none(args.get("message"))
+def _summarize_spawn_agent_message(args: object | None) -> str | None:
+    message = _string_or_none(_dict_or_none(args).get("message"))
     if not message:
         return None
     first_line = _first_non_empty_line(message)
@@ -2020,9 +2033,15 @@ def _to_epoch_ms(value: object) -> float:
     return 0.0
 
 
-def _normalize_context_category(value: str | None) -> str:
-    if value in {"tool", "mcp", "subagent", "thinking", "conversation"}:
-        return value
+def _normalize_context_category(value: str | None) -> ContextCategory:
+    if value == "tool":
+        return "tool"
+    if value == "mcp":
+        return "mcp"
+    if value == "subagent":
+        return "subagent"
+    if value == "thinking":
+        return "thinking"
     return "conversation"
 
 
@@ -2120,9 +2139,9 @@ def _summarize_plan_content(content: str, fallback_slug: str) -> dict[str, str]:
     }
 
 
-def _encode_plan_id(payload: dict[str, Any]) -> str:
+def _encode_plan_id(payload: dict[str, Any]) -> PlanId:
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-    return raw.encode("utf-8").hex()
+    return _plan_id(raw.encode("utf-8").hex())
 
 
 def _compact_dict(value: dict[str, Any]) -> dict[str, Any]:
@@ -2201,7 +2220,35 @@ def _usage_from_message(message: dict[str, Any]) -> _UsageTotals:
 
 
 class _BucketTotals(_UsageTotals):
-    def __init__(self, *, category: str) -> None:
+    def __init__(self, *, category: ContextCategory) -> None:
         super().__init__()
         self.category = _normalize_context_category(category)
         self.calls = 0
+
+
+def _session_id(value: str) -> SessionId:
+    return SessionId(value)
+
+
+def _agent_id(value: str) -> AgentId:
+    return AgentId(value)
+
+
+def _plan_id(value: str) -> PlanId:
+    return PlanId(value)
+
+
+def _conversation_thread_type(value: str | None) -> ConversationThreadType:
+    if value == "subagent":
+        return "subagent"
+    return "main"
+
+
+def _context_category(value: str | None) -> ContextCategory:
+    return _normalize_context_category(value)
+
+
+def _object_dict(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}

@@ -41,6 +41,8 @@ class DatabaseArtifactPayload(TypedDict, total=False):
     engine: str
     role: str
     availability: str
+    health: str
+    operationalStatus: str
     note: str
     error: str | None
     path: str | None
@@ -48,13 +50,17 @@ class DatabaseArtifactPayload(TypedDict, total=False):
     publicPath: str | None
     docsUrl: str | None
     tableCount: int
+    sizeBytes: int | None
+    sizeDisplay: str | None
+    inventorySummary: str
+    load: list[object]
     tables: list[DatabaseTablePayload]
 
 
 class DatabaseArtifactsPayload(TypedDict, total=False):
-    frontendCache: dict[str, object]
+    frontendCache: DatabaseArtifactPayload
     sqlite: DatabaseArtifactPayload
-    prefectPostgres: dict[str, object]
+    prefectPostgres: DatabaseArtifactPayload
     duckdb: DatabaseArtifactPayload
 
 
@@ -215,9 +221,10 @@ def _duckdb_table_summaries(settings: Settings | None = None) -> list[DatabaseTa
 
         tables: list[DatabaseTablePayload] = []
         for (table_name,) in tables_rows:
-            row_count = connection.execute(
+            row = connection.execute(
                 f'SELECT COUNT(*) AS count FROM "{table_name}"'
-            ).fetchone()[0]
+            ).fetchone()
+            row_count = int(row[0]) if row is not None else 0
             tables.append(
                 {
                     "name": table_name,

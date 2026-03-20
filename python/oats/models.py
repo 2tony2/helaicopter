@@ -61,6 +61,7 @@ class PlannerSettings(BaseModel):
 class ExecutionSettings(BaseModel):
     max_task_attempts: int = Field(default=2, ge=1)
     retry_backoff_seconds: float = Field(default=2.0, ge=0)
+    dangerous_bypass: bool = False
 
 
 class LoggingSettings(BaseModel):
