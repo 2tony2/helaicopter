@@ -11,10 +11,12 @@ from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus
 from oats.models import (
     AgentInvocationResult,
     ExecutionPlan,
+    FeatureBranchSnapshot,
     InvocationRuntimeRecord,
     RunPlanSnapshot,
     RunRuntimeState,
     RuntimeProgressEvent,
+    TaskPullRequestSnapshot,
     TaskRuntimeRecord,
 )
 
@@ -39,9 +41,14 @@ def build_initial_runtime_state(
             title=task.title,
             depends_on=task.depends_on,
             branch_name=task.branch_name,
+            parent_branch=task.parent_branch,
             pr_base=task.pr_base,
             agent=executor_agent,
             status=task.initial_task_status,
+            task_pr=TaskPullRequestSnapshot(
+                base_branch=task.pr_base,
+                head_branch=task.branch_name,
+            ),
         )
         for task in execution_plan.tasks
     ]
@@ -57,6 +64,10 @@ def build_initial_runtime_state(
         task_pr_target=execution_plan.task_pr_target,
         final_pr_target=execution_plan.final_pr_target,
         runtime_dir=runtime_dir,
+        feature_branch=FeatureBranchSnapshot(
+            name=execution_plan.integration_branch,
+            base_branch=execution_plan.integration_branch_base,
+        ),
         status="pending",
         started_at=now,
         updated_at=now,

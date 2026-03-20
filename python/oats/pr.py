@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 import subprocess
@@ -8,12 +9,22 @@ from helaicopter_domain.ids import TaskId
 from oats.models import (
     CommandExecutionRecord,
     ExecutionPlan,
+    FinalPullRequestSnapshot,
+    OperationHistoryEntry,
     PlannedTask,
     PullRequestApplyRecord,
     PullRequestPlan,
     RepoConfig,
+    RunRuntimeState,
+    TaskPullRequestSnapshot,
+    TaskRuntimeRecord,
 )
 from oats.runner import AgentInvocationError, build_merge_prompt, invoke_agent
+from oats.runtime_state import resolve_runtime_state, write_runtime_state
+
+
+class PullRequestMergeConflictError(RuntimeError):
+    """Raised when GitHub reports that a PR cannot be merged cleanly."""
 
 
 def slugify_branch_component(value: str, *, fallback: str) -> str:
@@ -40,14 +51,14 @@ def build_task_pr_title(task: PlannedTask) -> str:
     return f"[oats][{task.id}] {task.title}"
 
 
-def build_task_pr_body(task: PlannedTask, integration_branch: str) -> str:
+def build_task_pr_body(task: PlannedTask) -> str:
     depends_on = ", ".join(task.depends_on) if task.depends_on else "none"
     lines = [
         f"Overnight Oats task PR for `{task.id}`.",
         "",
         f"- Task: {task.title}",
         f"- Depends on: {depends_on}",
-        f"- Merge target: `{integration_branch}`",
+        f"- Merge target: `{task.pr_base}`",
     ]
     if task.acceptance_criteria:
         lines.extend(["", "Acceptance criteria:"])
@@ -78,7 +89,7 @@ def build_task_pr_plans(plan: ExecutionPlan) -> list[PullRequestPlan]:
             title=build_task_pr_title(task),
             head_branch=task.branch_name,
             base_branch=task.pr_base,
-            body=build_task_pr_body(task, plan.integration_branch),
+            body=build_task_pr_body(task),
         )
         for task in plan.tasks
     ]
@@ -301,3 +312,188 @@ def _run_merge_agent(
         session_id_field=invocation.session_id_field,
         timed_out=invocation.timed_out,
     )
+
+
+def refresh_run(
+    state: RunRuntimeState,
+    github_client,
+    *,
+    action: str = "refresh",
+) -> RunRuntimeState:
+    started_at = datetime.now(timezone.utc)
+    state.active_operation = OperationHistoryEntry(kind=_action_kind(action), status="started")
+    for task in state.tasks:
+        if task.task_pr.state == "not_created":
+            continue
+
+        task.task_pr = _stamp_task_snapshot(github_client.read_task_pr(task))
+        if task.task_pr.state == "merged":
+            _retarget_child_prs(state, task, github_client)
+            continue
+        if not _merge_policy_allows(task.task_pr):
+            continue
+
+        try:
+            task.task_pr = _stamp_task_snapshot(
+                github_client.merge_task_pr(task, task.task_pr, merge_method="merge_commit")
+            )
+        except PullRequestMergeConflictError as exc:
+            conflict_entry = OperationHistoryEntry(
+                kind="conflict_resolution",
+                status="started",
+                details={"task_id": str(task.task_id), "error": str(exc)},
+            )
+            task.operation_history.append(conflict_entry)
+            state.active_operation = conflict_entry
+            state.stack_status = "resolving_conflict"
+            state.operation_history.append(
+                OperationHistoryEntry(
+                    kind=_action_kind(action),
+                    status="failed",
+                    started_at=started_at,
+                    finished_at=datetime.now(timezone.utc),
+                    details={"task_id": str(task.task_id)},
+                )
+            )
+            write_runtime_state(state)
+            return state
+
+        task.status = "succeeded"
+        task.operation_history.append(
+            OperationHistoryEntry(
+                kind="pr_merge",
+                status="succeeded",
+                finished_at=datetime.now(timezone.utc),
+                details={"task_id": str(task.task_id)},
+            )
+        )
+        _retarget_child_prs(state, task, github_client)
+
+    if _should_create_final_pr(state):
+        state.final_pr = _stamp_final_snapshot(github_client.create_final_pr(state))
+        state.operation_history.append(
+            OperationHistoryEntry(
+                kind="pr_create",
+                status="succeeded",
+                finished_at=datetime.now(timezone.utc),
+                details={"role": "final"},
+            )
+        )
+
+    state.final_pr = _stamp_final_snapshot(github_client.read_final_pr(state))
+    state.stack_status = _derive_stack_status(state)
+    if state.final_pr.state == "merged":
+        state.status = "completed"
+        state.stack_status = "completed"
+
+    state.operation_history.append(
+        OperationHistoryEntry(
+            kind=_action_kind(action),
+            status="succeeded",
+            started_at=started_at,
+            finished_at=datetime.now(timezone.utc),
+        )
+    )
+    state.active_operation = None
+    write_runtime_state(state)
+    return state
+
+
+def resume_run(
+    run_id: str,
+    repo_root: Path,
+    github_client,
+) -> RunRuntimeState:
+    state = resolve_runtime_state(repo_root, run_id=run_id)
+    refreshed = refresh_run(state=state, github_client=github_client, action="resume")
+    tasks_by_id = {str(task.task_id): task for task in refreshed.tasks}
+    for task in refreshed.tasks:
+        if task.status != "blocked":
+            continue
+        if not all(
+            tasks_by_id[dependency].task_pr.state == "merged" for dependency in task.depends_on
+        ):
+            continue
+        task.status = "pending"
+        task.parent_branch = refreshed.feature_branch.name
+        task.pr_base = refreshed.feature_branch.name
+    write_runtime_state(refreshed)
+    return refreshed
+
+
+def _retarget_child_prs(
+    state: RunRuntimeState,
+    merged_task: TaskRuntimeRecord,
+    github_client,
+) -> None:
+    for child in state.tasks:
+        if str(merged_task.task_id) not in child.depends_on:
+            continue
+        if child.task_pr.state != "open":
+            continue
+        if child.task_pr.base_branch != merged_task.branch_name:
+            continue
+        child.task_pr = _stamp_task_snapshot(
+            github_client.retarget_task_pr(child, base_branch=state.feature_branch.name)
+        )
+        merged_task.operation_history.append(
+            OperationHistoryEntry(
+                kind="pr_retarget",
+                status="succeeded",
+                finished_at=datetime.now(timezone.utc),
+                details={"child_task_id": str(child.task_id)},
+            )
+        )
+
+
+def _merge_policy_allows(snapshot: TaskPullRequestSnapshot) -> bool:
+    if snapshot.state != "open":
+        return False
+    if snapshot.review_summary.blocking_state == "changes_requested":
+        return False
+    if snapshot.merge_gate_status == "merge_ready":
+        return True
+    checks_state = str(snapshot.checks_summary.get("state", "")).lower()
+    return snapshot.merge_gate_status == "awaiting_checks" and checks_state == "success"
+
+
+def _should_create_final_pr(state: RunRuntimeState) -> bool:
+    return (
+        state.final_pr.state == "not_created"
+        and state.tasks
+        and all(task.task_pr.state == "merged" for task in state.tasks)
+    )
+
+
+def _derive_stack_status(
+    state: RunRuntimeState,
+) -> str:
+    if state.final_pr.state == "merged":
+        return "completed"
+    if state.final_pr.state in {"open", "ready_for_review"}:
+        return "ready_for_final_review"
+    if any(task.task_pr.state == "open" for task in state.tasks):
+        return "awaiting_task_merge"
+    return "building"
+
+
+def _stamp_task_snapshot(snapshot: TaskPullRequestSnapshot) -> TaskPullRequestSnapshot:
+    updates: dict[str, object] = {
+        "last_refreshed_at": snapshot.last_refreshed_at or datetime.now(timezone.utc),
+    }
+    if snapshot.state == "merged":
+        updates["merge_gate_status"] = "merged"
+    return snapshot.model_copy(update=updates, deep=True)
+
+
+def _stamp_final_snapshot(snapshot: FinalPullRequestSnapshot) -> FinalPullRequestSnapshot:
+    updates: dict[str, object] = {
+        "last_refreshed_at": snapshot.last_refreshed_at or datetime.now(timezone.utc),
+    }
+    if snapshot.state == "merged":
+        updates["review_gate_status"] = "merged"
+    return snapshot.model_copy(update=updates, deep=True)
+
+
+def _action_kind(action: str) -> str:
+    return "resume" if action == "resume" else "refresh"

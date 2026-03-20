@@ -144,6 +144,23 @@ def test_pr_commands_target_integration_branch_then_main() -> None:
     assert plan.integration_branch in final_pr_command
 
 
+def test_task_pr_body_uses_task_specific_base_branch() -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=config_path.parent.parent,
+        config_path=config_path,
+    )
+
+    dashboard_pr = build_task_pr_plans(plan)[1]
+
+    assert "- Merge target: `oats/task/auth`" in dashboard_pr.body
+    assert plan.integration_branch not in dashboard_pr.body
+
+
 def test_pr_apply_dry_run_records_all_commands() -> None:
     config_path = find_repo_config(Path("examples"))
     config = load_repo_config(config_path)
