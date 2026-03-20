@@ -24,8 +24,9 @@ Returns projects derived from conversation data. Each project includes the path 
 | Method | Path | Query params | Description |
 |--------|------|-------------|-------------|
 | `GET` | `/conversations` | `project`, `days` | List conversation summaries |
-| `GET` | `/conversations/{projectPath}/{sessionId}` | — | Full conversation detail |
-| `GET` | `/conversations/{projectPath}/{sessionId}/dag` | — | Conversation DAG |
+| `GET` | `/conversations/by-ref/{conversation_ref}` | — | Resolve stable ref to canonical route |
+| `GET` | `/conversations/{projectPath}/{sessionId}` | `parent_session_id` | Full conversation detail |
+| `GET` | `/conversations/{projectPath}/{sessionId}/dag` | `parent_session_id` | Conversation DAG |
 | `GET` | `/conversations/{projectPath}/{sessionId}/subagents/{agentId}` | — | Subagent transcript |
 | `GET` | `/conversation-dags` | `project`, `days`, `provider` | DAG summaries with stats |
 

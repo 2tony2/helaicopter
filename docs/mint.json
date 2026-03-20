@@ -23,7 +23,8 @@
       "group": "Architecture",
       "pages": [
         "architecture/overview",
-        "architecture/components"
+        "architecture/components",
+        "architecture/repo-layers"
       ]
     },
     {
