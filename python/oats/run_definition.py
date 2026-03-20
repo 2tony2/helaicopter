@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
+from helaicopter_domain.vocab import TaskRuntimeStatus
 from helaicopter_domain.vocab import ProviderName
+from oats.stacked_prs import BranchStrategy
 
 
 class CanonicalExecutionHints(BaseModel):
@@ -23,6 +25,11 @@ class CanonicalTaskDefinition(BaseModel):
     acceptance_criteria: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     validation_commands: list[str] = Field(default_factory=list)
+    branch_name: str | None = None
+    parent_branch: str | None = None
+    pr_base: str | None = None
+    branch_strategy: BranchStrategy = "feature_base"
+    initial_task_status: TaskRuntimeStatus = "pending"
 
 
 class CanonicalRunDefinition(BaseModel):

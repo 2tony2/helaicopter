@@ -61,11 +61,19 @@ def test_compiled_payload_attaches_repo_execution_context_for_each_task(tmp_path
 
     assert plan_task.repo_context is not None
     assert plan_task.repo_context.integration_branch == "oats/overnight/run-prefect-worktree-smoke"
+    assert plan_task.repo_context.parent_branch == "oats/overnight/run-prefect-worktree-smoke"
+    assert plan_task.repo_context.pr_base == "oats/overnight/run-prefect-worktree-smoke"
     assert plan_task.repo_context.task_branch == "oats/task/plan"
     assert plan_task.repo_context.worktree_path == Path(".oats-worktrees/run-prefect-worktree-smoke/plan")
+    assert plan_task.branch_strategy == "feature_base"
+    assert plan_task.initial_task_status == "pending"
     assert verify_task.repo_context is not None
+    assert verify_task.repo_context.parent_branch == "oats/task/plan"
+    assert verify_task.repo_context.pr_base == "oats/task/plan"
     assert verify_task.repo_context.task_branch == "oats/task/verify"
     assert verify_task.repo_context.worktree_path == Path(".oats-worktrees/run-prefect-worktree-smoke/verify")
+    assert verify_task.branch_strategy == "single_parent"
+    assert verify_task.initial_task_status == "pending"
 
 
 def test_remove_task_worktree_is_safe_when_repeated(tmp_path: Path) -> None:

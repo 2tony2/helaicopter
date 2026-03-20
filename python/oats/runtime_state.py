@@ -41,6 +41,7 @@ def build_initial_runtime_state(
             branch_name=task.branch_name,
             pr_base=task.pr_base,
             agent=executor_agent,
+            status=task.initial_task_status,
         )
         for task in execution_plan.tasks
     ]

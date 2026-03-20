@@ -43,9 +43,20 @@ def test_execution_plan_uses_integration_branch_targeting() -> None:
     assert plan.integration_branch == "oats/overnight/run-auth-and-dashboard"
     assert plan.task_pr_target == plan.integration_branch
     assert plan.final_pr_target == "main"
-    assert plan.tasks[0].branch_name == "oats/task/auth"
-    assert plan.tasks[0].pr_base == plan.integration_branch
-    assert plan.tasks[0].agent == "codex"
+    auth_task, dashboard_task = plan.tasks
+
+    assert auth_task.branch_name == "oats/task/auth"
+    assert auth_task.parent_branch == plan.integration_branch
+    assert auth_task.pr_base == plan.integration_branch
+    assert auth_task.branch_strategy == "feature_base"
+    assert auth_task.initial_task_status == "pending"
+    assert auth_task.agent == "codex"
+
+    assert dashboard_task.branch_name == "oats/task/dashboard-api"
+    assert dashboard_task.parent_branch == auth_task.branch_name
+    assert dashboard_task.pr_base == auth_task.branch_name
+    assert dashboard_task.branch_strategy == "single_parent"
+    assert dashboard_task.initial_task_status == "pending"
 
 
 def test_execution_plan_preserves_task_level_provider_model_and_effort(tmp_path: Path) -> None:

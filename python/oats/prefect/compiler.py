@@ -14,6 +14,8 @@ from oats.prefect.models import (
 from oats.prefect.settings import PrefectSettings
 from oats.prefect.worktree import build_task_repo_context
 from oats.run_definition import CanonicalRunDefinition, CanonicalTaskDefinition
+from oats.stacked_prs import derive_initial_task_status, derive_parent_branch
+from oats.pr import build_integration_branch_name, build_task_branch_name
 
 
 SHARED_FLOW_NAME = "oats-compiled-run"
@@ -25,13 +27,21 @@ def compile_run_definition(
     repo_config: RepoConfig,
 ) -> PrefectDeploymentSpec:
     settings = PrefectSettings()
+    integration_branch = build_integration_branch_name(
+        repo_config.git.integration_branch_prefix,
+        run_definition.title,
+    )
+    task_branch_map = {
+        task.task_id: task.branch_name or build_task_branch_name(repo_config.git.task_branch_prefix, task.task_id)
+        for task in run_definition.tasks
+    }
     nodes = [
         _compile_task_node(
             task,
+            integration_branch=integration_branch,
+            task_branch_map=task_branch_map,
             run_title=run_definition.title,
             worktree_dir=run_definition.execution.worktree_dir,
-            task_branch_prefix=repo_config.git.task_branch_prefix,
-            integration_branch_prefix=repo_config.git.integration_branch_prefix,
             default_agent=repo_config.agents.executor,
         )
         for task in run_definition.tasks
@@ -78,12 +88,28 @@ def compile_run_definition(
 def _compile_task_node(
     task: CanonicalTaskDefinition,
     *,
+    integration_branch: str,
+    task_branch_map: dict[str, str],
     run_title: str,
     worktree_dir: str,
-    task_branch_prefix: str,
-    integration_branch_prefix: str,
     default_agent: ProviderName,
 ) -> PrefectTaskNode:
+    task_branch = task.branch_name or task_branch_map[task.task_id]
+    parent_branch, branch_strategy = (
+        (task.parent_branch, task.branch_strategy)
+        if task.parent_branch is not None
+        else derive_parent_branch(
+            _CanonicalStackedTask(task_id=task.task_id, depends_on=list(task.depends_on), branch_name=task_branch),
+            feature_branch=integration_branch,
+            upstream_branch_map=task_branch_map,
+        )
+    )
+    pr_base = task.pr_base or parent_branch
+    initial_task_status = (
+        task.initial_task_status
+        if task.initial_task_status == "blocked"
+        else derive_initial_task_status(task.depends_on)
+    )
     return PrefectTaskNode(
         task_id=task.task_id,
         title=task.title,
@@ -95,14 +121,25 @@ def _compile_task_node(
         acceptance_criteria=list(task.acceptance_criteria),
         notes=list(task.notes),
         validation_commands=list(task.validation_commands),
+        branch_strategy=branch_strategy,
+        initial_task_status=initial_task_status,
         repo_context=build_task_repo_context(
             run_title=run_title,
             task_id=task.task_id,
             worktree_dir=worktree_dir,
-            task_branch_prefix=task_branch_prefix,
-            integration_branch_prefix=integration_branch_prefix,
+            integration_branch=integration_branch,
+            task_branch=task_branch,
+            parent_branch=parent_branch,
+            pr_base=pr_base,
         ),
     )
+
+
+class _CanonicalStackedTask:
+    def __init__(self, *, task_id: str, depends_on: list[str], branch_name: str) -> None:
+        self.id = task_id
+        self.depends_on = depends_on
+        self.branch_name = branch_name
 
 
 def _deployment_name(run_definition: CanonicalRunDefinition) -> str:

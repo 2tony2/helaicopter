@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from helaicopter_domain.ids import RunId, SessionId, TaskId
 from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
+from oats.stacked_prs import BranchStrategy
 
 
 class RepoSettings(BaseModel):
@@ -153,7 +154,10 @@ class PlannedTask(BaseModel):
     acceptance_criteria: list[str] = []
     validation_commands: list[str] = []
     branch_name: str
+    parent_branch: str = ""
     pr_base: str
+    branch_strategy: BranchStrategy = "feature_base"
+    initial_task_status: TaskRuntimeStatus = "pending"
 
 
 class ExecutionPlan(BaseModel):

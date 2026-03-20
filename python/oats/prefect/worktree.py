@@ -21,14 +21,25 @@ def build_task_repo_context(
     run_title: str,
     task_id: str,
     worktree_dir: str,
+    integration_branch: str | None = None,
+    task_branch: str | None = None,
+    parent_branch: str | None = None,
+    pr_base: str | None = None,
     task_branch_prefix: str = "oats/task/",
     integration_branch_prefix: str = "oats/overnight/",
 ) -> PrefectTaskRepoContext:
     run_slug = slugify_branch_component(run_title, fallback="run")
     task_slug = slugify_branch_component(task_id, fallback="task")
+    resolved_integration_branch = integration_branch or build_integration_branch_name(
+        integration_branch_prefix,
+        run_title,
+    )
+    resolved_task_branch = task_branch or build_task_branch_name(task_branch_prefix, task_id)
     return PrefectTaskRepoContext(
-        integration_branch=build_integration_branch_name(integration_branch_prefix, run_title),
-        task_branch=build_task_branch_name(task_branch_prefix, task_id),
+        integration_branch=resolved_integration_branch,
+        parent_branch=parent_branch or resolved_integration_branch,
+        pr_base=pr_base or parent_branch or resolved_integration_branch,
+        task_branch=resolved_task_branch,
         worktree_path=Path(worktree_dir) / run_slug / task_slug,
     )
 
