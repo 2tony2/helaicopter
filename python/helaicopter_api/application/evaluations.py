@@ -45,14 +45,18 @@ def list_conversation_evaluations(
     parent_session_id: str | None = None,
 ) -> list[ConversationEvaluationResponse]:
     """Return persisted evaluations for one conversation, newest first."""
-    conversation = get_conversation(
-        services,
+    if _should_resolve_parent_aware_live_claude_evaluation_read(
         project_path=project_path,
-        session_id=session_id,
         parent_session_id=parent_session_id,
-    )
-    if conversation is None:
-        raise ConversationEvaluationConversationNotFoundError("Conversation not found.")
+    ):
+        conversation = get_conversation(
+            services,
+            project_path=project_path,
+            session_id=session_id,
+            parent_session_id=parent_session_id,
+        )
+        if conversation is None:
+            raise ConversationEvaluationConversationNotFoundError("Conversation not found.")
     conversation_id = _conversation_id_for(project_path, session_id)
     records = services.app_sqlite_store.list_conversation_evaluations(conversation_id)
     return [_to_response(record) for record in records]
@@ -290,6 +294,14 @@ def _resolve_workspace(services: BackendServices, project_path: str) -> Path:
     if decoded.exists():
         return decoded
     return services.settings.project_root
+
+
+def _should_resolve_parent_aware_live_claude_evaluation_read(
+    *,
+    project_path: str,
+    parent_session_id: str | None,
+) -> bool:
+    return parent_session_id is not None and not project_path.startswith("codex:")
 
 
 def _conversation_id_for(project_path: str, session_id: str) -> ConversationId:

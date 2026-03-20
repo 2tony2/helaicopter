@@ -379,6 +379,17 @@ def _insert_conversation_evaluation(
         connection.close()
 
 
+def _delete_conversation_rows(path: Path, *, conversation_id: str) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("DELETE FROM message_blocks WHERE message_id IN (SELECT message_id FROM conversation_messages WHERE conversation_id = ?)", (conversation_id,))
+        connection.execute("DELETE FROM conversation_messages WHERE conversation_id = ?", (conversation_id,))
+        connection.execute("DELETE FROM conversations WHERE conversation_id = ?", (conversation_id,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def _seed_live_child_sources(tmp_path: Path) -> Settings:
     claude_dir = tmp_path / ".claude"
     codex_dir = tmp_path / ".codex"
@@ -557,7 +568,41 @@ class TestConversationEvaluationEndpoints:
             }
         ]
 
-    def test_get_requires_parent_session_id_for_live_claude_child_canonical_route(
+    def test_get_preserves_direct_listing_without_transcript_resolution_on_ordinary_route(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+        _create_evaluation_db(db_path)
+        _delete_conversation_rows(db_path, conversation_id="claude:session-1")
+
+        with evaluation_client(db_path) as (client, _store, _runner):
+            response = client.get("/conversations/-Users-tony-Code-helaicopter/session-1/evaluations")
+
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "evaluationId": "evaluation-existing",
+                "conversationId": "claude:session-1",
+                "promptId": "prompt-1",
+                "provider": "codex",
+                "model": "gpt-5",
+                "status": "completed",
+                "scope": "full",
+                "selectionInstruction": None,
+                "promptName": "Failure Sweep",
+                "promptText": "Summarize what failed and how the operator prompt should change.",
+                "reportMarkdown": "# Existing report",
+                "rawOutput": "# Existing report",
+                "errorMessage": None,
+                "command": "codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-5 -",
+                "createdAt": "2026-03-17T12:00:00+00:00",
+                "finishedAt": "2026-03-17T12:00:03+00:00",
+                "durationMs": 3000,
+            }
+        ]
+
+    def test_get_supports_live_claude_child_canonical_route_when_parent_session_id_is_supplied(
         self,
         tmp_path: Path,
     ) -> None:
@@ -571,14 +616,11 @@ class TestConversationEvaluationEndpoints:
         settings = _seed_live_child_sources(tmp_path)
 
         with live_child_evaluation_client(settings) as (client, _store, _runner):
-            missing = client.get("/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations")
             response = client.get(
                 "/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations",
                 params={"parent_session_id": "claude-session-1"},
             )
 
-        assert missing.status_code == 404
-        assert missing.json() == {"detail": "Conversation not found."}
         assert response.status_code == 200
         assert response.json() == [
             {
