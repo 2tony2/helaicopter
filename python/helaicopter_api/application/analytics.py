@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -13,6 +14,7 @@ from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.pure.analytics import build_analytics, filter_analytics_conversations
 from helaicopter_api.schema.analytics import AnalyticsDataResponse
 from helaicopter_db.db import create_olap_engine
+from helaicopter_domain.vocab import ProviderName
 
 
 RECENT_SUPPLEMENT_HOURS = 6
@@ -40,11 +42,11 @@ def get_analytics(
     return AnalyticsDataResponse.model_validate(analytics.to_dict())
 
 
-def _normalize_provider(provider: str | None) -> str | None:
+def _normalize_provider(provider: str | None) -> ProviderName | None:
     if provider is None or provider == "all":
         return None
     if provider in {"claude", "codex"}:
-        return provider
+        return cast(ProviderName, provider)
     raise ValueError(f"Unsupported analytics provider: {provider}")
 
 

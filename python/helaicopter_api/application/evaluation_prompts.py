@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Protocol, runtime_checkable
+
 from pydantic import ConfigDict, InstanceOf, validate_call
 
 from helaicopter_api.bootstrap.services import BackendServices
@@ -10,6 +12,12 @@ from helaicopter_api.schema.evaluations import (
     EvaluationPromptResponse,
     EvaluationPromptUpdateRequest,
 )
+from helaicopter_domain.ids import PromptId
+
+
+@runtime_checkable
+class _ModelDumpable(Protocol):
+    def model_dump(self, *, mode: str = "python") -> object: ...
 
 
 class EvaluationPromptNotFoundError(LookupError):
@@ -34,7 +42,7 @@ def resolve_evaluation_prompt(
     if prompt_id is None:
         return _to_response(services.app_sqlite_store.ensure_default_evaluation_prompt())
 
-    prompt = services.app_sqlite_store.get_evaluation_prompt(prompt_id)
+    prompt = services.app_sqlite_store.get_evaluation_prompt(PromptId(prompt_id))
     if prompt is None:
         raise EvaluationPromptNotFoundError(f"Prompt {prompt_id!r} not found.")
     return _to_response(prompt)
@@ -63,7 +71,7 @@ def update_evaluation_prompt(
     """Update one stored evaluation prompt."""
     try:
         prompt = services.app_sqlite_store.update_evaluation_prompt(
-            prompt_id,
+            PromptId(prompt_id),
             name=body.name,
             description=body.description,
             prompt_text=body.prompt_text,
@@ -80,7 +88,7 @@ def update_evaluation_prompt(
 def delete_evaluation_prompt(services: InstanceOf[BackendServices], prompt_id: str) -> None:
     """Delete one stored user-managed prompt."""
     try:
-        services.app_sqlite_store.delete_evaluation_prompt(prompt_id)
+        services.app_sqlite_store.delete_evaluation_prompt(PromptId(prompt_id))
     except ValueError as error:
         if str(error) == "Prompt not found.":
             raise EvaluationPromptNotFoundError(f"Prompt {prompt_id!r} not found.") from error
@@ -88,6 +96,6 @@ def delete_evaluation_prompt(services: InstanceOf[BackendServices], prompt_id: s
 
 
 def _to_response(prompt: object) -> EvaluationPromptResponse:
-    if hasattr(prompt, "model_dump"):
+    if isinstance(prompt, _ModelDumpable):
         return EvaluationPromptResponse.model_validate(prompt.model_dump(mode="python"))
     return EvaluationPromptResponse.model_validate(prompt)

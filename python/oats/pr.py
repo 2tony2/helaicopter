@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import subprocess
 
+from helaicopter_domain.ids import TaskId
 from oats.models import (
     CommandExecutionRecord,
     ExecutionPlan,
@@ -73,7 +74,7 @@ def build_task_pr_plans(plan: ExecutionPlan) -> list[PullRequestPlan]:
     return [
         PullRequestPlan(
             role="task",
-            task_id=task.id,
+            task_id=TaskId(task.id),
             title=build_task_pr_title(task),
             head_branch=task.branch_name,
             base_branch=task.pr_base,

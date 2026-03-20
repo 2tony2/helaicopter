@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from prefect.context import get_run_context
 from prefect.exceptions import MissingContextError
@@ -79,7 +79,7 @@ def execute_compiled_flow_graph(
                     upstream_task_id: task_futures[upstream_task_id].result().result
                     for upstream_task_id in task_node.depends_on
                 }
-                task_futures[task_id] = prefect_compiled_task.submit(
+                task_futures[task_id] = cast(Any, prefect_compiled_task).submit(
                     compiled_payload,
                     task_node,
                     upstream_results=upstream_results,

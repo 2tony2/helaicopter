@@ -10,7 +10,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -24,7 +24,7 @@ from ..adapters.claude_fs import (
     FileTaskReader,
 )
 from ..adapters.codex_sqlite import FileCodexStore
-from ..adapters.evaluation_jobs import LocalCliEvaluationRunner
+from ..adapters.evaluation_jobs import LocalCliEvaluationRunner, SupportsSubprocessRun
 from ..adapters.oats_artifacts import FileOatsRunStore
 from ..adapters.prefect_http import PrefectHttpAdapter
 from ..ports.app_sqlite import AppSqliteStore
@@ -183,6 +183,7 @@ def build_services(settings: Settings) -> BackendServices:
         runtime_dir=settings.runtime_dir,
     )
     subprocess_runner = SubprocessRunner()
+    evaluation_subprocess_runner = cast(SupportsSubprocessRun, subprocess_runner)
     return BackendServices(
         settings=settings,
         sqlite_engine=engine,
@@ -195,5 +196,7 @@ def build_services(settings: Settings) -> BackendServices:
         oats_run_store=oats_run_store,
         prefect_client=prefect_client,
         subprocess_runner=subprocess_runner,
-        evaluation_job_runner=LocalCliEvaluationRunner(subprocess_runner=subprocess_runner),
+        evaluation_job_runner=LocalCliEvaluationRunner(
+            subprocess_runner=evaluation_subprocess_runner
+        ),
     )

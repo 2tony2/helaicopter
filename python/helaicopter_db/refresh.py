@@ -21,6 +21,7 @@ from helaicopter_api.server.config import Settings, load_settings
 
 from .db import create_olap_engine, create_oltp_engine
 from .export_pipeline import ExportMeta, iter_export_rows, read_export_meta
+from .export_types import ExportConversationEnvelope
 from .models import (
     ContextBucketRecord,
     ContextStepRecord,
@@ -51,7 +52,7 @@ from .settings import (
     get_database_settings,
     ensure_runtime_dirs,
 )
-from .status import build_status_payload, load_status, write_status
+from .status import DatabaseStatusPayload, build_status_payload, load_status, write_status
 from .utils import (
     conversation_context_bucket_id,
     conversation_context_step_id,
@@ -71,6 +72,7 @@ from .utils import (
     tool_dim_id,
     utc_now,
 )
+from helaicopter_domain.ids import SessionId
 
 
 @dataclass
@@ -165,7 +167,7 @@ def _should_skip(
     stale_after_seconds: int,
     export_meta: ExportMeta,
     settings: Settings | None = None,
-) -> dict[str, Any] | None:
+) -> DatabaseStatusPayload | None:
     if force:
         return None
     existing = load_status(settings)
@@ -444,7 +446,7 @@ def _delete_missing_conversations(session: Session, seen_conversation_ids: set[s
 def _load_conversation(
     oltp_session: Session,
     olap_session: Session,
-    envelope: dict[str, Any],
+    envelope: ExportConversationEnvelope,
     counters: RefreshCounters,
     daily_usage: dict[str, dict[str, Any]],
     tool_usage: dict[str, dict[str, Any]],
@@ -458,7 +460,7 @@ def _load_conversation(
     cost = envelope.get("cost") or {}
 
     provider = provider_for_project_path(summary["projectPath"])
-    conv_id = conversation_id(provider, summary["sessionId"])
+    conv_id = conversation_id(provider, SessionId(summary["sessionId"]))
     started_at = parse_timestamp_ms(summary["timestamp"])
     ended_at = parse_timestamp_ms(detail.get("endTime", summary["timestamp"]))
     started_date = started_at.date()
@@ -945,7 +947,7 @@ def run_refresh(
     trigger: str,
     stale_after_seconds: int,
     settings: Settings | None = None,
-) -> dict[str, Any]:
+) -> DatabaseStatusPayload:
     backend_settings = settings or load_settings()
     export_meta = read_export_meta(backend_settings)
     skip = _should_skip(force, stale_after_seconds, export_meta, backend_settings)

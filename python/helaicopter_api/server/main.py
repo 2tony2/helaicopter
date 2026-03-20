@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -25,14 +27,14 @@ def create_app() -> FastAPI:
 
     # -- Middleware (outermost first) ----------------------------------------
     application.add_middleware(
-        CORSMiddleware,
+        cast(Any, CORSMiddleware),
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    application.add_middleware(GZipMiddleware, minimum_size=1000)
-    application.add_middleware(TimingMiddleware)
-    application.add_middleware(RequestIDMiddleware)
+    application.add_middleware(cast(Any, GZipMiddleware), minimum_size=1000)
+    application.add_middleware(cast(Any, TimingMiddleware))
+    application.add_middleware(cast(Any, RequestIDMiddleware))
 
     # -- Routers -------------------------------------------------------------
     application.include_router(root_router)

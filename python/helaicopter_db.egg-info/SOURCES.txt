@@ -31,6 +31,7 @@ python/helaicopter_api/application/conversations.py
 python/helaicopter_api/application/database.py
 python/helaicopter_api/application/evaluation_prompts.py
 python/helaicopter_api/application/evaluations.py
+python/helaicopter_api/application/gateway.py
 python/helaicopter_api/application/orchestration.py
 python/helaicopter_api/application/plans.py
 python/helaicopter_api/application/prefect_orchestration.py
@@ -55,6 +56,7 @@ python/helaicopter_api/router/conversations.py
 python/helaicopter_api/router/database.py
 python/helaicopter_api/router/evaluation_prompts.py
 python/helaicopter_api/router/evaluations.py
+python/helaicopter_api/router/gateway.py
 python/helaicopter_api/router/history.py
 python/helaicopter_api/router/ops.py
 python/helaicopter_api/router/orchestration.py
@@ -71,6 +73,7 @@ python/helaicopter_api/schema/common.py
 python/helaicopter_api/schema/conversations.py
 python/helaicopter_api/schema/database.py
 python/helaicopter_api/schema/evaluations.py
+python/helaicopter_api/schema/gateway.py
 python/helaicopter_api/schema/orchestration.py
 python/helaicopter_api/schema/plans.py
 python/helaicopter_api/schema/prefect_orchestration.py
@@ -123,6 +126,7 @@ python/oats/prefect/client.py
 python/oats/prefect/compiler.py
 python/oats/prefect/deployments.py
 python/oats/prefect/flows.py
+python/oats/prefect/ignore.py
 python/oats/prefect/models.py
 python/oats/prefect/settings.py
 python/oats/prefect/tasks.py
