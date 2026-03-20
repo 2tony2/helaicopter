@@ -194,6 +194,30 @@ def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
         assert forbidden not in content
 
 
+def _assert_ts_feature_implementation(relative_path: str) -> None:
+    path = ROOT / relative_path
+    assert path.exists()
+
+    content = path.read_text(encoding="utf-8")
+    statements = _ts_non_comment_lines(content)
+
+    assert "@deprecated" not in content
+    assert statements != []
+
+    reexport_pattern = re.compile(
+        r"export\s+(?:\*\s+from|\{[^}]+\}\s+from)\s+['\"].+['\"];?"
+    )
+    implementation_statements = [
+        statement
+        for statement in statements
+        if statement not in {'"use client";', "'use client';", '"use server";', "'use server';"}
+        and statement not in {'"use client"', "'use client'", '"use server"', "'use server'"}
+        if not statement.startswith("import ")
+        and not re.fullmatch(reexport_pattern, statement)
+    ]
+    assert implementation_statements != []
+
+
 def _assert_deprecated_python_reexport(relative_path: str, target: str) -> None:
     path = ROOT / relative_path
     assert path.exists()
@@ -262,6 +286,9 @@ def test_repo_boundaries_plans_feature_paths() -> None:
             "src/features/plans/hooks/use-plans.ts",
         ]
     )
+    _assert_ts_feature_implementation("src/features/plans/components/plan-panel.tsx")
+    _assert_ts_feature_implementation("src/features/plans/components/plan-viewer.tsx")
+    _assert_ts_feature_implementation("src/features/plans/hooks/use-plans.ts")
 
     _assert_deprecated_ts_reexport(
         "src/components/plans/plan-panel.tsx",
