@@ -315,12 +315,12 @@ def test_repo_boundaries_plans_route_shells() -> None:
     _assert_thin_route_shell(
         "src/app/plans/page.tsx",
         view_import='@/views/plans/plans-index-view',
-        rendered_view="<PlansIndexView",
+        rendered_view="<PlansIndexView />",
     )
     _assert_thin_route_shell(
         "src/app/plans/[slug]/page.tsx",
         view_import='@/views/plans/plan-detail-view',
-        rendered_view="<PlanDetailView",
+        rendered_view="<PlanDetailView params={params} />",
     )
 
 
