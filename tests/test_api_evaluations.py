@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,6 +16,7 @@ from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
+from helaicopter_api.server.openapi_artifacts import generate_openapi_artifacts
 
 
 def _create_evaluation_db(path: Path) -> None:
@@ -506,3 +508,17 @@ class TestConversationEvaluationEndpoints:
         assert "selection_instruction" not in create_schema["properties"]
         assert "evaluationId" in response_schema["properties"]
         assert "evaluation_id" not in response_schema["properties"]
+
+    def test_generated_frontend_openapi_surface_includes_conversation_ref_resolver(self, tmp_path: Path) -> None:
+        settings = Settings(
+            project_root=tmp_path,
+            claude_dir=tmp_path / ".claude",
+            codex_dir=tmp_path / ".codex",
+        )
+
+        generate_openapi_artifacts(settings=settings)
+
+        frontend_schema = json.loads(
+            (settings.openapi.artifacts_dir / "helaicopter-frontend-app-api.json").read_text(encoding="utf-8")
+        )
+        assert "/conversations/by-ref/{conversation_ref}" in frontend_schema["paths"]

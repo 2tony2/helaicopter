@@ -257,6 +257,49 @@
         }
       }
     },
+    "/conversations/by-ref/{conversation_ref}": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Conversation By Ref",
+        "description": "Resolve a stable conversation ref to the current canonical route target.",
+        "operationId": "conversation_by_ref_conversations_by_ref__conversation_ref__get",
+        "parameters": [
+          {
+            "name": "conversation_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRefResolutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/conversations/{project_path}/{session_id}": {
       "get": {
         "tags": [
@@ -1628,7 +1671,8 @@
         "properties": {
           "message_id": {
             "type": "string",
-            "title": "Message Id"
+            "title": "Message Id",
+            "description": "Source/provider message identifier captured in context analytics; not the persisted conversation message row ID."
           },
           "index": {
             "type": "integer",
@@ -1844,7 +1888,14 @@
             "default": 0
           },
           "path": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Path"
           },
           "is_root": {
@@ -1861,7 +1912,6 @@
           "thread_type",
           "has_transcript",
           "timestamp",
-          "path",
           "is_root"
         ],
         "title": "ConversationDagNodeResponse",
@@ -1973,6 +2023,14 @@
             "type": "string",
             "title": "Project Name",
             "description": "Human-readable project label or display path."
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
           },
           "thread_type": {
             "type": "string",
@@ -2127,6 +2185,8 @@
           "session_id",
           "project_path",
           "project_name",
+          "route_slug",
+          "conversation_ref",
           "thread_type",
           "first_message",
           "timestamp",
@@ -2148,6 +2208,14 @@
             "type": "string",
             "title": "Project Path",
             "description": "Opaque encoded project key used in URLs and persisted records."
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
           },
           "thread_type": {
             "type": "string",
@@ -2273,6 +2341,8 @@
         "required": [
           "session_id",
           "project_path",
+          "route_slug",
+          "conversation_ref",
           "created_at",
           "last_updated_at",
           "is_running"
@@ -2680,6 +2750,28 @@
             ],
             "title": "Project Path"
           },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
+          },
           "explanation": {
             "anyOf": [
               {
@@ -2730,6 +2822,55 @@
           "status"
         ],
         "title": "ConversationPlanStepResponse"
+      },
+      "ConversationRefResolutionResponse": {
+        "properties": {
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "project_path": {
+            "type": "string",
+            "title": "Project Path",
+            "description": "Opaque encoded project key used in URLs and persisted records."
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "thread_type": {
+            "type": "string",
+            "enum": [
+              "main",
+              "subagent"
+            ],
+            "title": "Thread Type"
+          },
+          "parent_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_ref",
+          "route_slug",
+          "project_path",
+          "session_id",
+          "thread_type"
+        ],
+        "title": "ConversationRefResolutionResponse"
       },
       "ConversationSubagentResponse": {
         "properties": {
@@ -2797,6 +2938,28 @@
               }
             ],
             "title": "Session Id"
+          },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
           }
         },
         "type": "object",
@@ -2821,6 +2984,14 @@
             "type": "string",
             "title": "Project Name",
             "description": "Human-readable project label or display path."
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
           },
           "thread_type": {
             "type": "string",
@@ -2972,6 +3143,8 @@
           "session_id",
           "project_path",
           "project_name",
+          "route_slug",
+          "conversation_ref",
           "thread_type",
           "first_message",
           "timestamp",
@@ -3265,8 +3438,10 @@
           "key": {
             "type": "string",
             "enum": [
+              "frontend_cache",
               "sqlite",
-              "duckdb"
+              "duckdb",
+              "prefect_postgres"
             ],
             "title": "Key"
           },
@@ -3281,8 +3456,10 @@
           "role": {
             "type": "string",
             "enum": [
+              "cache",
               "metadata",
-              "inspection"
+              "inspection",
+              "orchestration"
             ],
             "title": "Role"
           },
@@ -3294,6 +3471,28 @@
               "unreachable"
             ],
             "title": "Availability"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "operationalStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operationalstatus"
           },
           "note": {
             "anyOf": [
@@ -3366,6 +3565,47 @@
             "title": "Tablecount",
             "default": 0
           },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizebytes"
+          },
+          "sizeDisplay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizedisplay"
+          },
+          "inventorySummary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inventorysummary"
+          },
+          "load": {
+            "items": {
+              "$ref": "#/components/schemas/DatabaseLoadMetricResponse"
+            },
+            "type": "array",
+            "title": "Load",
+            "default": []
+          },
           "tables": {
             "items": {
               "$ref": "#/components/schemas/DatabaseTableSchemaResponse"
@@ -3387,17 +3627,25 @@
       },
       "DatabaseArtifactsResponse": {
         "properties": {
+          "frontendCache": {
+            "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
+          },
           "sqlite": {
             "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
           },
           "duckdb": {
             "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
+          },
+          "prefectPostgres": {
+            "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
           }
         },
         "type": "object",
         "required": [
+          "frontendCache",
           "sqlite",
-          "duckdb"
+          "duckdb",
+          "prefectPostgres"
         ],
         "title": "DatabaseArtifactsResponse"
       },
@@ -3451,6 +3699,44 @@
         ],
         "title": "DatabaseColumnSchemaResponse"
       },
+      "DatabaseLoadMetricResponse": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "displayValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayvalue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "DatabaseLoadMetricResponse"
+      },
       "DatabaseRefreshRequest": {
         "properties": {
           "force": {
@@ -3478,12 +3764,18 @@
         "properties": {
           "analyticsReadBackend": {
             "type": "string",
-            "const": "legacy",
+            "enum": [
+              "legacy",
+              "duckdb"
+            ],
             "title": "Analyticsreadbackend"
           },
           "conversationSummaryReadBackend": {
             "type": "string",
-            "const": "legacy",
+            "enum": [
+              "legacy",
+              "duckdb"
+            ],
             "title": "Conversationsummaryreadbackend"
           }
         },
@@ -3670,6 +3962,28 @@
             "title": "Rowcount",
             "default": 0
           },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizebytes"
+          },
+          "sizeDisplay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizedisplay"
+          },
           "columns": {
             "items": {
               "$ref": "#/components/schemas/DatabaseColumnSchemaResponse"
@@ -3677,6 +3991,46 @@
             "type": "array",
             "title": "Columns",
             "default": []
+          },
+          "servingClass": {
+            "type": "string",
+            "title": "Servingclass",
+            "default": "not-served"
+          },
+          "integrationType": {
+            "type": "string",
+            "title": "Integrationtype",
+            "default": "unclassified"
+          },
+          "fastapiRoutes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fastapiroutes",
+            "default": []
+          },
+          "sqlalchemyModel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sqlalchemymodel"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           }
         },
         "type": "object",
@@ -3796,6 +4150,81 @@
         ],
         "title": "EvaluationPromptUpdateRequest",
         "description": "Payload accepted by the prompt update endpoint."
+      },
+      "GatewayDirectionResponse": {
+        "properties": {
+          "gatewayDirection": {
+            "type": "string",
+            "title": "Gatewaydirection",
+            "default": "fastapi-first"
+          },
+          "frontendCallsVia": {
+            "type": "string",
+            "title": "Frontendcallsvia",
+            "default": "fastapi"
+          },
+          "backendEntrypoint": {
+            "type": "string",
+            "title": "Backendentrypoint",
+            "default": "fastapi"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/GatewaySurfaceResponse"
+            },
+            "type": "array",
+            "title": "Surfaces",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "GatewayDirectionResponse"
+      },
+      "GatewaySurfaceResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner"
+          },
+          "servingClass": {
+            "type": "string",
+            "title": "Servingclass"
+          },
+          "integrationType": {
+            "type": "string",
+            "title": "Integrationtype"
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "title": "Isprimary",
+            "default": false
+          },
+          "pathPrefixes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pathprefixes",
+            "default": []
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "owner",
+          "servingClass",
+          "integrationType",
+          "note"
+        ],
+        "title": "GatewaySurfaceResponse"
       },
       "HTTPValidationError": {
         "properties": {
@@ -4151,6 +4580,36 @@
         "type": "object",
         "title": "OrchestrationDagStatsResponse"
       },
+      "OrchestrationFactsResponse": {
+        "properties": {
+          "canonicalRules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Canonicalrules",
+            "default": []
+          },
+          "runFacts": {
+            "items": {
+              "$ref": "#/components/schemas/OrchestrationRunFactResponse"
+            },
+            "type": "array",
+            "title": "Runfacts",
+            "default": []
+          },
+          "taskAttemptFacts": {
+            "items": {
+              "$ref": "#/components/schemas/OrchestrationTaskAttemptFactResponse"
+            },
+            "type": "array",
+            "title": "Taskattemptfacts",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "OrchestrationFactsResponse"
+      },
       "OrchestrationInvocationResponse": {
         "properties": {
           "agent": {
@@ -4226,6 +4685,17 @@
             "type": "string",
             "title": "Startedat"
           },
+          "lastHeartbeatAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastheartbeatat"
+          },
           "finishedAt": {
             "anyOf": [
               {
@@ -4272,6 +4742,129 @@
         ],
         "title": "OrchestrationInvocationResponse",
         "description": "Agent invocation snapshot."
+      },
+      "OrchestrationRunFactResponse": {
+        "properties": {
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "runTitle": {
+            "type": "string",
+            "title": "Runtitle"
+          },
+          "sourceKind": {
+            "type": "string",
+            "enum": [
+              "runtime_snapshot",
+              "terminal_record"
+            ],
+            "title": "Sourcekind"
+          },
+          "canonicalReason": {
+            "type": "string",
+            "title": "Canonicalreason"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "planning",
+              "running",
+              "completed",
+              "failed",
+              "timed_out"
+            ],
+            "title": "Status"
+          },
+          "taskCount": {
+            "type": "integer",
+            "title": "Taskcount",
+            "default": 0
+          },
+          "attemptCount": {
+            "type": "integer",
+            "title": "Attemptcount",
+            "default": 0
+          },
+          "completedTaskCount": {
+            "type": "integer",
+            "title": "Completedtaskcount",
+            "default": 0
+          },
+          "failedTaskCount": {
+            "type": "integer",
+            "title": "Failedtaskcount",
+            "default": 0
+          },
+          "pendingTaskCount": {
+            "type": "integer",
+            "title": "Pendingtaskcount",
+            "default": 0
+          },
+          "runningTaskCount": {
+            "type": "integer",
+            "title": "Runningtaskcount",
+            "default": 0
+          },
+          "timedOutTaskCount": {
+            "type": "integer",
+            "title": "Timedouttaskcount",
+            "default": 0
+          },
+          "activeTaskId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activetaskid"
+          },
+          "isRunning": {
+            "type": "boolean",
+            "title": "Isrunning",
+            "default": false
+          },
+          "isStale": {
+            "type": "boolean",
+            "title": "Isstale",
+            "default": false
+          },
+          "runtimeStatePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtimestatepath"
+          },
+          "terminalRecordPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalrecordpath"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runId",
+          "runTitle",
+          "sourceKind",
+          "canonicalReason",
+          "status"
+        ],
+        "title": "OrchestrationRunFactResponse"
       },
       "OrchestrationRunResponse": {
         "properties": {
@@ -4431,6 +5024,99 @@
         "title": "OrchestrationRunResponse",
         "description": "Full orchestration run record."
       },
+      "OrchestrationTaskAttemptFactResponse": {
+        "properties": {
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "taskTitle": {
+            "type": "string",
+            "title": "Tasktitle"
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "title": "Attemptnumber"
+          },
+          "sourceKind": {
+            "type": "string",
+            "enum": [
+              "runtime_snapshot",
+              "terminal_record"
+            ],
+            "title": "Sourcekind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "timed_out",
+              "skipped",
+              "blocked"
+            ],
+            "title": "Status"
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "exitCode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exitcode"
+          },
+          "timedOut": {
+            "type": "boolean",
+            "title": "Timedout",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "runId",
+          "taskId",
+          "taskTitle",
+          "attemptNumber",
+          "sourceKind",
+          "status"
+        ],
+        "title": "OrchestrationTaskAttemptFactResponse"
+      },
       "OrchestrationTaskResponse": {
         "properties": {
           "taskId": {
@@ -4562,6 +5248,28 @@
             ],
             "title": "Project Path"
           },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
+          },
           "explanation": {
             "anyOf": [
               {
@@ -4686,6 +5394,28 @@
               }
             ],
             "title": "Project Path"
+          },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
           }
         },
         "type": "object",
@@ -4801,6 +5531,55 @@
           "deploymentName"
         ],
         "title": "PrefectDeploymentResponse"
+      },
+      "PrefectFlowRunAnalyticsResponse": {
+        "properties": {
+          "runStatus": {
+            "type": "string",
+            "title": "Runstatus"
+          },
+          "taskCount": {
+            "type": "integer",
+            "title": "Taskcount",
+            "default": 0
+          },
+          "completedTaskCount": {
+            "type": "integer",
+            "title": "Completedtaskcount",
+            "default": 0
+          },
+          "runningTaskCount": {
+            "type": "integer",
+            "title": "Runningtaskcount",
+            "default": 0
+          },
+          "failedTaskCount": {
+            "type": "integer",
+            "title": "Failedtaskcount",
+            "default": 0
+          },
+          "taskAttemptCount": {
+            "type": "integer",
+            "title": "Taskattemptcount",
+            "default": 0
+          },
+          "lastUpdatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastupdatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runStatus"
+        ],
+        "title": "PrefectFlowRunAnalyticsResponse"
       },
       "PrefectFlowRunResponse": {
         "properties": {
@@ -4933,6 +5712,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PrefectOatsMetadataResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "analytics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrefectFlowRunAnalyticsResponse"
               },
               {
                 "type": "null"
@@ -5401,6 +6190,10 @@
       "description": "Evaluation prompt management and conversation review workflows."
     },
     {
+      "name": "gateway",
+      "description": "Backend-owned API gateway direction across frontend, stores, cache, and orchestration surfaces."
+    },
+    {
       "name": "history",
       "description": "Merged CLI history from Claude and Codex."
     },
@@ -5422,7 +6215,7 @@
     },
     {
       "name": "orchestration",
-      "description": "OATS run orchestration."
+      "description": "Prefect-first orchestration plus legacy OATS compatibility surfaces."
     }
   ]
 }

@@ -25,6 +25,7 @@ FRONTEND_APP_PATHS = (
     "/analytics",
     "/conversation-dags",
     "/conversations",
+    "/conversations/by-ref/{conversation_ref}",
     "/conversations/{project_path}/{session_id}",
     "/conversations/{project_path}/{session_id}/dag",
     "/conversations/{project_path}/{session_id}/evaluations",

@@ -70,6 +70,8 @@ class ConversationSummaryResponse(BaseModel):
     session_id: SessionId
     project_path: EncodedProjectKey
     project_name: ProjectDisplayPath
+    route_slug: str
+    conversation_ref: str
     thread_type: Literal["main", "subagent"]
     first_message: str
     timestamp: float
@@ -173,6 +175,8 @@ class ConversationPlanResponse(BaseModel):
     source_path: str | None = None
     session_id: SessionId | None = None
     project_path: EncodedProjectKey | None = None
+    route_slug: str | None = None
+    conversation_ref: str | None = None
     explanation: str | None = None
     steps: list[ConversationPlanStepResponse] = []
 
@@ -187,6 +191,8 @@ class ConversationSubagentResponse(BaseModel):
     has_file: bool = False
     project_path: EncodedProjectKey | None = None
     session_id: SessionId | None = None
+    route_slug: str | None = None
+    conversation_ref: str | None = None
 
 
 class ConversationContextBucketResponse(BaseModel):
@@ -232,6 +238,8 @@ class ConversationDetailResponse(BaseModel):
 
     session_id: SessionId
     project_path: EncodedProjectKey
+    route_slug: str
+    conversation_ref: str
     thread_type: ConversationThreadType = "main"
     created_at: float
     last_updated_at: float
@@ -312,8 +320,17 @@ class ConversationDagNodeResponse(BaseModel):
     total_tokens: int = 0
     timestamp: float
     depth: int = 0
-    path: str
+    path: str | None = None
     is_root: bool
+
+
+class ConversationRefResolutionResponse(BaseModel):
+    conversation_ref: str
+    route_slug: str
+    project_path: EncodedProjectKey
+    session_id: SessionId
+    thread_type: ConversationThreadType
+    parent_session_id: SessionId | None = None
 
 
 class ConversationDagEdgeResponse(BaseModel):

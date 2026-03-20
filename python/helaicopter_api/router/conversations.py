@@ -11,12 +11,14 @@ from helaicopter_api.application.conversations import (
     get_conversation_dag,
     get_subagent_conversation,
     list_conversations,
+    resolve_conversation_ref,
 )
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.schema.conversations import (
     ConversationDagResponse,
     ConversationDetailResponse,
     ConversationListQueryParams,
+    ConversationRefResolutionResponse,
     ConversationSummaryResponse,
 )
 from helaicopter_api.server.dependencies import get_services
@@ -34,6 +36,21 @@ async def conversations_index(
 ) -> list[ConversationSummaryResponse]:
     """List merged Claude and Codex conversation summaries."""
     return list_conversations(services, project=params.project, days=params.days)
+
+
+@conversations_router.get("/by-ref/{conversation_ref}", response_model=ConversationRefResolutionResponse)
+async def conversation_by_ref(
+    conversation_ref: str,
+    services: BackendServices = Depends(get_services),
+) -> ConversationRefResolutionResponse:
+    """Resolve a stable conversation ref to the current canonical route target."""
+    conversation = resolve_conversation_ref(
+        services,
+        conversation_ref=conversation_ref,
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conversation
 
 
 @conversations_router.get("/{project_path}/{session_id}", response_model=ConversationDetailResponse)
