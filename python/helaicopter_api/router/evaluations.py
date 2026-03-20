@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from helaicopter_api.application.evaluation_prompts import EvaluationPromptNotFoundError
 from helaicopter_api.application.evaluations import (
@@ -28,14 +28,19 @@ evaluations_router = APIRouter(prefix="/conversations", tags=["evaluations"])
 async def conversation_evaluations_index(
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = Query(default=None),
     services: BackendServices = Depends(get_services),
 ) -> list[ConversationEvaluationResponse]:
     """List persisted evaluation jobs for one conversation."""
-    return list_conversation_evaluations(
-        services,
-        project_path=project_path,
-        session_id=session_id,
-    )
+    try:
+        return list_conversation_evaluations(
+            services,
+            project_path=project_path,
+            session_id=session_id,
+            parent_session_id=parent_session_id,
+        )
+    except ConversationEvaluationConversationNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @evaluations_router.post(
@@ -48,6 +53,7 @@ async def conversation_evaluations_create(
     project_path: str,
     session_id: str,
     body: ConversationEvaluationCreateRequest,
+    parent_session_id: str | None = Query(default=None),
     services: BackendServices = Depends(get_services),
 ) -> ConversationEvaluationResponse:
     """Create and submit a backend-owned evaluation job."""
@@ -57,6 +63,7 @@ async def conversation_evaluations_create(
             project_path=project_path,
             session_id=session_id,
             body=body,
+            parent_session_id=parent_session_id,
         )
     except ConversationEvaluationConversationNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error

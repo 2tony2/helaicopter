@@ -42,8 +42,17 @@ def list_conversation_evaluations(
     *,
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> list[ConversationEvaluationResponse]:
     """Return persisted evaluations for one conversation, newest first."""
+    conversation = get_conversation(
+        services,
+        project_path=project_path,
+        session_id=session_id,
+        parent_session_id=parent_session_id,
+    )
+    if conversation is None:
+        raise ConversationEvaluationConversationNotFoundError("Conversation not found.")
     conversation_id = _conversation_id_for(project_path, session_id)
     records = services.app_sqlite_store.list_conversation_evaluations(conversation_id)
     return [_to_response(record) for record in records]
@@ -56,6 +65,7 @@ def create_conversation_evaluation(
     project_path: str,
     session_id: str,
     body: ConversationEvaluationCreateRequest,
+    parent_session_id: str | None = None,
 ) -> ConversationEvaluationResponse:
     """Create a persisted evaluation job and submit it to the runner."""
     if services.evaluation_job_runner is None:
@@ -65,6 +75,7 @@ def create_conversation_evaluation(
         services,
         project_path=project_path,
         session_id=session_id,
+        parent_session_id=parent_session_id,
     )
     if conversation is None:
         raise ConversationEvaluationConversationNotFoundError("Conversation not found.")

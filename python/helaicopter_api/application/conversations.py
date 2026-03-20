@@ -113,6 +113,7 @@ def get_conversation(
     *,
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> ConversationDetailResponse | None:
     """Return one conversation detail view from persisted data or live artifacts."""
     if historical := services.app_sqlite_store.get_historical_conversation(
@@ -123,7 +124,12 @@ def get_conversation(
 
     if project_path.startswith("codex:"):
         return _get_codex_live_conversation(services, session_id=session_id, project_path=project_path)
-    return _get_claude_live_conversation(services, project_path=project_path, session_id=session_id)
+    return _get_claude_live_conversation(
+        services,
+        project_path=project_path,
+        session_id=session_id,
+        parent_session_id=parent_session_id,
+    )
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -213,27 +219,33 @@ def get_conversation_dag(
     *,
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> ConversationDagResponse | None:
     """Return the backend-owned DAG for one main or subagent conversation tree."""
+    root_session_id = _session_id(session_id)
+    root_parent_session_id = _session_id(parent_session_id) if parent_session_id else None
     cache: dict[tuple[str, SessionId | None, SessionId], ConversationDetailResponse | None] = {}
 
     def load_conversation(
         child_session_id: SessionId,
-        parent_session_id: SessionId | None,
+        parent_session_id_for_node: SessionId | None,
     ) -> ConversationDetailResponse | None:
-        cache_key = (project_path, parent_session_id, child_session_id)
+        effective_parent_session_id = parent_session_id_for_node
+        if child_session_id == root_session_id and effective_parent_session_id is None:
+            effective_parent_session_id = root_parent_session_id
+        cache_key = (project_path, effective_parent_session_id, child_session_id)
         if cache_key not in cache:
             cache[cache_key] = _load_conversation_for_dag(
                 services,
                 project_path=project_path,
                 session_id=child_session_id,
-                parent_session_id=parent_session_id,
+                parent_session_id=effective_parent_session_id,
             )
         return cache[cache_key]
 
     return build_conversation_dag(
         project_path=project_path,
-        root_session_id=_session_id(session_id),
+        root_session_id=root_session_id,
         load_conversation=load_conversation,
     )
 
@@ -296,12 +308,17 @@ def get_tasks(
     services: InstanceOf[BackendServices],
     *,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> TaskListResponse:
     """Return task payloads for a session from persisted storage or Claude artifacts."""
     typed_session_id = _session_id(session_id)
+    typed_parent_session_id = _session_id(parent_session_id) if parent_session_id else None
     tasks = services.app_sqlite_store.get_historical_tasks_for_session(typed_session_id)
     if tasks is None:
-        tasks = services.claude_task_reader.read_tasks(typed_session_id)
+        tasks = services.claude_task_reader.read_tasks(
+            typed_session_id,
+            parent_session_id=typed_parent_session_id,
+        )
     return TaskListResponse(
         session_id=typed_session_id,
         tasks=[_shape_conversation_task(task) for task in tasks or []],
@@ -501,20 +518,11 @@ def _load_conversation_for_dag(
     session_id: str,
     parent_session_id: str | None,
 ) -> ConversationDetailResponse | None:
-    conversation = get_conversation(
+    return get_conversation(
         services,
         project_path=project_path,
         session_id=session_id,
-    )
-    if conversation is not None:
-        return conversation
-    if project_path.startswith("codex:") or parent_session_id is None:
-        return None
-    return _get_claude_live_subagent_conversation(
-        services,
-        project_path=project_path,
         parent_session_id=parent_session_id,
-        session_id=session_id,
     )
 
 
@@ -960,10 +968,18 @@ def _get_claude_live_conversation(
     *,
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> ConversationDetailResponse | None:
     events = services.claude_conversation_reader.read_session_events(project_path, _session_id(session_id))
     if not events:
-        return None
+        if parent_session_id is None:
+            return None
+        return _get_claude_live_subagent_conversation(
+            services,
+            project_path=project_path,
+            parent_session_id=parent_session_id,
+            session_id=session_id,
+        )
     return _shape_claude_live_conversation_detail(
         services,
         project_path=project_path,

@@ -12,7 +12,7 @@ from typing import Any, Callable, Iterator
 from fastapi.testclient import TestClient
 
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
-from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.bootstrap.services import BackendServices, build_services
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -324,6 +324,132 @@ def _create_evaluation_db(path: Path) -> None:
         connection.close()
 
 
+def _insert_conversation_evaluation(
+    path: Path,
+    *,
+    conversation_id: str,
+    evaluation_id: str,
+) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            """
+            INSERT INTO conversation_evaluations (
+              evaluation_id,
+              conversation_id,
+              prompt_id,
+              provider,
+              model,
+              status,
+              scope,
+              selection_instruction,
+              prompt_name,
+              prompt_text,
+              report_markdown,
+              raw_output,
+              error_message,
+              command,
+              created_at,
+              finished_at,
+              duration_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                evaluation_id,
+                conversation_id,
+                "prompt-1",
+                "codex",
+                "gpt-5",
+                "completed",
+                "full",
+                None,
+                "Failure Sweep",
+                "Summarize what failed and how the operator prompt should change.",
+                "# Child report",
+                "# Child report",
+                None,
+                "codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-5 -",
+                "2026-03-18T09:06:00+00:00",
+                "2026-03-18T09:06:02+00:00",
+                2000,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _seed_live_child_sources(tmp_path: Path) -> Settings:
+    claude_dir = tmp_path / ".claude"
+    codex_dir = tmp_path / ".codex"
+    project_path = "-Users-tony-Code-helaicopter"
+    project_dir = claude_dir / "projects" / project_path
+    project_dir.mkdir(parents=True)
+    child_dir = project_dir / "claude-session-1" / "subagents"
+    child_dir.mkdir(parents=True)
+
+    project_dir.joinpath("claude-session-1.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "parent-user-1",
+                        "timestamp": "2026-03-18T09:00:00Z",
+                        "sessionId": "claude-session-1",
+                        "message": {
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Review the rollout"}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    child_dir.joinpath("agent-claude-agent-1.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "child-user-1",
+                        "timestamp": "2026-03-18T09:00:01Z",
+                        "sessionId": "claude-agent-1",
+                        "message": {
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Inspect the DAG graph"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "uuid": "child-assistant-1",
+                        "timestamp": "2026-03-18T09:00:02Z",
+                        "sessionId": "claude-agent-1",
+                        "message": {
+                            "role": "assistant",
+                            "model": "claude-sonnet-4-5",
+                            "usage": {
+                                "input_tokens": 40,
+                                "output_tokens": 20,
+                                "cache_creation_input_tokens": 0,
+                                "cache_read_input_tokens": 0,
+                                "speed": "standard",
+                            },
+                            "content": [{"type": "text", "text": "I found the child conversation."}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    return Settings(project_root=tmp_path, claude_dir=claude_dir, codex_dir=codex_dir)
+
+
 class FakeEvaluationRunner:
     def __init__(self) -> None:
         self.submissions: list[dict[str, Any]] = []
@@ -383,6 +509,23 @@ def evaluation_client(db_path: Path) -> Iterator[tuple[TestClient, SqliteAppStor
         application.dependency_overrides.clear()
 
 
+@contextmanager
+def live_child_evaluation_client(
+    settings: Settings,
+) -> Iterator[tuple[TestClient, SqliteAppStore, FakeEvaluationRunner]]:
+    services = build_services(settings)
+    runner = FakeEvaluationRunner()
+    services.evaluation_job_runner = runner
+    application = create_app()
+    application.dependency_overrides[get_services] = lambda: services
+    try:
+        with TestClient(application) as client:
+            yield client, services.app_sqlite_store, runner
+    finally:
+        application.dependency_overrides.clear()
+        services.sqlite_engine.dispose()
+
+
 class TestConversationEvaluationEndpoints:
     def test_get_lists_existing_evaluations_for_one_conversation(self, tmp_path: Path) -> None:
         db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
@@ -411,6 +554,51 @@ class TestConversationEvaluationEndpoints:
                 "createdAt": "2026-03-17T12:00:00+00:00",
                 "finishedAt": "2026-03-17T12:00:03+00:00",
                 "durationMs": 3000,
+            }
+        ]
+
+    def test_get_requires_parent_session_id_for_live_claude_child_canonical_route(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+        _create_evaluation_db(db_path)
+        _insert_conversation_evaluation(
+            db_path,
+            conversation_id="claude:claude-agent-1",
+            evaluation_id="evaluation-live-child",
+        )
+        settings = _seed_live_child_sources(tmp_path)
+
+        with live_child_evaluation_client(settings) as (client, _store, _runner):
+            missing = client.get("/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations")
+            response = client.get(
+                "/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations",
+                params={"parent_session_id": "claude-session-1"},
+            )
+
+        assert missing.status_code == 404
+        assert missing.json() == {"detail": "Conversation not found."}
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "evaluationId": "evaluation-live-child",
+                "conversationId": "claude:claude-agent-1",
+                "promptId": "prompt-1",
+                "provider": "codex",
+                "model": "gpt-5",
+                "status": "completed",
+                "scope": "full",
+                "selectionInstruction": None,
+                "promptName": "Failure Sweep",
+                "promptText": "Summarize what failed and how the operator prompt should change.",
+                "reportMarkdown": "# Child report",
+                "rawOutput": "# Child report",
+                "errorMessage": None,
+                "command": "codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-5 -",
+                "createdAt": "2026-03-18T09:06:00+00:00",
+                "finishedAt": "2026-03-18T09:06:02+00:00",
+                "durationMs": 2000,
             }
         ]
 
@@ -458,6 +646,53 @@ class TestConversationEvaluationEndpoints:
         assert listed[0]["reportMarkdown"] == "# Automated evaluation"
         assert listed[1]["evaluationId"] == "evaluation-existing"
 
+    def test_post_creates_live_claude_child_evaluation_when_parent_session_id_is_supplied(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+        _create_evaluation_db(db_path)
+        settings = _seed_live_child_sources(tmp_path)
+
+        with live_child_evaluation_client(settings) as (client, store, runner):
+            missing = client.post(
+                "/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations",
+                json={
+                    "provider": "codex",
+                    "model": "gpt-5",
+                    "scope": "full",
+                    "promptId": "prompt-1",
+                },
+            )
+            create_response = client.post(
+                "/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations",
+                params={"parent_session_id": "claude-session-1"},
+                json={
+                    "provider": "codex",
+                    "model": "gpt-5",
+                    "scope": "full",
+                    "promptId": "prompt-1",
+                },
+            )
+
+        assert missing.status_code == 404
+        assert missing.json() == {"detail": "Conversation not found."}
+        assert create_response.status_code == 202
+        created = create_response.json()
+        assert created["conversationId"] == "claude:claude-agent-1"
+        assert created["status"] == "running"
+        assert created["promptId"] == "prompt-1"
+
+        assert len(runner.submissions) == 1
+        assert runner.submissions[0]["workspace"] == str(tmp_path.resolve())
+        assert "Inspect the DAG graph" in runner.submissions[0]["prompt"]
+        assert "I found the child conversation." in runner.submissions[0]["prompt"]
+
+        stored = store.list_conversation_evaluations("claude:claude-agent-1")
+        completed = next(item for item in stored if item.evaluation_id == created["evaluationId"])
+        assert completed.status == "completed"
+        assert completed.report_markdown == "# Automated evaluation"
+
     def test_post_rejects_snake_case_payload_keys(self, tmp_path: Path) -> None:
         db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
         _create_evaluation_db(db_path)
@@ -489,6 +724,13 @@ class TestConversationEvaluationEndpoints:
         assert response.status_code == 200
         schema = response.json()
         route = schema["paths"]["/conversations/{project_path}/{session_id}/evaluations"]
+        get_parameters = {param["name"]: param for param in route["get"]["parameters"]}
+        post_parameters = {param["name"]: param for param in route["post"]["parameters"]}
+
+        assert set(get_parameters) == {"project_path", "session_id", "parent_session_id"}
+        assert get_parameters["parent_session_id"]["in"] == "query"
+        assert set(post_parameters) == {"project_path", "session_id", "parent_session_id"}
+        assert post_parameters["parent_session_id"]["in"] == "query"
 
         assert route["get"]["responses"]["200"]["content"]["application/json"]["schema"]["items"]["$ref"].endswith(
             "/ConversationEvaluationResponse"

@@ -321,6 +321,7 @@ def _seed_sources(tmp_path: Path) -> Settings:
     claude_project_dir = claude_dir / "projects" / project_path
     claude_project_dir.mkdir(parents=True)
     claude_dir.joinpath("tasks", "claude-session-1").mkdir(parents=True)
+    claude_dir.joinpath("tasks", "claude-session-1", "claude-agent-1").mkdir(parents=True)
     codex_dir.joinpath("sessions", "2026", "03", "18").mkdir(parents=True)
     claude_subagents_dir = claude_project_dir / "claude-session-1" / "subagents"
     claude_subagents_dir.mkdir(parents=True)
@@ -470,6 +471,10 @@ def _seed_sources(tmp_path: Path) -> Settings:
 
     claude_dir.joinpath("tasks", "claude-session-1", "task-1.json").write_text(
         json.dumps({"taskId": "T007", "title": "Conversation API"}),
+        encoding="utf-8",
+    )
+    claude_dir.joinpath("tasks", "claude-session-1", "claude-agent-1", "task-1.json").write_text(
+        json.dumps({"taskId": "T008", "title": "Inspect DAG child thread"}),
         encoding="utf-8",
     )
     claude_dir.joinpath("history.jsonl").write_text(
@@ -977,6 +982,22 @@ class TestConversationEndpoints:
         assert codex_payload["thread_type"] == "subagent"
         assert codex_nested.json()["session_id"] == "019cdbff-dbb7-71d0-baaf-c669c55af629"
 
+    def test_canonical_live_claude_child_detail_requires_parent_session_id(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        missing = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/claude-agent-1")
+        response = conversations_client.get(
+            "/conversations/-Users-tony-Code-helaicopter/claude-agent-1",
+            params={"parent_session_id": "claude-session-1"},
+        )
+
+        assert missing.status_code == 404
+        assert response.status_code == 200
+        assert response.json()["session_id"] == "claude-agent-1"
+        assert response.json()["thread_type"] == "subagent"
+        assert response.json()["route_slug"] == "inspect-the-dag-graph"
+
     def test_missing_conversation_returns_404(self, conversations_client: TestClient) -> None:
         response = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/missing-session")
 
@@ -1157,6 +1178,33 @@ class TestConversationDagEndpoints:
         assert missing.status_code == 404
         assert missing.json() == {"detail": "Conversation DAG not found"}
 
+    def test_canonical_live_claude_child_dag_requires_parent_session_id(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        missing = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/claude-agent-1/dag")
+        response = conversations_client.get(
+            "/conversations/-Users-tony-Code-helaicopter/claude-agent-1/dag",
+            params={"parent_session_id": "claude-session-1"},
+        )
+
+        assert missing.status_code == 404
+        assert response.status_code == 200
+        assert response.json()["root_session_id"] == "claude-agent-1"
+        assert response.json()["edges"] == []
+        assert response.json()["stats"] == {
+            "total_nodes": 1,
+            "total_edges": 0,
+            "total_subagent_nodes": 0,
+            "max_depth": 0,
+            "max_breadth": 1,
+            "leaf_count": 1,
+            "root_subagent_count": 0,
+            "total_messages": 2,
+            "total_tokens": 60,
+        }
+        assert response.json()["nodes"][0]["path"] == "/conversations/-Users-tony-Code-helaicopter/claude-agent-1"
+
 
 class TestProjectsHistoryAndTasks:
     def test_projects_history_and_tasks(self, conversations_client: TestClient) -> None:
@@ -1206,6 +1254,23 @@ class TestProjectsHistoryAndTasks:
             "tasks": [{"taskId": "T009", "title": "Historic persisted task"}],
         }
 
+        missing_child_tasks = conversations_client.get("/tasks/claude-agent-1")
+        assert missing_child_tasks.status_code == 200
+        assert missing_child_tasks.json() == {
+            "session_id": "claude-agent-1",
+            "tasks": [],
+        }
+
+        child_tasks = conversations_client.get(
+            "/tasks/claude-agent-1",
+            params={"parent_session_id": "claude-session-1"},
+        )
+        assert child_tasks.status_code == 200
+        assert child_tasks.json() == {
+            "session_id": "claude-agent-1",
+            "tasks": [{"taskId": "T008", "title": "Inspect DAG child thread"}],
+        }
+
     def test_openapi_exposes_new_routes_and_schemas(self, conversations_client: TestClient) -> None:
         response = conversations_client.get("/openapi.json")
 
@@ -1236,7 +1301,15 @@ class TestProjectsHistoryAndTasks:
             "/ConversationDagSummaryResponse"
         )
 
+        detail_get = schema["paths"]["/conversations/{project_path}/{session_id}"]["get"]
+        detail_parameters = {param["name"]: param for param in detail_get["parameters"]}
+        assert set(detail_parameters) == {"project_path", "session_id", "parent_session_id"}
+        assert detail_parameters["parent_session_id"]["in"] == "query"
+
         dag_detail_get = schema["paths"]["/conversations/{project_path}/{session_id}/dag"]["get"]
+        dag_detail_parameters = {param["name"]: param for param in dag_detail_get["parameters"]}
+        assert set(dag_detail_parameters) == {"project_path", "session_id", "parent_session_id"}
+        assert dag_detail_parameters["parent_session_id"]["in"] == "query"
         assert dag_detail_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/ConversationDagResponse"
         )
@@ -1252,6 +1325,9 @@ class TestProjectsHistoryAndTasks:
         )
 
         tasks_get = schema["paths"]["/tasks/{session_id}"]["get"]
+        tasks_parameters = {param["name"]: param for param in tasks_get["parameters"]}
+        assert set(tasks_parameters) == {"session_id", "parent_session_id"}
+        assert tasks_parameters["parent_session_id"]["in"] == "query"
         assert tasks_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/TaskListResponse"
         )

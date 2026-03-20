@@ -146,6 +146,11 @@ class HistoryReader(Protocol):
 class TaskReader(Protocol):
     """Read task payloads from ``~/.claude/tasks/<session_id>/``."""
 
-    def read_tasks(self, session_id: SessionId) -> list[ClaudeTaskPayload]:
+    def read_tasks(
+        self,
+        session_id: SessionId,
+        *,
+        parent_session_id: SessionId | None = None,
+    ) -> list[ClaudeTaskPayload]:
         """Return all JSON task payloads for one session, newest file-order independent."""
         ...

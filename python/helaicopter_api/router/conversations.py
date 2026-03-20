@@ -57,6 +57,7 @@ async def conversation_by_ref(
 async def conversations_detail(
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = Query(default=None),
     services: BackendServices = Depends(get_services),
 ) -> ConversationDetailResponse:
     """Return one conversation detail from persisted or live data."""
@@ -64,6 +65,7 @@ async def conversations_detail(
         services,
         project_path=project_path,
         session_id=session_id,
+        parent_session_id=parent_session_id,
     )
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -74,6 +76,7 @@ async def conversations_detail(
 async def conversations_dag_detail(
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = Query(default=None),
     services: BackendServices = Depends(get_services),
 ) -> ConversationDagResponse:
     """Return one backend-built conversation DAG."""
@@ -81,6 +84,7 @@ async def conversations_dag_detail(
         services,
         project_path=project_path,
         session_id=session_id,
+        parent_session_id=parent_session_id,
     )
     if dag is None:
         raise HTTPException(status_code=404, detail="Conversation DAG not found")
