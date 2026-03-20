@@ -22,5 +22,16 @@ async def analytics_index(
     ],
     services: BackendServices = Depends(get_services),
 ) -> AnalyticsDataResponse:
-    """Return aggregated analytics for persisted conversations."""
+    """Return aggregated analytics for persisted conversations.
+
+    Args:
+        params: Query parameters controlling the analytics window. Supports
+            ``days`` to restrict to a trailing number of days, and ``provider``
+            to filter by a specific AI provider (e.g. ``"claude"``,
+            ``"codex"``, or ``"all"``).
+
+    Returns:
+        Aggregated analytics payload including token counts, estimated costs,
+        model and tool breakdowns, daily usage time series, and spend rates.
+    """
     return get_analytics(services, days=params.days, provider=params.provider)

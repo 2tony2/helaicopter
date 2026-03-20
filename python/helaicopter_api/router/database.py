@@ -26,7 +26,17 @@ database_router = APIRouter(prefix="/databases", tags=["databases"])
 async def database_status(
     services: BackendServices = Depends(get_services),
 ) -> DatabaseStatusResponse | JSONResponse:
-    """Return database artifact status, bootstrapping refresh on first access."""
+    """Return database artifact status, bootstrapping refresh on first access.
+
+    Returns:
+        Status payload containing the current refresh state, timing metadata,
+        runtime read-backend configuration, and per-artifact health details
+        for SQLite, DuckDB, frontend cache, and Prefect Postgres.
+
+    Raises:
+        HTTPException: 500 if a database operation error occurs without a
+            structured payload.
+    """
     try:
         return read_database_status(services)
     except DatabaseOperationError as exc:
@@ -48,7 +58,23 @@ async def database_refresh(
     body: DatabaseRefreshRequest = Body(default_factory=DatabaseRefreshRequest),
     services: BackendServices = Depends(get_services),
 ) -> DatabaseStatusResponse | JSONResponse:
-    """Trigger a database refresh and invalidate backend read caches."""
+    """Trigger a database refresh and invalidate backend read caches.
+
+    Args:
+        body: Refresh control options. ``force`` bypasses the staleness check
+            and triggers an immediate rebuild; ``trigger`` is a label recorded
+            in the refresh log (defaults to ``"manual"``);
+            ``stale_after_seconds`` sets the minimum age in seconds before a
+            refresh is considered necessary (defaults to 6 hours).
+
+    Returns:
+        Updated database status payload reflecting the new refresh state,
+        including timing metadata and artifact health after the operation.
+
+    Raises:
+        HTTPException: 500 if a database operation error occurs without a
+            structured payload.
+    """
     try:
         return trigger_database_refresh(
             services,

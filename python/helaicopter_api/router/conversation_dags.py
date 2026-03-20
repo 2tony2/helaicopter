@@ -25,7 +25,19 @@ async def conversation_dags_index(
     ],
     services: BackendServices = Depends(get_services),
 ) -> list[ConversationDagSummaryResponse]:
-    """List main conversations with backend-built DAG stats."""
+    """List main conversations with backend-built DAG stats.
+
+    Args:
+        params: Query parameters controlling the listing. Supports ``project``
+            (encoded project path) to filter to a single project, ``days`` to
+            restrict to a trailing number of days, and ``provider`` to filter
+            by AI provider (e.g. ``"claude"``, ``"codex"``, or ``"all"``).
+
+    Returns:
+        List of conversation summary objects enriched with DAG statistics
+        (node count, edge count, max depth, subagent counts, etc.), ordered
+        by recency.
+    """
     return list_conversation_dags(
         services,
         project=params.project,

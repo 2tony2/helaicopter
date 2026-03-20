@@ -97,6 +97,8 @@ class ConversationSummaryResponse(BaseModel):
 
 
 class ConversationUsageResponse(BaseModel):
+    """Token usage counts for a single conversation or message."""
+
     input_tokens: int = 0
     output_tokens: int = 0
     cache_creation_tokens: int = 0
@@ -157,6 +159,8 @@ class ConversationMessageResponse(BaseModel):
 
 
 class ConversationPlanStepResponse(BaseModel):
+    """A single step within an embedded conversation plan."""
+
     step: str
     status: str
 
@@ -196,6 +200,8 @@ class ConversationSubagentResponse(BaseModel):
 
 
 class ConversationContextBucketResponse(BaseModel):
+    """Aggregated token usage for a named context category (e.g. tool, mcp, subagent)."""
+
     label: str
     category: ContextCategory
     input_tokens: int = 0
@@ -207,6 +213,8 @@ class ConversationContextBucketResponse(BaseModel):
 
 
 class ConversationContextStepResponse(BaseModel):
+    """Per-message token usage entry in the context analytics step sequence."""
+
     message_id: str = Field(
         description="Source/provider message identifier captured in context analytics; not the persisted conversation message row ID."
     )
@@ -223,11 +231,15 @@ class ConversationContextStepResponse(BaseModel):
 
 
 class ConversationContextAnalyticsResponse(BaseModel):
+    """Bucketed and step-level context usage analytics for a conversation."""
+
     buckets: list[ConversationContextBucketResponse] = []
     steps: list[ConversationContextStepResponse] = []
 
 
 class ConversationContextWindowResponse(BaseModel):
+    """Summary of context window utilisation across all API calls in a conversation."""
+
     peak_context_window: int = 0
     api_calls: int = 0
     cumulative_tokens: int = 0
@@ -325,6 +337,8 @@ class ConversationDagNodeResponse(BaseModel):
 
 
 class ConversationRefResolutionResponse(BaseModel):
+    """Resolved routing metadata for a conversation reference."""
+
     conversation_ref: str
     route_slug: str
     project_path: EncodedProjectKey
@@ -334,12 +348,16 @@ class ConversationRefResolutionResponse(BaseModel):
 
 
 class ConversationDagEdgeResponse(BaseModel):
+    """A directed edge connecting two nodes in the conversation agent-tree DAG."""
+
     id: str
     source: str
     target: str
 
 
 class ConversationDagStatsResponse(BaseModel):
+    """Aggregate structural statistics for a conversation agent-tree DAG."""
+
     total_nodes: int = 0
     total_edges: int = 0
     total_subagent_nodes: int = 0

@@ -14,6 +14,8 @@ from helaicopter_api.schema.common import CamelCaseHttpResponseModel, camel_case
 
 
 class DatabaseColumnSchemaResponse(CamelCaseHttpResponseModel):
+    """Schema metadata for a single database table column."""
+
     name: str
     type: str
     nullable: bool = False
@@ -23,6 +25,8 @@ class DatabaseColumnSchemaResponse(CamelCaseHttpResponseModel):
 
 
 class DatabaseTableSchemaResponse(CamelCaseHttpResponseModel):
+    """Schema and serving metadata for a single database table."""
+
     name: str
     row_count: int = 0
     size_bytes: int | None = None
@@ -36,12 +40,16 @@ class DatabaseTableSchemaResponse(CamelCaseHttpResponseModel):
 
 
 class DatabaseLoadMetricResponse(CamelCaseHttpResponseModel):
+    """A labelled load or performance metric for a database artifact."""
+
     label: str
     value: float | int | None = None
     display_value: str | None = None
 
 
 class DatabaseArtifactStatusResponse(CamelCaseHttpResponseModel):
+    """Health, availability, and schema inventory for a single database artifact."""
+
     key: DatabaseStatusKey
     label: str
     engine: str
@@ -64,11 +72,15 @@ class DatabaseArtifactStatusResponse(CamelCaseHttpResponseModel):
 
 
 class DatabaseRuntimeResponse(CamelCaseHttpResponseModel):
+    """Active read-backend selections for analytics and conversation summary queries."""
+
     analytics_read_backend: RuntimeReadBackend
     conversation_summary_read_backend: RuntimeReadBackend
 
 
 class DatabaseArtifactsResponse(CamelCaseHttpResponseModel):
+    """Status snapshots for all managed database artifacts (cache, SQLite, DuckDB, Postgres)."""
+
     frontend_cache: DatabaseArtifactStatusResponse = Field(
         validation_alias=AliasChoices("frontend_cache", "frontendCache"),
     )
@@ -103,6 +115,8 @@ class DatabaseStatusResponse(CamelCaseHttpResponseModel):
 
 
 class DatabaseRefreshRequest(BaseModel):
+    """Request body for triggering a database refresh operation."""
+
     model_config = camel_case_request_config(extra="forbid")
 
     force: bool = False
