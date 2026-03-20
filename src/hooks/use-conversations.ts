@@ -9,6 +9,7 @@ import type {
   ConversationEvaluation,
   ConversationDag,
   ConversationDagSummary,
+  ConversationRouteResolution,
   DatabaseStatus,
   EvaluationPrompt,
   OvernightOatsRunRecord,
@@ -26,6 +27,7 @@ import {
   normalizeConversationDag,
   normalizeConversationDagSummaries,
   normalizeConversationDetail,
+  normalizeConversationRouteResolution,
   normalizeConversations,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompts,
@@ -75,10 +77,14 @@ export function useConversations(project?: string, days?: number) {
   );
 }
 
-export function useConversation(projectPath?: string, sessionId?: string) {
+export function useConversation(
+  projectPath?: string,
+  sessionId?: string,
+  parentSessionId?: string
+) {
   const url =
     projectPath && sessionId
-      ? endpoints.conversation(projectPath, sessionId)
+      ? endpoints.conversation(projectPath, sessionId, { parentSessionId })
       : null;
   return useSWR<ProcessedConversation>(
     url,
@@ -87,10 +93,23 @@ export function useConversation(projectPath?: string, sessionId?: string) {
   );
 }
 
-export function useConversationDag(projectPath?: string, sessionId?: string) {
+export function useConversationRouteResolution(conversationRef?: string) {
+  const url = conversationRef ? endpoints.conversationByRef(conversationRef) : null;
+  return useSWR<ConversationRouteResolution>(
+    url,
+    (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationRouteResolution),
+    swrOptions
+  );
+}
+
+export function useConversationDag(
+  projectPath?: string,
+  sessionId?: string,
+  parentSessionId?: string
+) {
   const url =
     projectPath && sessionId
-      ? endpoints.conversationDag(projectPath, sessionId)
+      ? endpoints.conversationDag(projectPath, sessionId, { parentSessionId })
       : null;
   return useSWR<ConversationDag>(
     url,
@@ -165,8 +184,8 @@ export function useAnalytics(days?: number, provider?: string) {
   );
 }
 
-export function useTasks(sessionId?: string) {
-  const url = sessionId ? endpoints.tasks(sessionId) : null;
+export function useTasks(sessionId?: string, parentSessionId?: string) {
+  const url = sessionId ? endpoints.tasks(sessionId, { parentSessionId }) : null;
   return useSWR<unknown[]>(
     url,
     (readUrl: string) => requestJson(readUrl, undefined, normalizeTasks),
@@ -209,10 +228,14 @@ export function useEvaluationPrompts() {
   );
 }
 
-export function useConversationEvaluations(projectPath?: string, sessionId?: string) {
+export function useConversationEvaluations(
+  projectPath?: string,
+  sessionId?: string,
+  parentSessionId?: string
+) {
   const url =
     projectPath && sessionId
-      ? endpoints.conversationEvaluations(projectPath, sessionId)
+      ? endpoints.conversationEvaluations(projectPath, sessionId, { parentSessionId })
       : null;
   return useSWR<ConversationEvaluation[]>(
     url,

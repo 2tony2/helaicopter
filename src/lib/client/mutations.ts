@@ -35,6 +35,10 @@ type ConversationEvaluationCreateInput = {
   selectionInstruction: string | null;
 };
 
+type ConversationRequestOptions = {
+  parentSessionId?: string;
+};
+
 function readErrorMessage(payload: unknown): string | null {
   if (typeof payload !== "object" || payload === null) {
     return null;
@@ -98,10 +102,13 @@ export function deleteEvaluationPrompt(promptId: string): Promise<unknown> {
 export function createConversationEvaluation(
   projectPath: string,
   sessionId: string,
-  input: ConversationEvaluationCreateInput
+  input: ConversationEvaluationCreateInput,
+  opts?: ConversationRequestOptions
 ): Promise<ConversationEvaluation> {
-  return post(endpoints.conversationEvaluations(projectPath, sessionId), input, (value) =>
-    normalizeConversationEvaluations([value])[0]
+  return post(
+    endpoints.conversationEvaluations(projectPath, sessionId, opts),
+    input,
+    (value) => normalizeConversationEvaluations([value])[0]
   );
 }
 
