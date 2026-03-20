@@ -11,14 +11,53 @@ import {
   normalizeProjects,
   normalizeSubscriptionSettings,
   normalizeTasks,
-} from "./normalize";
+} from "./normalize.ts";
 import {
   conversation,
   conversationDags,
+  getBaseUrl,
   projects,
   setBaseUrl,
   subagent,
-} from "./endpoints";
+} from "./endpoints.ts";
+
+async function importEndpointsWithApiBaseUrl(nextPublicApiBaseUrl?: string) {
+  const previousValue = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  if (nextPublicApiBaseUrl === undefined) {
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  } else {
+    process.env.NEXT_PUBLIC_API_BASE_URL = nextPublicApiBaseUrl;
+  }
+
+  try {
+    const moduleUrl = new URL(
+      `./endpoints.ts?baseUrl=${encodeURIComponent(nextPublicApiBaseUrl ?? "unset")}&ts=${Date.now()}`,
+      import.meta.url
+    );
+    return await import(moduleUrl.href);
+  } finally {
+    if (previousValue === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = previousValue;
+    }
+  }
+}
+
+test("invalid NEXT_PUBLIC_API_BASE_URL falls back to an empty configured base URL", async () => {
+  const endpoints = await importEndpointsWithApiBaseUrl(" not-a-url ");
+
+  assert.equal(endpoints.getBaseUrl(), "");
+  assert.equal(endpoints.projects(), "/projects");
+});
+
+test("absolute NEXT_PUBLIC_API_BASE_URL values are trimmed and normalized", async () => {
+  const endpoints = await importEndpointsWithApiBaseUrl(" https://api.example.test/// ");
+
+  assert.equal(endpoints.getBaseUrl(), "https://api.example.test");
+  assert.equal(endpoints.projects(), "https://api.example.test/projects");
+});
 
 test("endpoint builders target FastAPI routes without the Next /api prefix", () => {
   setBaseUrl("https://api.example.test/");
@@ -73,6 +112,13 @@ test("endpoint builders infer the local FastAPI origin when the frontend runs on
       value: originalWindow,
     });
   }
+});
+
+test("setBaseUrl continues to normalize absolute URLs for explicit overrides", () => {
+  setBaseUrl(" https://api.example.test/// ");
+
+  assert.equal(getBaseUrl(), "https://api.example.test");
+  assert.equal(projects(), "https://api.example.test/projects");
 });
 
 test("normalizeProjects maps FastAPI project payloads to frontend camelCase types", () => {

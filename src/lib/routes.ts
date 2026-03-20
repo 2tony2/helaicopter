@@ -1,48 +1,25 @@
-export const conversationDetailTabs = [
-  "messages",
-  "plans",
-  "evaluations",
-  "failed",
-  "context",
-  "dag",
-  "subagents",
-  "tasks",
-  "raw",
-] as const;
+import {
+  conversationDetailTabs,
+  orchestrationTabs,
+  parsePrefectPath,
+  resolveConversationDetailTab,
+  resolveOrchestrationInitialTab,
+  type ConversationDetailTab,
+  type OrchestrationTab,
+} from "./client/schemas/runtime.ts";
 
-export type ConversationDetailTab = (typeof conversationDetailTabs)[number];
-
-export const orchestrationTabs = [
-  "conversation-dags",
-  "orchestration",
-  "prefect-ui",
-] as const;
-
-export type OrchestrationTab = (typeof orchestrationTabs)[number];
+export {
+  conversationDetailTabs,
+  orchestrationTabs,
+  resolveConversationDetailTab,
+  resolveOrchestrationInitialTab,
+};
+export type { ConversationDetailTab, OrchestrationTab };
 
 export const PREFECT_UI_URL = "http://127.0.0.1:4200";
 
-export function resolveConversationDetailTab(value?: string): ConversationDetailTab {
-  return (conversationDetailTabs as readonly string[]).includes(value ?? "")
-    ? (value as ConversationDetailTab)
-    : "messages";
-}
-
-export function resolveOrchestrationInitialTab(value?: string): OrchestrationTab {
-  return (orchestrationTabs as readonly string[]).includes(value ?? "")
-    ? (value as OrchestrationTab)
-    : "orchestration";
-}
-
 export function normalizePrefectUiPath(value?: string): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return parsePrefectPath(value);
 }
 
 export function buildPrefectUiUrl(prefectPath?: string): string {
@@ -144,9 +121,9 @@ export function getOrchestrationRouteState(
   flowRunId?: string;
   prefectPath?: string;
 } {
-  const prefectPath = normalizePrefectUiPath(
-    searchParams.get("prefectPath") ?? initial?.prefectPath
-  );
+  const prefectPath = searchParams.has("prefectPath")
+    ? normalizePrefectUiPath(searchParams.get("prefectPath") ?? undefined)
+    : normalizePrefectUiPath(initial?.prefectPath);
   const flowRunId = searchParams.get("flowRunId") ?? initial?.flowRunId;
 
   return {
