@@ -39,6 +39,7 @@ import {
   normalizeTasks,
 } from "@/lib/client/normalize";
 import { databaseStatusSchema } from "@/lib/client/schemas/database";
+import { conversationSummaryListSchema } from "@/lib/client/schemas/conversations";
 import {
   conversationEvaluationListSchema,
   evaluationPromptListSchema,
@@ -76,7 +77,8 @@ export function useProjects() {
 export function useConversations(project?: string, days?: number) {
   return useSWR<ConversationSummary[]>(
     endpoints.conversations({ project, days }),
-    (url: string) => requestJson(url, undefined, normalizeConversations),
+    (url: string) =>
+      requestJson(url, undefined, conversationSummaryListSchema, normalizeConversations),
     conversationSwrOptions
   );
 }

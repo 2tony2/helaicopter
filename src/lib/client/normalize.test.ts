@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const {
+  normalizeConversations,
   normalizeAnalytics,
   normalizeConversationEvaluations,
   normalizeConversationDetail,
@@ -12,6 +13,9 @@ const {
   normalizeSubscriptionSettings,
   normalizeTasks,
 } = await import(new URL("./normalize.ts", import.meta.url).href);
+const {
+  conversationSummaryListSchema,
+} = await import(new URL("./schemas/conversations.ts", import.meta.url).href);
 const {
   databaseStatusSchema,
 } = await import(new URL("./schemas/database.ts", import.meta.url).href);
@@ -173,6 +177,103 @@ test("normalizeProjects also accepts existing Next.js camelCase payloads", () =>
       lastActivity: 1763000000000,
     },
   ]);
+});
+
+test("conversation summary payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+  const parsed = conversationSummaryListSchema.parse([
+    {
+      session_id: "session-123",
+      project_path: "-Users-tony-Code-helaicopter",
+      project_name: "helaicopter",
+      thread_type: "main",
+      first_message: "Ship the patch",
+      timestamp: 1763000002000,
+      created_at: 1763000000000,
+      last_updated_at: 1763000001000,
+      is_running: false,
+      message_count: 14,
+      model: "gpt-5",
+      total_input_tokens: 120,
+      total_output_tokens: 240,
+      total_cache_creation_tokens: 30,
+      total_cache_read_tokens: 40,
+      tool_use_count: 4,
+      failed_tool_call_count: 1,
+      tool_breakdown: { Bash: 3, Read: 1 },
+      subagent_count: 2,
+      subagent_type_breakdown: { reviewer: 1, implementer: 1 },
+      task_count: 3,
+      git_branch: "feature/zod",
+      reasoning_effort: "medium",
+      speed: "fast",
+      total_reasoning_tokens: 90,
+    },
+    {
+      sessionId: "session-456",
+      projectPath: "codex:-Users-tony-Code-helaicopter",
+      projectName: "Codex/helaicopter",
+      threadType: "subagent",
+      firstMessage: "Investigate the failing tests",
+      timestamp: 1763000003000,
+      createdAt: 1763000002000,
+      lastUpdatedAt: 1763000002500,
+      isRunning: true,
+      messageCount: 5,
+      model: null,
+      totalInputTokens: 10,
+      totalOutputTokens: 20,
+      totalCacheCreationTokens: 0,
+      totalCacheReadTokens: 0,
+      toolUseCount: 1,
+      failedToolCallCount: 0,
+      toolBreakdown: {},
+      subagentCount: 0,
+      subagentTypeBreakdown: {},
+      taskCount: 0,
+      gitBranch: null,
+      reasoningEffort: null,
+      speed: null,
+      totalReasoningTokens: null,
+    },
+  ]);
+
+  assert.equal(parsed.length, 2);
+  assert.equal(normalizeConversations(parsed)[0].toolBreakdown.Bash, 3);
+  assert.equal(normalizeConversations(parsed)[1].threadType, "subagent");
+
+  assert.throws(
+    () =>
+      conversationSummaryListSchema.parse([
+        {
+          session_id: "session-789",
+          project_path: "-Users-tony-Code-helaicopter",
+          project_name: "helaicopter",
+          thread_type: "queued",
+          first_message: "Broken payload",
+          timestamp: "1763000004000",
+          created_at: 1763000000000,
+          last_updated_at: 1763000001000,
+          is_running: false,
+          message_count: 14,
+          model: "gpt-5",
+          total_input_tokens: 120,
+          total_output_tokens: 240,
+          total_cache_creation_tokens: 30,
+          total_cache_read_tokens: 40,
+          tool_use_count: 4,
+          failed_tool_call_count: 1,
+          tool_breakdown: { Bash: 3 },
+          subagent_count: 2,
+          subagent_type_breakdown: { reviewer: 1 },
+          task_count: 3,
+          git_branch: "feature/zod",
+          reasoning_effort: "medium",
+          speed: "fast",
+          total_reasoning_tokens: 90,
+        },
+      ]),
+    /thread_type|threadType|timestamp/i
+  );
 });
 
 test("normalizeConversationDetail preserves token usage semantics expected by the viewer", () => {

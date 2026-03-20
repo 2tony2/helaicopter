@@ -49,6 +49,9 @@ import type {
 } from "@/lib/types";
 import type { DatabaseArtifactPayload, DatabaseStatusPayload } from "./schemas/database.ts";
 import type {
+  ConversationSummaryPayload,
+} from "./schemas/conversations.ts";
+import type {
   ConversationEvaluationPayload,
   EvaluationPromptPayload,
 } from "./schemas/evaluations.ts";
@@ -366,8 +369,7 @@ function normalizeContextWindow(value: unknown): ContextWindowStats {
   };
 }
 
-export function normalizeConversationSummary(value: unknown): ConversationSummary {
-  const item = asRecord(value);
+function normalizeConversationSummaryRecord(item: JsonRecord): ConversationSummary {
   return {
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
@@ -379,7 +381,7 @@ export function normalizeConversationSummary(value: unknown): ConversationSummar
     lastUpdatedAt: numberOr(item.last_updated_at),
     isRunning: booleanOr(item.is_running),
     messageCount: numberOr(item.message_count),
-    model: nullableString(item.model),
+    model: nullableString(item.model) ?? undefined,
     totalInputTokens: numberOr(item.total_input_tokens),
     totalOutputTokens: numberOr(item.total_output_tokens),
     totalCacheCreationTokens: numberOr(item.total_cache_creation_tokens),
@@ -390,16 +392,63 @@ export function normalizeConversationSummary(value: unknown): ConversationSummar
     subagentCount: numberOr(item.subagent_count),
     subagentTypeBreakdown: asRecord(item.subagent_type_breakdown) as Record<string, number>,
     taskCount: numberOr(item.task_count),
-    gitBranch: nullableString(item.git_branch),
-    reasoningEffort: nullableString(item.reasoning_effort),
-    speed: nullableString(item.speed),
+    gitBranch: nullableString(item.git_branch) ?? undefined,
+    reasoningEffort: nullableString(item.reasoning_effort) ?? undefined,
+    speed: nullableString(item.speed) ?? undefined,
     totalReasoningTokens:
       item.total_reasoning_tokens === undefined ? undefined : numberOr(item.total_reasoning_tokens),
   };
 }
 
-export function normalizeConversations(value: unknown): ConversationSummary[] {
-  return asArray(value).map(normalizeConversationSummary);
+export function normalizeConversationSummary(
+  value: ConversationSummaryPayload
+): ConversationSummary {
+  const isCamel = "sessionId" in value;
+
+  return {
+    sessionId: isCamel ? value.sessionId : value.session_id,
+    projectPath: isCamel ? value.projectPath : value.project_path,
+    projectName: isCamel ? value.projectName : value.project_name,
+    threadType: isCamel ? value.threadType : value.thread_type,
+    firstMessage: isCamel ? value.firstMessage : value.first_message,
+    timestamp: value.timestamp,
+    createdAt: isCamel ? value.createdAt : value.created_at,
+    lastUpdatedAt: isCamel ? value.lastUpdatedAt : value.last_updated_at,
+    isRunning: isCamel ? value.isRunning : value.is_running,
+    messageCount: isCamel ? value.messageCount : value.message_count,
+    model: value.model ?? undefined,
+    totalInputTokens: isCamel ? value.totalInputTokens : value.total_input_tokens,
+    totalOutputTokens: isCamel ? value.totalOutputTokens : value.total_output_tokens,
+    totalCacheCreationTokens: isCamel
+      ? value.totalCacheCreationTokens
+      : value.total_cache_creation_tokens,
+    totalCacheReadTokens: isCamel
+      ? value.totalCacheReadTokens
+      : value.total_cache_read_tokens,
+    toolUseCount: isCamel ? value.toolUseCount : value.tool_use_count,
+    failedToolCallCount: isCamel
+      ? value.failedToolCallCount
+      : value.failed_tool_call_count,
+    toolBreakdown: isCamel ? value.toolBreakdown : value.tool_breakdown,
+    subagentCount: isCamel ? value.subagentCount : value.subagent_count,
+    subagentTypeBreakdown: isCamel
+      ? value.subagentTypeBreakdown
+      : value.subagent_type_breakdown,
+    taskCount: isCamel ? value.taskCount : value.task_count,
+    gitBranch: (isCamel ? value.gitBranch : value.git_branch) ?? undefined,
+    reasoningEffort:
+      (isCamel ? value.reasoningEffort : value.reasoning_effort) ?? undefined,
+    speed: value.speed ?? undefined,
+    totalReasoningTokens: (
+      isCamel ? value.totalReasoningTokens : value.total_reasoning_tokens
+    ) ?? undefined,
+  };
+}
+
+export function normalizeConversations(
+  value: ConversationSummaryPayload[]
+): ConversationSummary[] {
+  return value.map(normalizeConversationSummary);
 }
 
 function normalizeConversationDagStats(value: unknown): ConversationDagStats {
@@ -462,7 +511,7 @@ export function normalizeConversationDagSummaries(value: unknown): ConversationD
   return asArray(value).map((entry) => {
     const item = asRecord(entry);
     return {
-      ...normalizeConversationSummary(item),
+      ...normalizeConversationSummaryRecord(item),
       dag: normalizeConversationDagStats(item.dag),
     };
   });
