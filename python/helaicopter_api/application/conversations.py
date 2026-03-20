@@ -103,14 +103,13 @@ def list_conversations(
         shaped = _shape_historical_summary(summary)
         _merge_summary(summaries_by_key, shaped)
 
-    if not historical_summaries:
-        if project is None or not project.startswith("codex:"):
-            for shaped in _list_claude_live_summaries(services, project=project, days=days):
-                _merge_summary(summaries_by_key, shaped)
+    if project is None or not project.startswith("codex:"):
+        for shaped in _list_claude_live_summaries(services, project=project, days=days):
+            _merge_summary(summaries_by_key, shaped)
 
-        if project is None or project.startswith("codex:"):
-            for shaped in _list_codex_live_summaries(services, project=project, days=days):
-                _merge_summary(summaries_by_key, shaped)
+    if project is None or project.startswith("codex:"):
+        for shaped in _list_codex_live_summaries(services, project=project, days=days):
+            _merge_summary(summaries_by_key, shaped)
 
     result = sorted(
         summaries_by_key.values(),
