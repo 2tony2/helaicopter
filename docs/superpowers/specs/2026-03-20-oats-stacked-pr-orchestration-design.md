@@ -115,13 +115,23 @@ The orchestration hub keeps its current run-list plus detail-pane structure. The
 
 ### 7. Task PRs wait in an explicit merge-ready state
 
-In the first rollout, a task PR moves into `awaiting_task_merge` when the PR exists but its merge gates are not yet satisfied. There is no ambient background polling. The run stays in that state until an explicit refresh or resume operation re-fetches the GitHub snapshot.
+In the first rollout, `awaiting_task_merge` is a run-level stack summary, not a task execution status. A task PR that exists but does not yet satisfy merge policy persists its own merge-gate details under `task_pr`, while the run may summarize the overall branch / PR control plane as `awaiting_task_merge`. There is no ambient background polling.
 
-If the refreshed snapshot satisfies merge policy, the same refresh or resume operation immediately advances into the merge attempt. No separate human action is required for task PR merges.
+If a refreshed snapshot satisfies merge policy, the same refresh or resume operation immediately advances into the merge attempt. No separate human action is required for task PR merges.
 
 ### 8. Cleanup is retain-by-default in the first rollout
 
 In the first rollout, merged task branches and task worktrees are retained by default until the run reaches `ready_for_final_review` or a terminal blocked / failed state. Cleanup is an explicit later operation, not an immediate side effect of each successful task merge.
+
+### 9. Execution status and stack status are independent
+
+The first rollout uses separate status layers:
+- `run.status`: overall execution lifecycle such as `pending`, `planning`, `running`, `completed`, `failed`, `timed_out`
+- `run.stack_status`: branch / PR control-plane summary such as `building`, `awaiting_task_merge`, `resolving_conflict`, `blocked`, `ready_for_final_review`, `completed`
+- `task.status`: task execution lifecycle such as `pending`, `running`, `succeeded`, `failed`, `blocked`
+- `task_pr.state` and `task_pr.merge_gate_status`: PR lifecycle and merge-readiness details
+
+This separation allows mixed states. For example, one task PR may be waiting on checks while an unrelated task is still executing. In that case the run remains `running` at the execution layer while `stack_status` may summarize the branch / PR layer as `awaiting_task_merge`.
 
 ## Component Model
 
@@ -218,8 +228,10 @@ Each task should persist:
   - PR number and URL
   - base branch and head branch
   - state (`not_created`, `open`, `merged`, `closed`, `blocked`)
+  - merge gate status (`not_ready`, `awaiting_checks`, `awaiting_review_clearance`, `merge_ready`, `merged`)
   - checks summary snapshot
   - mergeability snapshot
+  - review summary snapshot
   - merge result snapshot
   - snapshot metadata (`snapshot_source`, `last_refreshed_at`, `is_stale`)
 - `operation_history`
@@ -261,6 +273,7 @@ Required persisted snapshot fields:
 - `last_refreshed_at`
 - mergeability state
 - checks rollup
+- review summary for each task PR
 - review-gate summary for the final PR
 
 First-rollout merge policy for task PRs:
@@ -298,6 +311,11 @@ Final PR completion detection:
 - there is no background polling in the first rollout
 - the run transitions from `ready_for_final_review` to `completed` only when an explicit run-scoped refresh observes that the final feature PR is merged
 - until that explicit refresh happens, the run remains visible as waiting for final review even if the merge happened externally
+
+Multi-dependency execution gating:
+- a multi-dependency task remains execution-`blocked` until all upstream task PRs are merged into the feature branch
+- Prefect scheduling for that task is therefore merge-gated, not merely upstream-task-completion-gated
+- only after that merge gate clears may the task branch be created and the task transition back to execution-`pending`
 
 ## Runtime Flow
 
