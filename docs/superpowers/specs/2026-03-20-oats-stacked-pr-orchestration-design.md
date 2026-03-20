@@ -75,7 +75,7 @@ That last rule is an implementation inference required by git itself: a task bra
 When a parent task PR merges:
 - Oats keeps the parent branch alive until all open direct-child PRs that target it are retargeted successfully
 - each direct child PR is retargeted from the merged parent branch to the feature branch
-- only after successful retargeting may branch cleanup delete the merged parent branch if repo policy allows it
+- only after successful retargeting may branch cleanup consider the merged parent branch eligible for deletion
 
 Because multi-dependency tasks do not open a branch or PR until their dependencies have merged, the first rollout only needs retargeting logic for direct single-parent child PRs.
 
@@ -106,6 +106,16 @@ The orchestration hub keeps its current run-list plus detail-pane structure. The
 - lightweight git / PR state on task nodes and run cards
 - a dedicated stacked-PR inspector for the selected run or task
 - operation history, checks summary, and conflict-resolution visibility
+
+### 7. Task PRs wait in an explicit merge-ready state
+
+In the first rollout, a task PR moves into `awaiting_task_merge` when the PR exists but its merge gates are not yet satisfied. There is no ambient background polling. The run stays in that state until an explicit refresh or resume operation re-fetches the GitHub snapshot.
+
+If the refreshed snapshot satisfies merge policy, the same refresh or resume operation immediately advances into the merge attempt. No separate human action is required for task PR merges.
+
+### 8. Cleanup is retain-by-default in the first rollout
+
+In the first rollout, merged task branches and task worktrees are retained by default until the run reaches `ready_for_final_review` or a terminal blocked / failed state. Cleanup is an explicit later operation, not an immediate side effect of each successful task merge.
 
 ## Target Architecture
 
@@ -249,10 +259,19 @@ Required persisted snapshot fields:
 - checks rollup
 - review-gate summary for the final PR
 
+First-rollout merge policy for task PRs:
+- PR state must be open
+- mergeability must be clean
+- all required GitHub checks must be passing
+- there must be no unresolved blocking review state such as `changes_requested`
+
+Task PRs do not require human approval in the first rollout. The only mandatory human gate is the final feature PR to `main`.
+
 Backend serving rules:
 - serve the most recent persisted snapshot without silently replacing it
 - expose staleness so the UI can distinguish fresh from old GitHub observations
 - treat refresh as an explicit orchestration operation, not ambient background polling in the first rollout
+- expose `awaiting_task_merge` and related waiting-state summaries so the UI can show why a task PR has not advanced
 
 ## Runtime Flow
 
@@ -262,11 +281,12 @@ Backend serving rules:
 4. The executor agent performs code changes in the task worktree.
 5. Validation runs for the task.
 6. Oats creates or updates the task PR and records the PR snapshot.
-7. If the task PR is mergeable and checks satisfy policy, Codex runs the merge operation.
-8. On merge failure, Oats launches conflict resolution, records the attempt, and retries the merge within configured limits.
-9. When a task PR merges, Oats retargets any open direct-child PRs to the feature branch before parent-branch cleanup.
-10. Once all task PRs required by the run have merged upward into the feature branch, Oats creates the final PR to `main`.
-11. The run transitions to `ready_for_final_review` and waits for human approval outside Oats auto-merge.
+7. If the task PR does not yet satisfy merge policy, the run records `awaiting_task_merge` and waits for an explicit refresh or resume.
+8. If the task PR is mergeable and checks satisfy policy, that refresh or resume operation immediately invokes Codex for the merge attempt.
+9. On merge failure, Oats launches conflict resolution, records the attempt, and retries the merge within configured limits.
+10. When a task PR merges, Oats retargets any open direct-child PRs to the feature branch before parent-branch cleanup eligibility.
+11. Once all task PRs required by the run have merged upward into the feature branch, Oats creates the final PR to `main`.
+12. The run transitions to `ready_for_final_review` and waits for human approval outside Oats auto-merge.
 
 ## API and Serving Design
 
