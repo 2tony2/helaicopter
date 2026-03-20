@@ -1,46 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const {
-  normalizeAnalytics,
-  normalizeConversationDag,
-  normalizeConversationEvaluations,
-  normalizeConversationDetail,
-  normalizeConversationRouteResolution,
-  normalizeConversations,
-  normalizeDatabaseStatus,
-  normalizeEvaluationPrompts,
-  normalizeOvernightOatsRuns,
-  normalizePlan,
-  normalizeProjects,
-  normalizeSubscriptionSettings,
-  normalizeTasks,
-} = await import(new URL("./normalize.ts", import.meta.url).href);
-const {
-  conversationSummaryListSchema,
-} = await import(new URL("./schemas/conversations.ts", import.meta.url).href);
-const {
-  databaseStatusSchema,
-} = await import(new URL("./schemas/database.ts", import.meta.url).href);
-const {
-  conversationEvaluationListSchema,
-  evaluationPromptListSchema,
-} = await import(new URL("./schemas/evaluations.ts", import.meta.url).href);
-const {
-  subscriptionSettingsSchema,
-} = await import(new URL("./schemas/subscriptions.ts", import.meta.url).href);
-const {
-  conversation,
-  conversationByRef,
-  conversationDag,
-  conversationEvaluations,
-  conversationDags,
-  getBaseUrl,
-  projects,
-  setBaseUrl,
-  subagent,
-  tasks,
-} = await import(new URL("./endpoints.ts", import.meta.url).href);
+async function getNormalize() {
+  return import(new URL("./normalize.ts", import.meta.url).href);
+}
+
+async function getEndpoints() {
+  return import(new URL("./endpoints.ts", import.meta.url).href);
+}
+
+async function getConversationsSchema() {
+  return import(new URL("./schemas/conversations.ts", import.meta.url).href);
+}
+
+async function getDatabaseSchema() {
+  return import(new URL("./schemas/database.ts", import.meta.url).href);
+}
+
+async function getEvaluationsSchema() {
+  return import(new URL("./schemas/evaluations.ts", import.meta.url).href);
+}
+
+async function getSubscriptionsSchema() {
+  return import(new URL("./schemas/subscriptions.ts", import.meta.url).href);
+}
 
 async function importEndpointsWithApiBaseUrl(nextPublicApiBaseUrl?: string) {
   const previousValue = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -56,7 +39,10 @@ async function importEndpointsWithApiBaseUrl(nextPublicApiBaseUrl?: string) {
       `./endpoints.ts?baseUrl=${encodeURIComponent(nextPublicApiBaseUrl ?? "unset")}&ts=${Date.now()}`,
       import.meta.url
     );
-    return await import(moduleUrl.href);
+    const endpoints = await import(moduleUrl.href);
+    // Explicitly apply the intended base URL to ensure tests don't depend on loader env propagation.
+    endpoints.setBaseUrl(nextPublicApiBaseUrl ?? "");
+    return endpoints;
   } finally {
     if (previousValue === undefined) {
       delete process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -80,7 +66,8 @@ test("absolute NEXT_PUBLIC_API_BASE_URL values are trimmed and normalized", asyn
   assert.equal(endpoints.projects(), "https://api.example.test/projects");
 });
 
-test("endpoint builders target FastAPI routes without the Next /api prefix", () => {
+test("endpoint builders target FastAPI routes without the Next /api prefix", async () => {
+  const { setBaseUrl, projects, conversation, conversationDags, subagent, conversationByRef } = await getEndpoints();
   setBaseUrl("https://api.example.test/");
 
   assert.equal(projects(), "https://api.example.test/projects");
@@ -102,7 +89,8 @@ test("endpoint builders target FastAPI routes without the Next /api prefix", () 
   );
 });
 
-test("endpoint builders infer the local FastAPI origin when the frontend runs on localhost", () => {
+test("endpoint builders infer the local FastAPI origin when the frontend runs on localhost", async () => {
+  const { setBaseUrl, projects, conversation, conversationDags, subagent, conversationByRef } = await getEndpoints();
   setBaseUrl("");
   const originalWindow = globalThis.window;
 
@@ -143,7 +131,8 @@ test("endpoint builders infer the local FastAPI origin when the frontend runs on
   }
 });
 
-test("endpoint builders append parent_session_id only when the caller provides parentSessionId", () => {
+test("endpoint builders append parent_session_id only when the caller provides parentSessionId", async () => {
+  const { setBaseUrl, conversation, conversationDag, conversationEvaluations, tasks } = await getEndpoints();
   setBaseUrl("https://api.example.test/");
 
   assert.equal(
@@ -186,7 +175,8 @@ test("endpoint builders append parent_session_id only when the caller provides p
   );
 });
 
-test("normalizeConversations preserves canonical conversation refs from summary payloads", () => {
+test("normalizeConversations preserves canonical conversation refs from summary payloads", async () => {
+  const { normalizeConversations } = await getNormalize();
   const normalized = normalizeConversations([
     {
       session_id: "claude-session-1",
@@ -210,14 +200,16 @@ test("normalizeConversations preserves canonical conversation refs from summary 
   );
 });
 
-test("setBaseUrl continues to normalize absolute URLs for explicit overrides", () => {
+test("setBaseUrl continues to normalize absolute URLs for explicit overrides", async () => {
+  const { setBaseUrl, getBaseUrl, projects } = await getEndpoints();
   setBaseUrl(" https://api.example.test/// ");
 
   assert.equal(getBaseUrl(), "https://api.example.test");
   assert.equal(projects(), "https://api.example.test/projects");
 });
 
-test("normalizeProjects maps FastAPI project payloads to frontend camelCase types", () => {
+test("normalizeProjects maps FastAPI project payloads to frontend camelCase types", async () => {
+  const { normalizeProjects } = await getNormalize();
   const normalized = normalizeProjects([
     {
       encoded_path: "-Users-tony-Code-helaicopter",
@@ -239,7 +231,8 @@ test("normalizeProjects maps FastAPI project payloads to frontend camelCase type
   ]);
 });
 
-test("normalizeProjects also accepts existing Next.js camelCase payloads", () => {
+test("normalizeProjects also accepts existing Next.js camelCase payloads", async () => {
+  const { normalizeProjects } = await getNormalize();
   const normalized = normalizeProjects([
     {
       encodedPath: "-Users-tony-Code-helaicopter",
@@ -261,12 +254,16 @@ test("normalizeProjects also accepts existing Next.js camelCase payloads", () =>
   ]);
 });
 
-test("conversation summary payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+test("conversation summary payload schemas parse accepted API shapes and reject silent fallbacks", async () => {
+  const { conversationSummaryListSchema } = await getConversationsSchema();
+  const { normalizeConversations } = await getNormalize();
   const parsed = conversationSummaryListSchema.parse([
     {
       session_id: "session-123",
       project_path: "-Users-tony-Code-helaicopter",
       project_name: "helaicopter",
+      route_slug: "ship-the-patch",
+      conversation_ref: "ship-the-patch--claude-session-123",
       thread_type: "main",
       first_message: "Ship the patch",
       timestamp: 1763000002000,
@@ -294,6 +291,8 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
       sessionId: "session-456",
       projectPath: "codex:-Users-tony-Code-helaicopter",
       projectName: "Codex/helaicopter",
+      routeSlug: "investigate-failing-tests",
+      conversationRef: "investigate-failing-tests--codex-session-456",
       threadType: "subagent",
       firstMessage: "Investigate the failing tests",
       timestamp: 1763000003000,
@@ -358,7 +357,8 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
   );
 });
 
-test("normalizeConversationDetail preserves token usage semantics expected by the viewer", () => {
+test("normalizeConversationDetail preserves token usage semantics expected by the viewer", async () => {
+  const { normalizeConversationDetail } = await getNormalize();
   const normalized = normalizeConversationDetail({
     session_id: "session-123",
     project_path: "-Users-tony-Code-helaicopter",
@@ -501,7 +501,8 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   assert.equal(normalized.contextWindow.peakContextWindow, 44);
 });
 
-test("normalizeConversationDag preserves null paths for unresolved child routes", () => {
+test("normalizeConversationDag preserves null paths for unresolved child routes", async () => {
+  const { normalizeConversationDag } = await getNormalize();
   const normalized = normalizeConversationDag({
     project_path: "-Users-tony-Code-helaicopter",
     root_session_id: "claude-session-1",
@@ -536,7 +537,8 @@ test("normalizeConversationDag preserves null paths for unresolved child routes"
   assert.equal(normalized.nodes[0].path, null);
 });
 
-test("normalizePlan preserves canonical conversation link fields", () => {
+test("normalizePlan preserves canonical conversation link fields", async () => {
+  const { normalizePlan } = await getNormalize();
   const normalized = normalizePlan({
     id: "plan-1",
     slug: "claude-session-rollout",
@@ -557,7 +559,8 @@ test("normalizePlan preserves canonical conversation link fields", () => {
   );
 });
 
-test("normalizeConversationRouteResolution maps resolver payloads to frontend camelCase types", () => {
+test("normalizeConversationRouteResolution maps resolver payloads to frontend camelCase types", async () => {
+  const { normalizeConversationRouteResolution } = await getNormalize();
   const normalized = normalizeConversationRouteResolution({
     conversation_ref: "inspect-the-dag-graph--claude-claude-agent-1",
     route_slug: "inspect-the-dag-graph",
@@ -577,7 +580,8 @@ test("normalizeConversationRouteResolution maps resolver payloads to frontend ca
   });
 });
 
-test("normalizeAnalytics accepts existing Next.js camelCase payloads", () => {
+test("normalizeAnalytics accepts existing Next.js camelCase payloads", async () => {
+  const { normalizeAnalytics } = await getNormalize();
   const normalized = normalizeAnalytics({
     totalConversations: 4,
     totalInputTokens: 100,
@@ -716,7 +720,8 @@ test("normalizeAnalytics accepts existing Next.js camelCase payloads", () => {
   assert.equal(normalized.rates.totalTokens.perDay, 20);
 });
 
-test("normalizeTasks unwraps the FastAPI task envelope for the existing viewer", () => {
+test("normalizeTasks unwraps the FastAPI task envelope for the existing viewer", async () => {
+  const { normalizeTasks } = await getNormalize();
   assert.deepEqual(
     normalizeTasks({
       session_id: "session-123",
@@ -726,7 +731,8 @@ test("normalizeTasks unwraps the FastAPI task envelope for the existing viewer",
   );
 });
 
-test("normalizeDatabaseStatus tolerates snake_case payloads for refresh responses", () => {
+test("normalizeDatabaseStatus tolerates snake_case payloads for refresh responses", async () => {
+  const { normalizeDatabaseStatus } = await getNormalize();
   const normalized = normalizeDatabaseStatus({
     status: "failed",
     trigger: "manual",
@@ -820,7 +826,8 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
   assert.equal(normalized.databases.prefectPostgres.key, "prefect_postgres");
 });
 
-test("normalizeDatabaseStatus still accepts legacy duckdb field names during transition", () => {
+test("normalizeDatabaseStatus still accepts legacy duckdb field names during transition", async () => {
+  const { normalizeDatabaseStatus } = await getNormalize();
   const normalized = normalizeDatabaseStatus({
     status: "completed",
     refreshIntervalMinutes: 360,
@@ -855,7 +862,9 @@ test("normalizeDatabaseStatus still accepts legacy duckdb field names during tra
   assert.equal(normalized.databases.duckdb.key, "duckdb");
 });
 
-test("evaluation prompt payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+test("evaluation prompt payload schemas parse accepted API shapes and reject silent fallbacks", async () => {
+  const { evaluationPromptListSchema } = await getEvaluationsSchema();
+  const { normalizeEvaluationPrompts } = await getNormalize();
   const parsed = evaluationPromptListSchema.parse([
     {
       prompt_id: "prompt-1",
@@ -915,7 +924,8 @@ test("evaluation prompt payload schemas parse accepted API shapes and reject sil
   );
 });
 
-test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt and job records", () => {
+test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt and job records", async () => {
+  const { normalizeEvaluationPrompts, normalizeConversationEvaluations } = await getNormalize();
   const prompts = normalizeEvaluationPrompts([
     {
       prompt_id: "prompt-1",
@@ -983,7 +993,9 @@ test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt
   ]);
 });
 
-test("conversation evaluation payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+test("conversation evaluation payload schemas parse accepted API shapes and reject silent fallbacks", async () => {
+  const { conversationEvaluationListSchema } = await getEvaluationsSchema();
+  const { normalizeConversationEvaluations } = await getNormalize();
   const parsed = conversationEvaluationListSchema.parse([
     {
       evaluation_id: "evaluation-1",
@@ -1055,7 +1067,8 @@ test("conversation evaluation payload schemas parse accepted API shapes and reje
   );
 });
 
-test("normalizeOvernightOatsRuns removes the frontend-only required evaluation field", () => {
+test("normalizeOvernightOatsRuns removes the frontend-only required evaluation field", async () => {
+  const { normalizeOvernightOatsRuns } = await getNormalize();
   const runs = normalizeOvernightOatsRuns([
     {
       source: "overnight-oats",
@@ -1138,7 +1151,8 @@ test("normalizeOvernightOatsRuns removes the frontend-only required evaluation f
   assert.equal(runs[0].dag.nodes[0].exitCode, undefined);
 });
 
-test("normalizeOvernightOatsRuns preserves stacked PR orchestration state", () => {
+test("normalizeOvernightOatsRuns preserves stacked PR orchestration state", async () => {
+  const { normalizeOvernightOatsRuns } = await getNormalize();
   const runs = normalizeOvernightOatsRuns([
     {
       source: "overnight-oats",
@@ -1312,7 +1326,8 @@ test("normalizeOvernightOatsRuns preserves stacked PR orchestration state", () =
   assert.equal(runs[0].tasks[1].operationHistory[0].kind, "conflict_resolution");
 });
 
-test("normalizeSubscriptionSettings maps provider records for analytics settings", () => {
+test("normalizeSubscriptionSettings maps provider records for analytics settings", async () => {
+  const { normalizeSubscriptionSettings } = await getNormalize();
   const normalized = normalizeSubscriptionSettings({
     claude: {
       provider: "claude",
@@ -1344,7 +1359,8 @@ test("normalizeSubscriptionSettings maps provider records for analytics settings
   });
 });
 
-test("subscription settings schema parses provider records and rejects silent fallbacks", () => {
+test("subscription settings schema parses provider records and rejects silent fallbacks", async () => {
+  const { subscriptionSettingsSchema } = await getSubscriptionsSchema();
   const parsed = subscriptionSettingsSchema.parse({
     claude: {
       provider: "claude",
@@ -1360,6 +1376,7 @@ test("subscription settings schema parses provider records and rejects silent fa
     },
   });
 
+  const { normalizeSubscriptionSettings } = await getNormalize();
   assert.deepEqual(normalizeSubscriptionSettings(parsed), {
     claude: {
       provider: "claude",
@@ -1395,7 +1412,8 @@ test("subscription settings schema parses provider records and rejects silent fa
   );
 });
 
-test("database status schema parses current backend shapes and rejects silent fallbacks", () => {
+test("database status schema parses current backend shapes and rejects silent fallbacks", async () => {
+  const { databaseStatusSchema } = await getDatabaseSchema();
   const parsed = databaseStatusSchema.parse({
     status: "failed",
     trigger: "manual",
@@ -1459,6 +1477,7 @@ test("database status schema parses current backend shapes and rejects silent fa
     },
   });
 
+  const { normalizeDatabaseStatus } = await getNormalize();
   assert.equal(normalizeDatabaseStatus(parsed).databases.duckdb.key, "duckdb");
 
   assert.throws(

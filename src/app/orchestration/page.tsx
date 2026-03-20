@@ -1,12 +1,12 @@
 import { OrchestrationHub } from "@/components/orchestration/orchestration-hub";
 import { resolveOrchestrationInitialTab } from "@/components/orchestration/tabs";
 
-export default async function OrchestrationPage({
+export default function OrchestrationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; flowRunId?: string; prefectPath?: string }>;
+  searchParams: { tab?: string; flowRunId?: string; prefectPath?: string };
 }) {
-  const { tab, prefectPath } = await searchParams;
+  const { tab, prefectPath } = searchParams;
   const initialTab = resolveOrchestrationInitialTab(tab);
 
   return (
