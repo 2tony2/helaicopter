@@ -405,14 +405,47 @@ def test_repo_boundaries_architecture_note_and_lint() -> None:
 
 
 def test_repo_boundaries_backend_plans_layers() -> None:
+    from helaicopter_api.contracts.plans import (
+        PlanDetailResponse,
+        PlanStepResponse,
+        PlanSummaryResponse,
+    )
+
     _assert_paths_exist(
         [
+            "python/helaicopter_api/contracts/__init__.py",
             "python/helaicopter_api/contracts/plans.py",
+            "python/helaicopter_api/domain/__init__.py",
             "python/helaicopter_api/domain/plans.py",
         ]
     )
+
+    assert PlanDetailResponse.__module__ == "helaicopter_api.contracts.plans"
+    assert PlanSummaryResponse.__module__ == "helaicopter_api.contracts.plans"
+    assert PlanStepResponse.__module__ == "helaicopter_api.contracts.plans"
 
     _assert_deprecated_python_reexport(
         "python/helaicopter_api/schema/plans.py",
         "helaicopter_api.contracts.plans",
     )
+
+    application_plans = _read("python/helaicopter_api/application/plans.py")
+    assert "from helaicopter_api.contracts.plans import (" in application_plans
+    assert "from helaicopter_api.domain import plans as plan_domain" in application_plans
+    assert "from helaicopter_api.schema.plans import" not in application_plans
+    assert "plan_domain.summarize_plan_content(" in application_plans
+    assert "plan_domain.parse_codex_plan_steps(" in application_plans
+    assert "plan_domain.parse_codex_explanation(" in application_plans
+    assert "plan_domain.summarize_codex_plan(" in application_plans
+    assert "def _summarize_plan_content(" not in application_plans
+    assert "def _parse_codex_plan_steps(" not in application_plans
+    assert "def _parse_codex_explanation(" not in application_plans
+    assert "def _summarize_codex_plan(" not in application_plans
+
+    router_plans = _read("python/helaicopter_api/router/plans.py")
+    assert "from helaicopter_api.contracts.plans import (" in router_plans
+    assert "from helaicopter_api.schema.plans import" not in router_plans
+
+    domain_plans = _read("python/helaicopter_api/domain/plans.py")
+    assert "helaicopter_api.contracts" not in domain_plans
+    assert "BaseModel" not in domain_plans
