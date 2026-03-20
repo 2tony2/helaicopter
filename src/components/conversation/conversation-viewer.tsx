@@ -264,15 +264,19 @@ function SubagentTranscriptCard({
 }
 
 export function ConversationViewer({
+  conversationRef: _conversationRef,
   projectPath,
   sessionId,
+  parentSessionId,
   initialTab = "messages",
   initialPlanId,
   initialSubagentId,
   initialMessageId,
 }: {
+  conversationRef?: string;
   projectPath: string;
   sessionId: string;
+  parentSessionId?: string;
   initialTab?: ConversationDetailTab;
   initialPlanId?: string;
   initialSubagentId?: string;
@@ -280,17 +284,22 @@ export function ConversationViewer({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: conversation, isLoading, error } = useConversation(projectPath, sessionId);
+  const { data: conversation, isLoading, error } = useConversation(
+    projectPath,
+    sessionId,
+    parentSessionId
+  );
   const {
     data: conversationDag,
     isLoading: isDagLoading,
     error: dagError,
-  } = useConversationDag(projectPath, sessionId);
+  } = useConversationDag(projectPath, sessionId, parentSessionId);
   const { data: evaluations, mutate: mutateEvaluations } = useConversationEvaluations(
     projectPath,
-    sessionId
+    sessionId,
+    parentSessionId
   );
-  const { data: tasks } = useTasks(sessionId);
+  const { data: tasks } = useTasks(sessionId, parentSessionId);
   const [showEvaluationToast, setShowEvaluationToast] = useState(false);
   const plans = conversation?.plans || [];
   const routeState = getConversationRouteState(searchParams, {
@@ -299,6 +308,7 @@ export function ConversationViewer({
     subagent: initialSubagentId,
     message: initialMessageId,
   });
+  void _conversationRef;
 
   useEffect(() => {
     if (!showEvaluationToast) {
@@ -482,6 +492,7 @@ export function ConversationViewer({
         <EvaluationDialog
           projectPath={projectPath}
           sessionId={sessionId}
+          parentSessionId={parentSessionId}
           onCreated={(evaluation) => {
             void mutateEvaluations((current) => [evaluation, ...(current ?? [])], false);
           }}
