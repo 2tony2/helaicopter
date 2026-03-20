@@ -29,18 +29,29 @@ def _assert_thin_route_shell(
     assert "export default function " in content
 
     for forbidden in (
+        "use(",
+        "usePlan(",
+        "usePlans(",
+        "const ",
+        "let ",
+        "if (",
+        "switch (",
+        "for (",
+        "while (",
+        "try:",
+        "try {",
         "@/components/plans",
         "@/features/plans/",
         "@/shared/",
-        "@/components/ui/",
-        "@/components/layout/",
-        "usePlan(",
-        "usePlans(",
-        "Skeleton",
-        "Breadcrumbs",
-        "PageHeader",
+        "@/components/",
     ):
         assert forbidden not in content
+
+    default_export_count = content.count("export default function ")
+    assert default_export_count == 1
+
+    extra_function_defs = content.count("function ") - default_export_count
+    assert extra_function_defs == 0
 
 
 def _assert_eslint_layer_guardrail(
@@ -71,7 +82,11 @@ def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
 
     assert "@deprecated" in content
     assert target in content
-    assert " from " in content
+    has_export_all = f'export * from "{target}"' in content or f"export * from '{target}'" in content
+    has_named_reexport = (
+        (f'from "{target}"' in content or f"from '{target}'" in content) and "export {" in content
+    )
+    assert has_export_all or has_named_reexport
 
     for forbidden in (
         "function ",
@@ -82,6 +97,11 @@ def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
         "=>",
         "useState(",
         "useEffect(",
+        "useMemo(",
+        "useCallback(",
+        "<",
+        "document.",
+        "window.",
     ):
         assert forbidden not in content
 
@@ -91,22 +111,28 @@ def _assert_deprecated_python_reexport(relative_path: str, target: str) -> None:
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
+    significant_lines = [line.strip() for line in content.splitlines() if line.strip()]
 
     assert "@deprecated" in content
     assert "class " not in content
     assert "def " not in content
-    assert target in content
-    assert "import " in content
+    assert f"from {target} import " in content
     assert "__all__" in content
+    assert not any(
+        "=" in line and not line.startswith("__all__ =") for line in significant_lines
+    )
 
     for forbidden in (
         "if ",
         "for ",
         "while ",
         "try:",
+        "try {",
         "with ",
         "match ",
         "return ",
+        "print(",
+        "raise ",
     ):
         assert forbidden not in content
 
