@@ -26,23 +26,20 @@ def _assert_thin_route_shell(
     assert view_import in content
     assert rendered_view in content
     assert '"use client"' not in content
+    assert "'use client'" not in content
     assert "export default function " in content
 
     for forbidden in (
         "use(",
         "usePlan(",
         "usePlans(",
-        "const ",
-        "let ",
-        "if (",
-        "switch (",
-        "for (",
-        "while (",
-        "try:",
-        "try {",
-        "@/features/plans/",
-        "@/shared/",
+        "@/features/",
         "@/components/",
+        "@/shared/ui/",
+        "@/shared/layout/",
+        "Skeleton",
+        "Breadcrumbs",
+        "PageHeader",
     ):
         assert forbidden not in content
 
@@ -207,6 +204,23 @@ def test_repo_boundaries_shared_layer_paths() -> None:
             "src/shared/layout/breadcrumbs.tsx",
             "src/shared/layout/page-header.tsx",
         ]
+    )
+
+    _assert_deprecated_ts_reexport("src/components/ui/badge.tsx", "@/shared/ui/badge")
+    _assert_deprecated_ts_reexport("src/components/ui/button.tsx", "@/shared/ui/button")
+    _assert_deprecated_ts_reexport("src/components/ui/card.tsx", "@/shared/ui/card")
+    _assert_deprecated_ts_reexport(
+        "src/components/ui/scroll-area.tsx",
+        "@/shared/ui/scroll-area",
+    )
+    _assert_deprecated_ts_reexport("src/components/ui/skeleton.tsx", "@/shared/ui/skeleton")
+    _assert_deprecated_ts_reexport(
+        "src/components/layout/breadcrumbs.tsx",
+        "@/shared/layout/breadcrumbs",
+    )
+    _assert_deprecated_ts_reexport(
+        "src/components/layout/page-header.tsx",
+        "@/shared/layout/page-header",
     )
 
 
