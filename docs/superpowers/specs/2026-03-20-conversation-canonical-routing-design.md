@@ -4,7 +4,7 @@
 
 This design replaces the current conversation URL scheme with a canonical, human-readable route identity and gives every conversation tab its own path. Today the app uses `/conversations/<encoded-project-path>/<sessionId>` plus query params like `?tab=subagents&subagent=...`, which produces opaque URLs and makes most deep links feel incidental rather than first-class.
 
-The new model introduces an immutable public conversation ref shaped as `<route-slug>--<provider>-<session-id>`. All frontend links move to `/conversations/<conversationRef>/<tab>/...`, every primary tab gets a real route segment, and legacy URLs redirect into the canonical shape. The backend remains the source of truth for conversation identity and route resolution so the frontend does not guess or reconstruct URLs from mutable labels.
+The new model introduces an immutable public conversation ref shaped as `<route-slug>--<provider>-<session-id>`. All frontend links move to `/conversations/<conversationRef>/<tab>/...`, every primary tab gets a real route segment, and legacy URLs redirect into the canonical shape. The backend remains the source of truth for conversation identity and route resolution so the frontend does not guess or reconstruct URLs from mutable labels. Live-only conversations use the same route-ref contract before persistence so links remain stable across the live-to-persisted transition.
 
 ## Goals
 
@@ -54,7 +54,7 @@ Examples:
 
 This ref has two parts:
 
-- `route_slug`: a persisted immutable slug generated once from the conversation's first user-facing title source
+- `route_slug`: a persisted immutable slug generated once from the conversation's `first_message`
 - `provider-session-id`: a stable unique key that keeps the route resolvable even when slugs collide or a user edits the slug manually
 
 The combined ref is the public route identity. The slug is for humans. The key is for durability.
@@ -63,12 +63,22 @@ The combined ref is the public route identity. The slug is for humans. The key i
 
 The user requirement is that the slug be immutable. That is stronger than "usually derived from the same field." To meet that requirement, the OLTP `conversations` table gains a `route_slug` column.
 
+Slug contract:
+
+- source field: the existing conversation `first_message`
+- normalization: lowercase ASCII, replace non-alphanumeric runs with `-`, collapse repeats, trim leading and trailing `-`
+- max length: 80 characters before the `--<provider>-<session-id>` suffix
+- fallback: `conversation`
+- collision handling: none required at the slug layer because uniqueness comes from the stable key suffix
+
 Rules:
 
 - new conversations set `route_slug` once at ingest time
 - existing conversations are backfilled in an Alembic migration using the same slugging rules
 - refreshes do not rewrite `route_slug` after it has been set
 - empty or unusable titles fall back to `conversation`
+- live-only conversations that have not yet been persisted compute `route_slug` on the fly from the same `first_message` contract
+- once a live conversation is persisted, the stored `route_slug` must equal the previously derived live value for the same `provider` and `session_id`
 
 Persisting the slug avoids future route drift if display labels, title heuristics, or slugification rules change later.
 
@@ -117,7 +127,27 @@ Examples:
 - `/conversations/-Users-tony-Code-helaicopter/session-1?tab=plans&plan=plan-7` -> `/conversations/review-the-backend-rollout--claude-session-1/plans/plan-7`
 - `/conversations/-Users-tony-Code-helaicopter/session-1/subagents/agent-1` -> `/conversations/review-the-backend-rollout--claude-session-1/subagents/agent-1`
 
-### 5. The backend owns route resolution
+### 5. Parent subagent tab routes and subagent thread routes are separate resources
+
+The product currently supports two legitimate ways to look at a subagent:
+
+- as an embedded child transcript inside the parent conversation's `subagents` tab
+- as a standalone conversation thread
+
+Those are different route targets and must be defined explicitly:
+
+- parent tab selection route: `/conversations/<parentConversationRef>/subagents/<agentId>`
+- standalone subagent thread route: `/conversations/<subagentConversationRef>/messages`
+
+Usage rules:
+
+- the parent tab route is the canonical route for "show this child inside the parent conversation"
+- the subagent thread route is the canonical route for "open this subagent as its own conversation"
+- legacy nested subagent URLs redirect to the parent tab route because that is what the old path represented
+- conversation lists and any standalone subagent conversation backlinks use the subagent thread route
+- DAG node links for child nodes use the subagent thread route because DAG nodes represent conversations, not parent-tab selections
+
+### 6. The backend owns route resolution
 
 The frontend should not infer canonical refs from mutable labels or partial data. The backend must expose:
 
@@ -140,8 +170,9 @@ This keeps the implementation incremental:
 
 - route resolution becomes canonical immediately
 - existing detail, DAG, evaluations, and subagent APIs do not need to be duplicated in the same slice
+- the resolver can support persisted and live-only conversations by using the same `first_message` + `provider` + `session_id` route-ref helper in both code paths
 
-### 6. The Next app uses a catch-all conversation route
+### 7. The Next app uses a catch-all conversation route
 
 The canonical shape `/conversations/<conversationRef>/<tab>` collides structurally with the legacy shape `/conversations/<projectPath>/<sessionId>`. The app-router solution is to replace the current detail route folders with a single catch-all route for conversation detail paths:
 
@@ -162,7 +193,7 @@ It decides whether to render directly or redirect based on segment shape:
 
 This avoids ambiguous route folder conflicts while preserving old links.
 
-### 7. Route helpers become segment-based
+### 8. Route helpers become segment-based
 
 `src/lib/routes.ts` changes from query-param-centric helpers to canonical route builders and parsers:
 
@@ -183,6 +214,11 @@ The old helper surface can be retained briefly as compatibility wrappers during 
 4. The page passes the resolved `project_path` and `session_id` into the existing client hooks.
 5. The viewer uses canonical route builders for tab changes and nested selection changes.
 
+For subagents:
+
+- parent `subagents/<agentId>` routes keep the user inside the parent viewer
+- standalone subagent conversation links resolve and open the child conversation's own canonical ref
+
 ### Legacy navigation
 
 1. A user visits an old route keyed by `projectPath` and `sessionId`.
@@ -199,6 +235,7 @@ The old helper surface can be retained briefly as compatibility wrappers during 
 - backfill `route_slug` for existing records
 - expose `route_slug` and `conversation_ref` on conversation summary/detail schemas
 - add a canonical-ref resolver endpoint
+- make the canonical-ref resolver support persisted and live-fallback conversations
 - update DAG node `path` generation to use canonical conversation refs
 - update any generated conversation links in backend-owned responses, including orchestration links
 
@@ -215,10 +252,10 @@ The old helper surface can be retained briefly as compatibility wrappers during 
 - valid key with wrong slug: redirect to canonical slug
 - unknown `conversation_ref`: render 404
 - invalid canonical tab segment: redirect to `/messages`
-- nested entity not found within a valid conversation:
-  - `/messages/<messageId>` -> render messages tab with a not-found state or 404 depending on current app preference
-  - `/plans/<planId>` -> render plans tab with a not-found state or 404
-  - `/subagents/<agentId>` -> render subagents tab with a not-found state or 404
+- nested entity not found within a valid conversation: render 404
+  - `/messages/<messageId>` -> 404
+  - `/plans/<planId>` -> 404
+  - `/subagents/<agentId>` -> 404
 
 The important rule is consistency: invalid canonical shapes should not silently fall back to arbitrary unrelated tabs.
 
