@@ -7,6 +7,8 @@ description: Understand your AI usage patterns with token, cost, and activity an
 
 The home page (`/`) is the analytics dashboard. It provides a comprehensive view of your AI coding usage across both Claude and Codex.
 
+Historical analytics are served from DuckDB. The newest slice uses a bounded SQLite supplement window so recent conversations can appear before the next incremental warehouse micro-batch finishes.
+
 ## KPI cards
 
 The top row shows key metrics for the selected time window:
@@ -50,6 +52,16 @@ Percentage of tool calls that returned errors, by tool type.
 
 - **Date range** — adjust the analysis window (default: 7 days)
 - **Provider** — filter to Claude, Codex, or both
+
+## Near-real-time behavior
+
+Analytics reads use a bounded dual-read strategy for freshness:
+
+- DuckDB remains the authoritative source for historical windows.
+- The backend overlays a small recent SQLite window for just-finished or newly changed conversations.
+- If the same conversation exists in both sources inside that recent window, the SQLite row wins so the dashboard does not double-count stale warehouse data.
+
+This keeps the dashboard near-real-time without forcing a destructive full warehouse rebuild on every refresh.
 
 ## Rate summary cards
 

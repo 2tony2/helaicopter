@@ -12,7 +12,7 @@ DatabaseStatusKey = Literal["frontend_cache", "sqlite", "duckdb", "prefect_postg
 DatabaseRole = Literal["cache", "metadata", "inspection", "orchestration"]
 DatabaseAvailability = Literal["ready", "missing", "unreachable"]
 DatabaseRefreshStatus = Literal["idle", "running", "completed", "failed"]
-RuntimeReadBackend = Literal["legacy"]
+RuntimeReadBackend = Literal["legacy", "duckdb"]
 
 TaskRuntimeStatus = Literal[
     "pending",

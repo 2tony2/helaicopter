@@ -203,6 +203,15 @@ def test_list_flow_runs_joins_repo_local_oats_metadata_when_available(tmp_path: 
                 "localMetadataPath": str(metadata_dir / "metadata.json"),
                 "artifactRoot": "/repo/.oats/prefect/flow-runs/flow-run-1",
             },
+            "analytics": {
+                "runStatus": "pending",
+                "taskCount": 0,
+                "completedTaskCount": 0,
+                "runningTaskCount": 0,
+                "failedTaskCount": 0,
+                "taskAttemptCount": 0,
+                "lastUpdatedAt": "2026-03-18T10:06:00Z",
+            },
         }
     ]
 
@@ -242,7 +251,9 @@ def test_flow_run_detail_returns_normalized_state_and_local_metadata(tmp_path: P
 def test_flow_runs_reconcile_stuck_remote_running_state_from_local_artifacts(tmp_path: Path) -> None:
     metadata_dir = tmp_path / ".oats" / "prefect" / "flow-runs" / "flow-run-1"
     tasks_dir = metadata_dir / "tasks"
+    attempts_dir = metadata_dir / "attempts" / "task-api"
     tasks_dir.mkdir(parents=True, exist_ok=True)
+    attempts_dir.mkdir(parents=True, exist_ok=True)
     (metadata_dir / "metadata.json").write_text(
         """
         {
@@ -277,6 +288,23 @@ def test_flow_runs_reconcile_stuck_remote_running_state_from_local_artifacts(tmp
         """.strip(),
         encoding="utf-8",
     )
+    (attempts_dir / "attempt-1.json").write_text(
+        """
+        {
+          "flow_run_id": "flow-run-1",
+          "flow_run_name": "run-prefect-api-1",
+          "task_id": "task-api",
+          "task_title": "Implement route",
+          "status": "succeeded",
+          "attempt": 1,
+          "upstream_task_ids": [],
+          "result": {"ok": true},
+          "error": null,
+          "updated_at": "2026-03-18T10:07:00Z"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
 
     with prefect_client(prefect_client=StubPrefectClient(), project_root=tmp_path) as client:
         response = client.get("/orchestration/prefect/flow-runs")
@@ -286,6 +314,15 @@ def test_flow_runs_reconcile_stuck_remote_running_state_from_local_artifacts(tmp
     assert body["stateType"] == "COMPLETED"
     assert body["stateName"] == "Completed"
     assert body["updatedAt"] == "2026-03-18T10:08:00Z"
+    assert body["analytics"] == {
+        "runStatus": "completed",
+        "taskCount": 1,
+        "completedTaskCount": 1,
+        "runningTaskCount": 0,
+        "failedTaskCount": 0,
+        "taskAttemptCount": 1,
+        "lastUpdatedAt": "2026-03-18T10:08:00Z",
+    }
 
 
 def test_worker_and_pool_endpoints_report_prefect_capacity_state(tmp_path: Path) -> None:

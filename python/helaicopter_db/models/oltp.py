@@ -10,6 +10,14 @@ class OltpBase(DeclarativeBase):
     pass
 
 
+class ProvenanceMixin:
+    record_source: Mapped[str | None] = mapped_column(Text)
+    source_file_modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    first_ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class RefreshRun(OltpBase):
     __tablename__ = "refresh_runs"
 
@@ -79,7 +87,71 @@ class ConversationEvaluationRecord(OltpBase):
     duration_ms: Mapped[int | None] = mapped_column(Integer)
 
 
-class ConversationRecord(OltpBase):
+class FactOrchestrationRun(OltpBase):
+    __tablename__ = "fact_orchestration_runs"
+    __table_args__ = (
+        Index("ix_fact_orchestration_runs_run_source_updated_at", "run_source", "updated_at"),
+    )
+
+    run_fact_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    run_source: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    flow_run_name: Mapped[str | None] = mapped_column(Text)
+    run_title: Mapped[str] = mapped_column(Text, nullable=False)
+    source_path: Mapped[str | None] = mapped_column(Text)
+    repo_root: Mapped[str] = mapped_column(Text, nullable=False)
+    config_path: Mapped[str | None] = mapped_column(Text)
+    artifact_root: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_status_source: Mapped[str] = mapped_column(Text, nullable=False)
+    has_runtime_snapshot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    has_terminal_record: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    running_task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    task_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class FactOrchestrationTaskAttempt(OltpBase):
+    __tablename__ = "fact_orchestration_task_attempts"
+    __table_args__ = (
+        Index(
+            "ix_fact_orchestration_task_attempts_run_fact_id_task_id",
+            "run_fact_id",
+            "task_id",
+        ),
+    )
+
+    task_attempt_fact_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    run_fact_id: Mapped[str] = mapped_column(
+        ForeignKey("fact_orchestration_runs.run_fact_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    run_source: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    task_id: Mapped[str] = mapped_column(Text, nullable=False)
+    task_title: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    upstream_task_ids_json: Mapped[str | None] = mapped_column(Text)
+    agent: Mapped[str | None] = mapped_column(Text)
+    session_id: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(Text)
+    reasoning_effort: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    output_text: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_progress_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ConversationRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "conversations"
     __table_args__ = (
         Index("ix_conversations_provider_started_at", "provider", "started_at"),
@@ -140,7 +212,7 @@ class ConversationRecord(OltpBase):
     )
 
 
-class ConversationMessage(OltpBase):
+class ConversationMessage(ProvenanceMixin, OltpBase):
     __tablename__ = "conversation_messages"
     __table_args__ = (
         Index("ix_messages_conversation_id_timestamp", "conversation_id", "timestamp"),
@@ -170,7 +242,7 @@ class ConversationMessage(OltpBase):
     )
 
 
-class MessageBlockRecord(OltpBase):
+class MessageBlockRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "message_blocks"
     __table_args__ = (
         Index("ix_message_blocks_message_id", "message_id"),
@@ -193,7 +265,7 @@ class MessageBlockRecord(OltpBase):
     message: Mapped[ConversationMessage] = relationship(back_populates="blocks")
 
 
-class ConversationPlanRecord(OltpBase):
+class ConversationPlanRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "conversation_plans"
     __table_args__ = (Index("ix_plans_conversation_id_timestamp", "conversation_id", "timestamp"),)
 
@@ -216,7 +288,7 @@ class ConversationPlanRecord(OltpBase):
     conversation: Mapped[ConversationRecord] = relationship(back_populates="plans")
 
 
-class ConversationSubagentRecord(OltpBase):
+class ConversationSubagentRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "conversation_subagents"
     __table_args__ = (Index("ix_subagents_conversation_id", "conversation_id"),)
 
@@ -234,7 +306,7 @@ class ConversationSubagentRecord(OltpBase):
     conversation: Mapped[ConversationRecord] = relationship(back_populates="subagents")
 
 
-class ConversationTaskRecord(OltpBase):
+class ConversationTaskRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "conversation_tasks"
     __table_args__ = (Index("ix_tasks_conversation_id", "conversation_id"),)
 
@@ -249,7 +321,7 @@ class ConversationTaskRecord(OltpBase):
     conversation: Mapped[ConversationRecord] = relationship(back_populates="tasks")
 
 
-class ContextBucketRecord(OltpBase):
+class ContextBucketRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "context_buckets"
     __table_args__ = (Index("ix_context_buckets_conversation_id", "conversation_id"),)
 
@@ -270,7 +342,7 @@ class ContextBucketRecord(OltpBase):
     conversation: Mapped[ConversationRecord] = relationship(back_populates="context_buckets")
 
 
-class ContextStepRecord(OltpBase):
+class ContextStepRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "context_steps"
     __table_args__ = (Index("ix_context_steps_conversation_id_timestamp", "conversation_id", "timestamp"),)
 

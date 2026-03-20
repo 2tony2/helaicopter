@@ -41,6 +41,17 @@ class PrefectFlowRunResponse(CamelCaseHttpResponseModel):
     created_at: str | None = None
     updated_at: str | None = None
     oats_metadata: PrefectOatsMetadataResponse | None = None
+    analytics: "PrefectFlowRunAnalyticsResponse | None" = None
+
+
+class PrefectFlowRunAnalyticsResponse(CamelCaseHttpResponseModel):
+    run_status: str
+    task_count: int = 0
+    completed_task_count: int = 0
+    running_task_count: int = 0
+    failed_task_count: int = 0
+    task_attempt_count: int = 0
+    last_updated_at: str | None = None
 
 
 class PrefectWorkerResponse(CamelCaseHttpResponseModel):

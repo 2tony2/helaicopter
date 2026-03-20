@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -36,11 +37,16 @@ from .models import (
     DimTool,
     FactConversation,
     FactDailyUsage,
+    FactOrchestrationRun,
+    FactOrchestrationTaskAttempt,
     FactSubagentUsage,
     FactToolUsage,
     MessageBlockRecord,
+    OltpFactOrchestrationRun,
+    OltpFactOrchestrationTaskAttempt,
     RefreshRun,
 )
+from .orchestration_facts import collect_orchestration_facts
 from .schemaspy import generate_schema_docs
 from .settings import (
     get_database_settings,
@@ -201,6 +207,43 @@ def datetime_from_iso(value: str):
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _incremental_state_path(settings: Settings | None = None) -> Path:
+    ensure_runtime_dirs(settings)
+    return get_database_settings(settings).runtime_dir / "refresh_state.json"
+
+
+def _load_incremental_state(settings: Settings | None = None) -> dict[str, str]:
+    path = _incremental_state_path(settings)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        str(key): str(value)
+        for key, value in payload.items()
+        if isinstance(key, str) and isinstance(value, str)
+    }
+
+
+def _write_incremental_state(state: dict[str, str], settings: Settings | None = None) -> None:
+    path = _incremental_state_path(settings)
+    path.write_text(json.dumps(state, ensure_ascii=True, sort_keys=True), encoding="utf-8")
+
+
+def _conversation_refresh_key(envelope: dict[str, Any]) -> str:
+    summary = envelope["summary"]
+    provider = provider_for_project_path(summary["projectPath"])
+    return conversation_id(provider, summary["sessionId"])
+
+
+def _conversation_refresh_hash(envelope: dict[str, Any]) -> str:
+    return hashlib.sha256(to_json(envelope).encode("utf-8")).hexdigest()
+
+
 def _load_latest_completed_refresh(settings: Settings | None = None) -> RefreshRun | None:
     sqlite = get_database_settings(settings).sqlite
     if not sqlite.path.exists():
@@ -223,6 +266,8 @@ def _load_latest_completed_refresh(settings: Settings | None = None) -> RefreshR
 
 def _reset_oltp_data(session: Session) -> None:
     for model in (
+        OltpFactOrchestrationTaskAttempt,
+        OltpFactOrchestrationRun,
         MessageBlockRecord,
         ConversationMessage,
         ConversationPlanRecord,
@@ -235,10 +280,62 @@ def _reset_oltp_data(session: Session) -> None:
         session.execute(delete(model))
 
 
-def _reset_olap_artifact(settings: Settings | None = None) -> None:
-    duckdb = get_database_settings(settings).duckdb
-    with suppress(FileNotFoundError):
-        duckdb.path.unlink()
+def _delete_conversations(session: Session, conversation_ids: set[str]) -> None:
+    if not conversation_ids:
+        return
+    message_ids = select(ConversationMessage.message_id).where(
+        ConversationMessage.conversation_id.in_(conversation_ids)
+    )
+    session.execute(delete(MessageBlockRecord).where(MessageBlockRecord.message_id.in_(message_ids)))
+    for model in (
+        ConversationMessage,
+        ConversationPlanRecord,
+        ConversationSubagentRecord,
+        ConversationTaskRecord,
+        ContextBucketRecord,
+        ContextStepRecord,
+    ):
+        session.execute(delete(model).where(model.conversation_id.in_(conversation_ids)))
+    session.execute(delete(ConversationRecord).where(ConversationRecord.conversation_id.in_(conversation_ids)))
+
+
+def _reset_olap_data(session: Session) -> None:
+    for model in (
+        FactOrchestrationTaskAttempt,
+        FactOrchestrationRun,
+        FactSubagentUsage,
+        FactToolUsage,
+        FactDailyUsage,
+        FactConversation,
+        DimSubagentType,
+        DimTool,
+        DimModel,
+        DimProject,
+        DimDate,
+    ):
+        session.execute(delete(model))
+
+
+def _delete_olap_conversations(session: Session, conversation_ids: set[str]) -> None:
+    if not conversation_ids:
+        return
+    session.execute(delete(FactConversation).where(FactConversation.conversation_id.in_(conversation_ids)))
+
+
+def _reset_olap_derived_tables(session: Session) -> None:
+    for model in (
+        FactOrchestrationTaskAttempt,
+        FactOrchestrationRun,
+        FactSubagentUsage,
+        FactToolUsage,
+        FactDailyUsage,
+    ):
+        session.execute(delete(model))
+
+
+def _reset_oltp_orchestration_facts(session: Session) -> None:
+    for model in (OltpFactOrchestrationTaskAttempt, OltpFactOrchestrationRun):
+        session.execute(delete(model))
 
 
 def _text_preview(blocks: list[dict[str, Any]]) -> str:
@@ -260,6 +357,92 @@ def _tool_result_text(value: Any) -> str | None:
     return to_json(value)
 
 
+def _optional_timestamp_ms(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        return parse_timestamp_ms(value)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _record_source(summary: dict[str, Any]) -> str | None:
+    for key in ("recordSource", "sourcePath"):
+        value = summary.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _provenance_fields(
+    *,
+    record_source: str | None,
+    source_file_modified_at: datetime | None,
+    loaded_at: datetime,
+    first_ingested_at: datetime,
+) -> dict[str, Any]:
+    return {
+        "record_source": record_source,
+        "source_file_modified_at": source_file_modified_at,
+        "loaded_at": loaded_at,
+        "first_ingested_at": first_ingested_at,
+        "last_refreshed_at": loaded_at,
+    }
+
+
+def _child_first_ingested_map(
+    session: Session,
+    model: type[OltpBase],
+    *,
+    key_column: str,
+    conversation_id: str,
+) -> dict[str, datetime]:
+    key_attr = getattr(model, key_column)
+    rows = session.execute(
+        select(key_attr, model.first_ingested_at).where(model.conversation_id == conversation_id)
+    ).all()
+    return {str(key): first_ingested_at for key, first_ingested_at in rows}
+
+
+def _message_block_first_ingested_map(session: Session, *, conversation_id: str) -> dict[str, datetime]:
+    rows = session.execute(
+        select(MessageBlockRecord.block_id, MessageBlockRecord.first_ingested_at)
+        .join(ConversationMessage, ConversationMessage.message_id == MessageBlockRecord.message_id)
+        .where(ConversationMessage.conversation_id == conversation_id)
+    ).all()
+    return {str(block_id): first_ingested_at for block_id, first_ingested_at in rows}
+
+
+def _delete_conversation_children(session: Session, conversation_id: str) -> None:
+    message_ids = [
+        row[0]
+        for row in session.execute(
+            select(ConversationMessage.message_id).where(ConversationMessage.conversation_id == conversation_id)
+        ).all()
+    ]
+    if message_ids:
+        session.execute(delete(MessageBlockRecord).where(MessageBlockRecord.message_id.in_(message_ids)))
+    for model in (
+        ConversationMessage,
+        ConversationPlanRecord,
+        ConversationSubagentRecord,
+        ConversationTaskRecord,
+        ContextBucketRecord,
+        ContextStepRecord,
+    ):
+        session.execute(delete(model).where(model.conversation_id == conversation_id))
+
+
+def _delete_missing_conversations(session: Session, seen_conversation_ids: set[str]) -> None:
+    existing_ids = {
+        conversation_id
+        for conversation_id, in session.execute(select(ConversationRecord.conversation_id)).all()
+    }
+    for conversation_id in sorted(existing_ids - seen_conversation_ids):
+        _delete_conversation_children(session, conversation_id)
+        session.execute(delete(ConversationRecord).where(ConversationRecord.conversation_id == conversation_id))
+
+
 def _load_conversation(
     oltp_session: Session,
     olap_session: Session,
@@ -268,6 +451,8 @@ def _load_conversation(
     daily_usage: dict[str, dict[str, Any]],
     tool_usage: dict[str, dict[str, Any]],
     subagent_usage: dict[str, dict[str, Any]],
+    *,
+    loaded_at: datetime,
 ) -> None:
     summary = envelope["summary"]
     detail = envelope.get("detail") or {}
@@ -284,6 +469,49 @@ def _load_conversation(
     project_id = project_dim_id(provider, summary["projectPath"])
     model_name = summary.get("model") or "unknown"
     model_id = model_dim_id(provider, model_name)
+    record_source = _record_source(summary)
+    source_file_modified_at = _optional_timestamp_ms(summary.get("sourceFileModifiedAt"))
+    existing_conversation = oltp_session.get(ConversationRecord, conv_id)
+    first_ingested_at = existing_conversation.first_ingested_at if existing_conversation is not None else loaded_at
+    message_first_ingested = _child_first_ingested_map(
+        oltp_session,
+        ConversationMessage,
+        key_column="message_id",
+        conversation_id=conv_id,
+    )
+    block_first_ingested = _message_block_first_ingested_map(oltp_session, conversation_id=conv_id)
+    plan_first_ingested = _child_first_ingested_map(
+        oltp_session,
+        ConversationPlanRecord,
+        key_column="plan_row_id",
+        conversation_id=conv_id,
+    )
+    subagent_first_ingested = _child_first_ingested_map(
+        oltp_session,
+        ConversationSubagentRecord,
+        key_column="subagent_row_id",
+        conversation_id=conv_id,
+    )
+    task_first_ingested = _child_first_ingested_map(
+        oltp_session,
+        ConversationTaskRecord,
+        key_column="task_row_id",
+        conversation_id=conv_id,
+    )
+    bucket_first_ingested = _child_first_ingested_map(
+        oltp_session,
+        ContextBucketRecord,
+        key_column="bucket_row_id",
+        conversation_id=conv_id,
+    )
+    step_first_ingested = _child_first_ingested_map(
+        oltp_session,
+        ContextStepRecord,
+        key_column="step_row_id",
+        conversation_id=conv_id,
+    )
+
+    _delete_conversation_children(oltp_session, conv_id)
 
     olap_session.merge(
         DimDate(
@@ -329,36 +557,45 @@ def _load_conversation(
         )
 
     counters.conversations += 1
-    conversation = ConversationRecord(
-        conversation_id=conv_id,
-        provider=provider,
-        session_id=summary["sessionId"],
-        project_path=summary["projectPath"],
-        project_name=summary["projectName"],
-        thread_type=summary.get("threadType", "main"),
-        first_message=summary["firstMessage"],
-        started_at=started_at,
-        ended_at=ended_at,
-        message_count=summary["messageCount"],
-        model=summary.get("model"),
-        git_branch=summary.get("gitBranch"),
-        reasoning_effort=summary.get("reasoningEffort"),
-        speed=summary.get("speed"),
-        total_input_tokens=summary.get("totalInputTokens", 0),
-        total_output_tokens=summary.get("totalOutputTokens", 0),
-        total_cache_write_tokens=summary.get("totalCacheCreationTokens", 0),
-        total_cache_read_tokens=summary.get("totalCacheReadTokens", 0),
-        total_reasoning_tokens=summary.get("totalReasoningTokens", 0) or 0,
-        tool_use_count=summary.get("toolUseCount", 0),
-        subagent_count=summary.get("subagentCount", 0),
-        task_count=summary.get("taskCount", 0),
-        estimated_input_cost=_cost_as_text(cost.get("inputCost", 0)),
-        estimated_output_cost=_cost_as_text(cost.get("outputCost", 0)),
-        estimated_cache_write_cost=_cost_as_text(cost.get("cacheWriteCost", 0)),
-        estimated_cache_read_cost=_cost_as_text(cost.get("cacheReadCost", 0)),
-        estimated_total_cost=_cost_as_text(cost.get("totalCost", 0)),
-    )
-    oltp_session.add(conversation)
+    if existing_conversation is None:
+        conversation = ConversationRecord(conversation_id=conv_id)
+        oltp_session.add(conversation)
+    else:
+        conversation = existing_conversation
+
+    conversation.provider = provider
+    conversation.session_id = summary["sessionId"]
+    conversation.project_path = summary["projectPath"]
+    conversation.project_name = summary["projectName"]
+    conversation.thread_type = summary.get("threadType", "main")
+    conversation.first_message = summary["firstMessage"]
+    conversation.started_at = started_at
+    conversation.ended_at = ended_at
+    conversation.message_count = summary["messageCount"]
+    conversation.model = summary.get("model")
+    conversation.git_branch = summary.get("gitBranch")
+    conversation.reasoning_effort = summary.get("reasoningEffort")
+    conversation.speed = summary.get("speed")
+    conversation.total_input_tokens = summary.get("totalInputTokens", 0)
+    conversation.total_output_tokens = summary.get("totalOutputTokens", 0)
+    conversation.total_cache_write_tokens = summary.get("totalCacheCreationTokens", 0)
+    conversation.total_cache_read_tokens = summary.get("totalCacheReadTokens", 0)
+    conversation.total_reasoning_tokens = summary.get("totalReasoningTokens", 0) or 0
+    conversation.tool_use_count = summary.get("toolUseCount", 0)
+    conversation.subagent_count = summary.get("subagentCount", 0)
+    conversation.task_count = summary.get("taskCount", 0)
+    conversation.estimated_input_cost = _cost_as_text(cost.get("inputCost", 0))
+    conversation.estimated_output_cost = _cost_as_text(cost.get("outputCost", 0))
+    conversation.estimated_cache_write_cost = _cost_as_text(cost.get("cacheWriteCost", 0))
+    conversation.estimated_cache_read_cost = _cost_as_text(cost.get("cacheReadCost", 0))
+    conversation.estimated_total_cost = _cost_as_text(cost.get("totalCost", 0))
+    for field, value in _provenance_fields(
+        record_source=record_source,
+        source_file_modified_at=source_file_modified_at,
+        loaded_at=loaded_at,
+        first_ingested_at=first_ingested_at,
+    ).items():
+        setattr(conversation, field, value)
 
     for ordinal, message in enumerate(detail.get("messages") or []):
         persisted_message_id = conversation_message_id(conv_id, ordinal)
@@ -376,6 +613,12 @@ def _load_conversation(
             cache_write_tokens=message.get("usage", {}).get("cache_creation_input_tokens", 0),
             cache_read_tokens=message.get("usage", {}).get("cache_read_input_tokens", 0),
             text_preview=_text_preview(message.get("blocks") or []),
+            **_provenance_fields(
+                record_source=record_source,
+                source_file_modified_at=source_file_modified_at,
+                loaded_at=loaded_at,
+                first_ingested_at=message_first_ingested.get(persisted_message_id, loaded_at),
+            ),
         )
         counters.messages += 1
         oltp_session.add(message_row)
@@ -397,6 +640,15 @@ def _load_conversation(
                     tool_input_json=to_json(block.get("input")) if block.get("input") is not None else None,
                     tool_result_text=_tool_result_text(block.get("result")),
                     is_error=bool(block.get("isError", False)),
+                    **_provenance_fields(
+                        record_source=record_source,
+                        source_file_modified_at=source_file_modified_at,
+                        loaded_at=loaded_at,
+                        first_ingested_at=block_first_ingested.get(
+                            conversation_message_block_id(persisted_message_id, block_index),
+                            loaded_at,
+                        ),
+                    ),
                 )
             )
 
@@ -416,6 +668,12 @@ def _load_conversation(
                 model=plan.get("model"),
                 explanation=plan.get("explanation"),
                 steps_json=to_json(plan.get("steps")) if plan.get("steps") is not None else None,
+                **_provenance_fields(
+                    record_source=record_source,
+                    source_file_modified_at=source_file_modified_at,
+                    loaded_at=loaded_at,
+                    first_ingested_at=plan_first_ingested.get(conversation_plan_row_id(conv_id, ordinal), loaded_at),
+                ),
             )
         )
 
@@ -429,6 +687,15 @@ def _load_conversation(
                 subagent_type=subagent.get("subagentType"),
                 nickname=subagent.get("nickname"),
                 has_file=bool(subagent.get("hasFile", False)),
+                **_provenance_fields(
+                    record_source=record_source,
+                    source_file_modified_at=source_file_modified_at,
+                    loaded_at=loaded_at,
+                    first_ingested_at=subagent_first_ingested.get(
+                        conversation_subagent_row_id(conv_id, ordinal),
+                        loaded_at,
+                    ),
+                ),
             )
         )
 
@@ -439,6 +706,12 @@ def _load_conversation(
                 conversation_id=conv_id,
                 ordinal=ordinal,
                 task_json=to_json(task),
+                **_provenance_fields(
+                    record_source=record_source,
+                    source_file_modified_at=source_file_modified_at,
+                    loaded_at=loaded_at,
+                    first_ingested_at=task_first_ingested.get(conversation_task_row_id(conv_id, ordinal), loaded_at),
+                ),
             )
         )
 
@@ -455,6 +728,15 @@ def _load_conversation(
                 cache_read_tokens=bucket.get("cacheReadTokens", 0),
                 total_tokens=bucket.get("totalTokens", 0),
                 calls=bucket.get("calls", 0),
+                **_provenance_fields(
+                    record_source=record_source,
+                    source_file_modified_at=source_file_modified_at,
+                    loaded_at=loaded_at,
+                    first_ingested_at=bucket_first_ingested.get(
+                        conversation_context_bucket_id(conv_id, ordinal),
+                        loaded_at,
+                    ),
+                ),
             )
         )
 
@@ -474,6 +756,15 @@ def _load_conversation(
                 cache_write_tokens=step.get("cacheWriteTokens", 0),
                 cache_read_tokens=step.get("cacheReadTokens", 0),
                 total_tokens=step.get("totalTokens", 0),
+                **_provenance_fields(
+                    record_source=record_source,
+                    source_file_modified_at=source_file_modified_at,
+                    loaded_at=loaded_at,
+                    first_ingested_at=step_first_ingested.get(
+                        conversation_context_step_id(conv_id, ordinal),
+                        loaded_at,
+                    ),
+                ),
             )
         )
 
@@ -575,6 +866,82 @@ def _load_conversation(
         usage_row["subagent_count"] += count
 
 
+def _accumulate_usage(
+    envelope: dict[str, Any],
+    daily_usage: dict[str, dict[str, Any]],
+    tool_usage: dict[str, dict[str, Any]],
+    subagent_usage: dict[str, dict[str, Any]],
+) -> None:
+    summary = envelope["summary"]
+    cost = envelope.get("cost") or {}
+    provider = provider_for_project_path(summary["projectPath"])
+    started_at = parse_timestamp_ms(summary["timestamp"])
+    started_date_key = date_key(started_at.date())
+    project_id = project_dim_id(provider, summary["projectPath"])
+    model_name = summary.get("model") or "unknown"
+    model_id = model_dim_id(provider, model_name)
+
+    daily_id = f"{provider}:{started_date_key}:{model_id if summary.get('model') else 'unknown'}"
+    daily_row = daily_usage.setdefault(
+        daily_id,
+        {
+            "provider": provider,
+            "date_key": started_date_key,
+            "model_id": model_id if summary.get("model") else None,
+            "conversation_count": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_write_tokens": 0,
+            "cache_read_tokens": 0,
+            "reasoning_tokens": 0,
+            "tool_calls": 0,
+            "estimated_total_cost": Decimal("0"),
+        },
+    )
+    daily_row["conversation_count"] += 1
+    daily_row["input_tokens"] += summary.get("totalInputTokens", 0)
+    daily_row["output_tokens"] += summary.get("totalOutputTokens", 0)
+    daily_row["cache_write_tokens"] += summary.get("totalCacheCreationTokens", 0)
+    daily_row["cache_read_tokens"] += summary.get("totalCacheReadTokens", 0)
+    daily_row["reasoning_tokens"] += summary.get("totalReasoningTokens", 0) or 0
+    daily_row["tool_calls"] += summary.get("toolUseCount", 0)
+    daily_row["estimated_total_cost"] += Decimal(str(cost.get("totalCost", 0)))
+
+    for tool_name, count in (summary.get("toolBreakdown") or {}).items():
+        tool_id = tool_dim_id(provider, tool_name)
+        usage_id = f"{provider}:{started_date_key}:{project_id}:{tool_id}"
+        usage_row = tool_usage.setdefault(
+            usage_id,
+            {
+                "provider": provider,
+                "date_key": started_date_key,
+                "project_id": project_id,
+                "tool_id": tool_id,
+                "conversation_count": 0,
+                "tool_calls": 0,
+            },
+        )
+        usage_row["conversation_count"] += 1
+        usage_row["tool_calls"] += count
+
+    for subagent_type, count in (summary.get("subagentTypeBreakdown") or {}).items():
+        dim_id = subagent_dim_id(provider, subagent_type)
+        usage_id = f"{provider}:{started_date_key}:{project_id}:{dim_id}"
+        usage_row = subagent_usage.setdefault(
+            usage_id,
+            {
+                "provider": provider,
+                "date_key": started_date_key,
+                "project_id": project_id,
+                "subagent_type_id": dim_id,
+                "conversation_count": 0,
+                "subagent_count": 0,
+            },
+        )
+        usage_row["conversation_count"] += 1
+        usage_row["subagent_count"] += count
+
+
 def run_refresh(
     force: bool,
     trigger: str,
@@ -591,8 +958,18 @@ def run_refresh(
     started_at = utc_now()
     previous_status = load_status(backend_settings) or {}
     last_successful_refresh_at = previous_status.get("lastSuccessfulRefreshAt")
-
-    _reset_olap_artifact(backend_settings)
+    previous_incremental_state = _load_incremental_state(backend_settings)
+    envelopes = list(iter_export_rows(backend_settings))
+    current_incremental_state = {
+        _conversation_refresh_key(envelope): _conversation_refresh_hash(envelope) for envelope in envelopes
+    }
+    full_reconcile = force or not previous_incremental_state
+    deleted_conversation_ids = set(previous_incremental_state) - set(current_incremental_state)
+    changed_conversation_ids = {
+        conversation_key
+        for conversation_key, fingerprint in current_incremental_state.items()
+        if previous_incremental_state.get(conversation_key) != fingerprint
+    }
 
     running_status = {
         **previous_status,
@@ -620,9 +997,16 @@ def run_refresh(
         _run_migrations("olap", backend_settings)
 
         with Session(oltp_engine) as oltp_session, Session(olap_engine) as olap_session:
-            _reset_oltp_data(oltp_session)
+            if full_reconcile:
+                _reset_oltp_data(oltp_session)
+                _reset_olap_data(olap_session)
+            else:
+                _delete_conversations(oltp_session, deleted_conversation_ids)
+                _reset_oltp_orchestration_facts(oltp_session)
+                _delete_olap_conversations(olap_session, deleted_conversation_ids | changed_conversation_ids)
+                _reset_olap_derived_tables(olap_session)
             oltp_session.commit()
-
+            olap_session.commit()
             run_record = RefreshRun(
                 run_id=str(uuid.uuid4()),
                 trigger=trigger,
@@ -648,16 +1032,19 @@ def run_refresh(
             tool_usage: dict[str, dict[str, Any]] = {}
             subagent_usage: dict[str, dict[str, Any]] = {}
 
-            for envelope in iter_export_rows(backend_settings):
-                _load_conversation(
-                    oltp_session,
-                    olap_session,
-                    envelope,
-                    counters,
-                    daily_usage,
-                    tool_usage,
-                    subagent_usage,
-                )
+            for envelope in envelopes:
+                _accumulate_usage(envelope, daily_usage, tool_usage, subagent_usage)
+                if full_reconcile or _conversation_refresh_key(envelope) in changed_conversation_ids:
+                    _load_conversation(
+                        oltp_session,
+                        olap_session,
+                        envelope,
+                        counters,
+                        {},
+                        {},
+                        {},
+                        loaded_at=started_at,
+                    )
 
             for daily_usage_id, row in daily_usage.items():
                 olap_session.add(
@@ -703,6 +1090,111 @@ def run_refresh(
                     )
                 )
 
+            orchestration_run_facts, orchestration_task_attempt_facts = collect_orchestration_facts(
+                backend_settings.project_root
+            )
+            for fact in orchestration_run_facts:
+                oltp_session.add(
+                    OltpFactOrchestrationRun(
+                        run_fact_id=fact.run_fact_id,
+                        run_source=fact.run_source,
+                        run_id=fact.run_id,
+                        flow_run_name=fact.flow_run_name,
+                        run_title=fact.run_title,
+                        source_path=fact.source_path,
+                        repo_root=fact.repo_root,
+                        config_path=fact.config_path,
+                        artifact_root=fact.artifact_root,
+                        status=fact.status,
+                        canonical_status_source=fact.canonical_status_source,
+                        has_runtime_snapshot=fact.has_runtime_snapshot,
+                        has_terminal_record=fact.has_terminal_record,
+                        task_count=fact.task_count,
+                        completed_task_count=fact.completed_task_count,
+                        running_task_count=fact.running_task_count,
+                        failed_task_count=fact.failed_task_count,
+                        task_attempt_count=fact.task_attempt_count,
+                        started_at=fact.started_at,
+                        updated_at=fact.updated_at,
+                        finished_at=fact.finished_at,
+                    )
+                )
+                olap_session.add(
+                    FactOrchestrationRun(
+                        run_fact_id=fact.run_fact_id,
+                        run_source=fact.run_source,
+                        run_id=fact.run_id,
+                        flow_run_name=fact.flow_run_name,
+                        run_title=fact.run_title,
+                        source_path=fact.source_path,
+                        repo_root=fact.repo_root,
+                        config_path=fact.config_path,
+                        artifact_root=fact.artifact_root,
+                        status=fact.status,
+                        canonical_status_source=fact.canonical_status_source,
+                        has_runtime_snapshot=fact.has_runtime_snapshot,
+                        has_terminal_record=fact.has_terminal_record,
+                        task_count=fact.task_count,
+                        completed_task_count=fact.completed_task_count,
+                        running_task_count=fact.running_task_count,
+                        failed_task_count=fact.failed_task_count,
+                        task_attempt_count=fact.task_attempt_count,
+                        started_at=fact.started_at,
+                        updated_at=fact.updated_at,
+                        finished_at=fact.finished_at,
+                    )
+                )
+
+            for fact in orchestration_task_attempt_facts:
+                oltp_session.add(
+                    OltpFactOrchestrationTaskAttempt(
+                        task_attempt_fact_id=fact.task_attempt_fact_id,
+                        run_fact_id=fact.run_fact_id,
+                        run_source=fact.run_source,
+                        run_id=fact.run_id,
+                        task_id=fact.task_id,
+                        task_title=fact.task_title,
+                        attempt=fact.attempt,
+                        status=fact.status,
+                        upstream_task_ids_json=fact.upstream_task_ids_json,
+                        agent=fact.agent,
+                        session_id=fact.session_id,
+                        model=fact.model,
+                        reasoning_effort=fact.reasoning_effort,
+                        error=fact.error,
+                        output_text=fact.output_text,
+                        started_at=fact.started_at,
+                        updated_at=fact.updated_at,
+                        finished_at=fact.finished_at,
+                        last_heartbeat_at=fact.last_heartbeat_at,
+                        last_progress_event_at=fact.last_progress_event_at,
+                    )
+                )
+                olap_session.add(
+                    FactOrchestrationTaskAttempt(
+                        task_attempt_fact_id=fact.task_attempt_fact_id,
+                        run_fact_id=fact.run_fact_id,
+                        run_source=fact.run_source,
+                        run_id=fact.run_id,
+                        task_id=fact.task_id,
+                        task_title=fact.task_title,
+                        attempt=fact.attempt,
+                        status=fact.status,
+                        upstream_task_ids_json=fact.upstream_task_ids_json,
+                        agent=fact.agent,
+                        session_id=fact.session_id,
+                        model=fact.model,
+                        reasoning_effort=fact.reasoning_effort,
+                        error=fact.error,
+                        output_text=fact.output_text,
+                        started_at=fact.started_at,
+                        updated_at=fact.updated_at,
+                        finished_at=fact.finished_at,
+                        last_heartbeat_at=fact.last_heartbeat_at,
+                        last_progress_event_at=fact.last_progress_event_at,
+                    )
+                )
+
             warehouse_finished_at = utc_now()
             warehouse_duration_ms = int((warehouse_finished_at - started_at).total_seconds() * 1000)
             run_record.status = "completed"
@@ -745,6 +1237,7 @@ def run_refresh(
             settings=backend_settings,
         )
         write_status(payload, backend_settings)
+        _write_incremental_state(current_incremental_state, backend_settings)
         return payload
     except Exception as exc:
         finished_at = utc_now()

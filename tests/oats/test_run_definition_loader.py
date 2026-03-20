@@ -56,6 +56,46 @@ def test_load_run_definition_uses_repo_validation_defaults_when_no_override() ->
     ]
 
 
+def test_load_run_definition_normalizes_full_program_overnight_run() -> None:
+    run_definition = load_run_definition(
+        Path("examples/full_program_authoritative_analytics_overnight_run.md")
+    )
+
+    assert run_definition.title == "Run: Full Program Authoritative Analytics Overnight"
+    assert run_definition.source_path == (
+        Path.cwd() / "examples" / "full_program_authoritative_analytics_overnight_run.md"
+    )
+
+    assert [task.task_id for task in run_definition.tasks] == [
+        "semantic_foundation",
+        "python_ingestion_foundation",
+        "operational_store_migration",
+        "warehouse_authority_cutover",
+        "orchestration_analytics",
+        "frontend_simplification",
+        "near_realtime_polish",
+        "final_cutover_and_morning_handoff",
+    ]
+
+    ingestion = next(task for task in run_definition.tasks if task.task_id == "python_ingestion_foundation")
+    frontend = next(task for task in run_definition.tasks if task.task_id == "frontend_simplification")
+    final_task = next(
+        task for task in run_definition.tasks if task.task_id == "final_cutover_and_morning_handoff"
+    )
+
+    assert ingestion.depends_on == ["semantic_foundation"]
+    assert frontend.depends_on == ["warehouse_authority_cutover", "orchestration_analytics"]
+    assert final_task.depends_on == [
+        "frontend_simplification",
+        "near_realtime_polish",
+        "orchestration_analytics",
+    ]
+    assert final_task.validation_commands == [
+        "uv run --group dev pytest -q tests/oats/test_run_definition_loader.py tests/test_parser.py",
+        "uv run oats plan examples/full_program_authoritative_analytics_overnight_run.md",
+    ]
+
+
 def test_load_run_definition_rejects_non_markdown_inputs(tmp_path: Path) -> None:
     invalid_run_spec = tmp_path / "run.yaml"
     invalid_run_spec.write_text("title: invalid\n", encoding="utf-8")
