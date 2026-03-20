@@ -8,6 +8,10 @@ import {
   deleteEvaluationPrompt,
   updateEvaluationPrompt,
 } from "@/lib/client/mutations";
+import {
+  formatEvaluationValidationError,
+  parseEvaluationPromptWriteInput,
+} from "@/lib/client/schemas/evaluations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,14 +94,16 @@ export function PromptManager() {
 
   async function savePrompt() {
     setError(null);
-    const payload = {
-      name: draft.name.trim(),
-      description: draft.description.trim(),
-      promptText: draft.promptText.trim(),
-    };
+    let payload: ReturnType<typeof parseEvaluationPromptWriteInput>;
 
-    if (!payload.name || !payload.promptText) {
-      setError("Name and prompt text are required.");
+    try {
+      payload = parseEvaluationPromptWriteInput({
+        name: draft.name,
+        description: draft.description,
+        promptText: draft.promptText,
+      });
+    } catch (error) {
+      setError(formatEvaluationValidationError(error, "Name and prompt text are required."));
       return;
     }
 
@@ -108,7 +114,7 @@ export function PromptManager() {
         ? await updateEvaluationPrompt(selectedPrompt.promptId, payload)
         : await createEvaluationPrompt(payload);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to save prompt.");
+      setError(formatEvaluationValidationError(error, "Failed to save prompt."));
       return;
     }
 
@@ -116,7 +122,10 @@ export function PromptManager() {
     setSelectedPromptId(body.promptId);
     setDraftState({
       sourcePromptId: body.promptId,
-      value: payload,
+      value: {
+        ...payload,
+        description: payload.description ?? "",
+      },
     });
   }
 
@@ -129,7 +138,7 @@ export function PromptManager() {
     try {
       await deleteEvaluationPrompt(selectedPrompt.promptId);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to delete prompt.");
+      setError(formatEvaluationValidationError(error, "Failed to delete prompt."));
       return;
     }
 

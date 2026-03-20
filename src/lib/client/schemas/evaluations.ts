@@ -103,5 +103,98 @@ export const conversationEvaluationCreateSchema = z.object({
   selectionInstruction: z.union([trimmedString.min(1), z.null()]),
 });
 
+const promptSelectionSchema = z.union([
+  z.literal("custom"),
+  nonEmptyTrimmedString,
+]);
+
+const evaluationPromptWriteInputSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  promptText: z.string(),
+});
+
+const conversationEvaluationCreateInputSchema = z
+  .object({
+    provider: providerSchema,
+    model: nonEmptyTrimmedString,
+    selectedPromptId: promptSelectionSchema,
+    promptName: z.string(),
+    promptText: z.string(),
+    scope: evaluationScopeSchema,
+    selectionInstruction: z.string(),
+  })
+  .superRefine((value, context) => {
+    if (value.scope !== "guided_subset") {
+      return;
+    }
+
+    if (!value.selectionInstruction.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "selectionInstruction is required for guided_subset scope.",
+        path: ["selectionInstruction"],
+      });
+    }
+  });
+
+export function parseEvaluationPromptWriteInput(input: {
+  name: string;
+  description: string | null;
+  promptText: string;
+}) {
+  const parsed = evaluationPromptWriteInputSchema.parse(input);
+
+  return evaluationPromptWriteSchema.parse({
+    name: parsed.name,
+    description: parsed.description,
+    promptText: parsed.promptText,
+  });
+}
+
+export function parseConversationEvaluationCreateInput(input: {
+  provider: z.input<typeof providerSchema>;
+  model: string;
+  selectedPromptId: string;
+  promptName: string;
+  promptText: string;
+  scope: z.input<typeof evaluationScopeSchema>;
+  selectionInstruction: string;
+}) {
+  const parsed = conversationEvaluationCreateInputSchema.parse(input);
+
+  return conversationEvaluationCreateSchema.parse({
+    provider: parsed.provider,
+    model: parsed.model,
+    promptId: parsed.selectedPromptId === "custom" ? null : parsed.selectedPromptId,
+    promptName: parsed.promptName,
+    promptText: parsed.promptText,
+    scope: parsed.scope,
+    selectionInstruction:
+      parsed.scope === "guided_subset" ? parsed.selectionInstruction : null,
+  });
+}
+
+export function formatEvaluationValidationError(
+  error: unknown,
+  fallback: string
+): string {
+  if (!(error instanceof z.ZodError)) {
+    return error instanceof Error ? error.message : fallback;
+  }
+
+  const issue = error.issues[0];
+  if (!issue) {
+    return fallback;
+  }
+
+  const field = issue.path[0];
+  if (typeof field === "string" && field.length > 0) {
+    return `${field}: ${issue.message}`;
+  }
+
+  return issue.message || fallback;
+}
+
 export type EvaluationPromptPayload = z.infer<typeof evaluationPromptSchema>;
 export type ConversationEvaluationPayload = z.infer<typeof conversationEvaluationSchema>;

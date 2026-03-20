@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { useEvaluationPrompts } from "@/hooks/use-conversations";
 import { createConversationEvaluation } from "@/lib/client/mutations";
+import {
+  formatEvaluationValidationError,
+  parseConversationEvaluationCreateInput,
+} from "@/lib/client/schemas/evaluations";
 import type { ConversationEvaluation } from "@/lib/types";
 import {
   CLAUDE_EVALUATION_MODELS,
@@ -90,24 +94,22 @@ export function EvaluationDialog({
     setIsSubmitting(true);
 
     try {
-      const body = await createConversationEvaluation(projectPath, sessionId, {
+      const input = parseConversationEvaluationCreateInput({
         provider,
         model,
-        promptId: selectedPromptId === "custom" ? null : selectedPromptId,
+        selectedPromptId,
         promptName,
         promptText,
         scope,
-        selectionInstruction:
-          scope === "guided_subset" ? selectionInstruction : null,
+        selectionInstruction,
       });
+      const body = await createConversationEvaluation(projectPath, sessionId, input);
 
       onCreated(body);
       onSubmitted?.();
       setOpen(false);
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Failed to evaluate conversation."
-      );
+      setError(formatEvaluationValidationError(error, "Failed to evaluate conversation."));
     } finally {
       setIsSubmitting(false);
     }
