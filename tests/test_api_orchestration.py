@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
 from helaicopter_api.adapters.oats_artifacts import FileOatsRunStore
+from helaicopter_api.application import orchestration as orchestration_application
 from helaicopter_api.application.orchestration import _shape_run_record
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.orchestration import StoredOatsRunRecord
@@ -481,7 +482,11 @@ class TestOrchestrationEndpoint:
             }
         ]
 
-    def test_run_list_reads_persisted_oats_facts_and_filters_sample_runs(self, tmp_path: Path) -> None:
+    def test_run_list_reads_persisted_oats_facts_and_filters_sample_runs(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         now = datetime.now(UTC)
         repo_root = tmp_path
         settings = _init_sqlite(repo_root)
@@ -596,6 +601,12 @@ class TestOrchestrationEndpoint:
             session.commit()
         engine.dispose()
 
+        monkeypatch.setattr(
+            orchestration_application,
+            "_resolve_conversation_identity",
+            lambda *args, **kwargs: pytest.fail("historical orchestration links should not use the generic resolver"),
+        )
+
         with orchestration_client(
             repo_root,
             settings=settings,
@@ -623,6 +634,76 @@ class TestOrchestrationEndpoint:
         assert run["dag"]["stats"]["totalNodes"] == 2
         assert run["dag"]["stats"]["activeCount"] == 0
         assert run["dag"]["stats"]["providerBreakdown"] == {"claude": 2}
+
+    def test_run_list_emits_null_for_unresolved_non_null_session_links(self, tmp_path: Path) -> None:
+        now = datetime.now(UTC)
+        repo_root = tmp_path
+        settings = _init_sqlite(repo_root)
+        engine = create_engine(f"sqlite:///{settings.app_sqlite_path}")
+        with Session(engine) as session:
+            session.add(
+                FactOrchestrationRun(
+                    run_fact_id="oats_local:run-unresolved-link",
+                    run_source="oats_local",
+                    run_id="run-unresolved-link",
+                    flow_run_name=None,
+                    run_title="Run with unresolved link",
+                    source_path=str(repo_root / "docs" / "superpowers" / "plans" / "run.md"),
+                    repo_root=str(repo_root),
+                    config_path=str(repo_root / ".oats" / "config.toml"),
+                    artifact_root=str(repo_root / ".oats" / "runtime" / "run-unresolved-link"),
+                    status="running",
+                    canonical_status_source="runtime_state_snapshot",
+                    has_runtime_snapshot=True,
+                    has_terminal_record=True,
+                    task_count=1,
+                    completed_task_count=0,
+                    running_task_count=1,
+                    failed_task_count=0,
+                    task_attempt_count=1,
+                    started_at=now - timedelta(minutes=6),
+                    updated_at=now - timedelta(minutes=3),
+                    finished_at=None,
+                )
+            )
+            session.add(
+                FactOrchestrationTaskAttempt(
+                    task_attempt_fact_id="oats_local:run-unresolved-link:task-api:1",
+                    run_fact_id="oats_local:run-unresolved-link",
+                    run_source="oats_local",
+                    run_id="run-unresolved-link",
+                    task_id="task-api",
+                    task_title="Implement route",
+                    attempt=1,
+                    status="running",
+                    upstream_task_ids_json="[]",
+                    agent="claude",
+                    session_id="claude-task-missing",
+                    model=None,
+                    reasoning_effort=None,
+                    error=None,
+                    output_text="working",
+                    started_at=now - timedelta(minutes=4),
+                    updated_at=now - timedelta(minutes=3),
+                    finished_at=None,
+                    last_heartbeat_at=now - timedelta(minutes=3),
+                    last_progress_event_at=now - timedelta(minutes=3),
+                )
+            )
+            session.commit()
+        engine.dispose()
+
+        with orchestration_client(
+            repo_root,
+            settings=settings,
+            app_sqlite_store=SqliteAppStore(db_path=settings.app_sqlite_path),
+        ) as client:
+            response = client.get("/orchestration/oats")
+
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+        assert response.json()[0]["tasks"][0]["invocation"]["sessionId"] == "claude-task-missing"
+        assert response.json()[0]["tasks"][0]["invocation"]["conversationPath"] is None
 
     def test_run_list_overlays_prefect_state_for_matching_persisted_prefect_run(self, tmp_path: Path) -> None:
         now = datetime.now(UTC)
