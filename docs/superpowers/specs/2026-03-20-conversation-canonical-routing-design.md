@@ -67,6 +67,7 @@ Parsing rule:
 - `route_key` must start with one of the known provider prefixes, `claude-` or `codex-`
 - the provider is the prefix before the first `-` in `route_key`
 - everything after that provider prefix is the raw `session_id`, even if the `session_id` itself contains additional `-` characters
+- `session_id` values are treated as opaque strings and may contain `-`, but the contract assumes they do not contain `--`; if that invariant ever changes, the ref format must be revised in a separate migration rather than silently reinterpreted
 
 ### 2. The slug is persisted, not recomputed forever
 
@@ -161,6 +162,15 @@ If legacy query state is mixed or stale, entity-bearing params win over a confli
 - `subagent` wins and redirects to `/subagents/<agentId>`
 - entity params without a matching `tab` still redirect to their entity route, for example `?plan=plan-7` -> `/plans/plan-7`
 
+If a legacy URL contains more than one entity param at once, redirect precedence is deterministic:
+
+1. if one entity param matches the explicit `tab`, use that entity route
+2. otherwise prefer `message`
+3. otherwise prefer `plan`
+4. otherwise prefer `subagent`
+
+This preserves the most granular deep link first and keeps redirect behavior testable.
+
 ### 5. Parent subagent tab routes and subagent thread routes are separate resources
 
 The product currently supports two legitimate ways to look at a subagent:
@@ -190,6 +200,8 @@ The frontend should not infer canonical refs from mutable labels or partial data
 - `conversation_ref`
 
 on conversation summary and detail responses.
+
+For child-thread navigation, the backend must also expose `conversation_ref` on `ConversationSubagentResponse` whenever the child conversation can be resolved. That allows parent viewers, DAG views, and any subagent link surface to link directly to the child thread without rebuilding refs client-side.
 
 The backend also adds a resolver API for canonical refs. The resolver returns the conversation locator needed by the frontend route layer:
 
