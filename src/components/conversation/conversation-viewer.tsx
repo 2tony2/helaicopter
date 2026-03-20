@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   useConversation,
   useConversationDag,
@@ -29,9 +29,8 @@ import { EvaluationDialog } from "./evaluation-dialog";
 import { EvaluationsTab } from "./evaluations-tab";
 import { ConversationDagView } from "./conversation-dag-view";
 import {
-  buildConversationRoute,
-  buildConversationSubagentRoute,
-  getConversationRouteState,
+  buildCanonicalConversationRoute,
+  buildConversationTabRoute,
   type ConversationDetailTab,
 } from "@/lib/routes";
 
@@ -167,14 +166,20 @@ function SubagentTranscriptCard({
                   sub-agent
                 </Badge>
                 <Link
-                  href={buildConversationSubagentRoute(
-                    projectPath,
-                    parentSessionId ?? sessionId,
-                    agent.agentId
-                  )}
+                  href={
+                    agent.conversationRef
+                      ? buildConversationTabRoute(agent.conversationRef, "messages")
+                      : "#"
+                  }
                   className="text-xs text-muted-foreground hover:text-foreground"
+                  aria-disabled={!agent.conversationRef}
+                  onClick={(event) => {
+                    if (!agent.conversationRef) {
+                      event.preventDefault();
+                    }
+                  }}
                 >
-                  native route
+                  {agent.conversationRef ? "native route" : "route unavailable"}
                 </Link>
                 {!agent.hasFile && (
                   <Badge variant="outline" className="text-xs text-muted-foreground">
@@ -264,7 +269,7 @@ function SubagentTranscriptCard({
 }
 
 export function ConversationViewer({
-  conversationRef: _conversationRef,
+  conversationRef,
   projectPath,
   sessionId,
   parentSessionId,
@@ -273,7 +278,7 @@ export function ConversationViewer({
   initialSubagentId,
   initialMessageId,
 }: {
-  conversationRef?: string;
+  conversationRef: string;
   projectPath: string;
   sessionId: string;
   parentSessionId?: string;
@@ -283,7 +288,6 @@ export function ConversationViewer({
   initialMessageId?: string;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { data: conversation, isLoading, error } = useConversation(
     projectPath,
     sessionId,
@@ -302,13 +306,12 @@ export function ConversationViewer({
   const { data: tasks } = useTasks(sessionId, parentSessionId);
   const [showEvaluationToast, setShowEvaluationToast] = useState(false);
   const plans = conversation?.plans || [];
-  const routeState = getConversationRouteState(searchParams, {
+  const routeState = {
     tab: initialTab,
     plan: initialPlanId,
     subagent: initialSubagentId,
     message: initialMessageId,
-  });
-  void _conversationRef;
+  };
 
   useEffect(() => {
     if (!showEvaluationToast) {
@@ -382,15 +385,25 @@ export function ConversationViewer({
     subagent?: string | null;
     message?: string | null;
   }) {
-    router.replace(
-      buildConversationRoute(projectPath, sessionId, {
-        tab: next.tab ?? routeState.tab,
-        plan: next.plan ?? routeState.plan,
-        subagent: next.subagent ?? routeState.subagent,
-        message: next.message ?? routeState.message,
-      }),
-      { scroll: false }
-    );
+    const tab = next.tab ?? routeState.tab;
+    const target =
+      tab === "messages"
+        ? next.message ?? routeState.message
+          ? { tab, messageId: next.message ?? routeState.message ?? undefined }
+          : { tab }
+        : tab === "plans"
+          ? next.plan ?? routeState.plan
+            ? { tab, planId: next.plan ?? routeState.plan ?? undefined }
+            : { tab }
+          : tab === "subagents"
+            ? next.subagent ?? routeState.subagent
+              ? { tab, agentId: next.subagent ?? routeState.subagent ?? undefined }
+              : { tab }
+            : { tab };
+
+    router.replace(buildCanonicalConversationRoute(conversationRef, target), {
+      scroll: false,
+    });
   }
 
   return (
@@ -539,11 +552,9 @@ export function ConversationViewer({
                 key={message.id}
                 message={message}
                 provider={provider}
-                href={buildConversationRoute(projectPath, sessionId, {
-                  tab: activeTab,
-                  plan: selectedPlanId ?? undefined,
-                  subagent: selectedSubagentId ?? undefined,
-                  message: message.id,
+                href={buildCanonicalConversationRoute(conversationRef, {
+                  tab: "messages",
+                  messageId: message.id,
                 })}
                 isSelected={selectedMessageId === message.id}
                 onSelect={() => replaceRoute({ message: message.id })}

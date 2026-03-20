@@ -18,6 +18,7 @@ export interface ConversationDagNodeData {
   totalTokens: string;
   depth: number;
   isRoot: boolean;
+  hasRoute: boolean;
   onClick: () => void;
 }
 
@@ -29,16 +30,21 @@ export const ConversationDagNode = memo(function ConversationDagNode({
   return (
     <div
       className={cn(
-        "nodrag w-[260px] rounded-2xl border-2 shadow-lg transition-all hover:shadow-xl hover:scale-[1.02] cursor-pointer",
+        "nodrag w-[260px] rounded-2xl border-2 shadow-lg transition-all",
         "bg-card text-card-foreground",
+        d.hasRoute && "cursor-pointer hover:shadow-xl hover:scale-[1.02]",
+        !d.hasRoute && "cursor-default opacity-80",
         d.isRoot
           ? "border-sky-500/60 dark:border-sky-400/50 ring-1 ring-sky-500/20"
           : "border-violet-500/50 dark:border-violet-400/40 ring-1 ring-violet-500/15"
       )}
-      onClick={d.onClick}
-      role="button"
-      tabIndex={0}
+      onClick={d.hasRoute ? d.onClick : undefined}
+      role={d.hasRoute ? "button" : undefined}
+      tabIndex={d.hasRoute ? 0 : -1}
       onKeyDown={(event) => {
+        if (!d.hasRoute) {
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           d.onClick();
@@ -133,14 +139,22 @@ export const ConversationDagNode = memo(function ConversationDagNode({
           <div
             className={cn(
               "rounded-lg px-2.5 py-2 border transition-colors",
-              d.isRoot
+              d.hasRoute && d.isRoot
                 ? "bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-400"
-                : "bg-violet-500/10 border-violet-500/30 text-violet-600 dark:text-violet-400"
+                : d.hasRoute
+                  ? "bg-violet-500/10 border-violet-500/30 text-violet-600 dark:text-violet-400"
+                  : "bg-muted/50 border-border/60 text-muted-foreground"
             )}
           >
             <div className="flex items-center gap-1.5">
-              {d.isRoot ? <Bot className="h-3 w-3" /> : <Router className="h-3 w-3" />}
-              <span className="font-medium">open thread</span>
+              {d.hasRoute ? (
+                d.isRoot ? <Bot className="h-3 w-3" /> : <Router className="h-3 w-3" />
+              ) : (
+                <Router className="h-3 w-3" />
+              )}
+              <span className="font-medium">
+                {d.hasRoute ? "open thread" : "route unavailable"}
+              </span>
             </div>
           </div>
         </div>

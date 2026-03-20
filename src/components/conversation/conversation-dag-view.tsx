@@ -57,6 +57,7 @@ function DagCanvas({ dag }: { dag: ConversationDag }) {
         totalTokens: formatTokens(node.totalTokens),
         depth: node.depth,
         isRoot: node.isRoot,
+        hasRoute: Boolean(node.path),
         onClick: () => {
           if (!node.path) {
             return;

@@ -13,6 +13,7 @@ import { formatDistanceToNow } from "date-fns";
 import { MessageSquare, Wrench, Bot, ListChecks, Database, DollarSign } from "lucide-react";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { calculateCost, formatCost } from "@/lib/pricing";
+import { buildConversationTabRoute, buildConversationRoute } from "@/lib/routes";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -101,7 +102,11 @@ export function ConversationList() {
           {filtered?.map((conv) => (
             <Link
               key={`${conv.projectPath}/${conv.sessionId}`}
-              href={`/conversations/${encodeURIComponent(conv.projectPath)}/${conv.sessionId}`}
+              href={
+                conv.conversationRef
+                  ? buildConversationTabRoute(conv.conversationRef, "messages")
+                  : buildConversationRoute(conv.projectPath, conv.sessionId)
+              }
             >
               <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
                 <CardContent className="p-4">

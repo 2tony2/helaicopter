@@ -173,6 +173,13 @@ function buildConversationRouteFromTarget(
   }
 }
 
+export function buildCanonicalConversationRoute(
+  conversationRef: string,
+  target: ConversationCanonicalTarget
+): string {
+  return buildConversationRouteFromTarget(conversationRef, target);
+}
+
 function buildLegacyConversationQuery(target: ConversationCanonicalTarget): string {
   const params = new URLSearchParams();
   if (target.tab !== "messages") {
@@ -205,12 +212,7 @@ function normalizeLegacyBuilderTarget(state?: LegacyConversationRouteState): Con
   if (explicitTab === "subagents") {
     return agentId ? { tab: "subagents", agentId } : { tab: "subagents" };
   }
-  if (
-    explicitTab &&
-    explicitTab !== "messages" &&
-    explicitTab !== "plans" &&
-    explicitTab !== "subagents"
-  ) {
+  if (explicitTab) {
     return { tab: explicitTab };
   }
 

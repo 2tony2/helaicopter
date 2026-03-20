@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildCanonicalConversationRoute,
   buildConversationBaseRoute,
   buildConversationMessageRoute,
   buildConversationPlanRoute,
@@ -39,6 +40,21 @@ test("canonical conversation route builders produce tab and nested segment paths
   assert.equal(
     buildConversationSubagentTabRoute(conversationRef, "agent-1"),
     "/conversations/review-the-backend-rollout--claude-claude-session-1/subagents/agent-1"
+  );
+  assert.equal(
+    buildCanonicalConversationRoute(conversationRef, { tab: "messages" }),
+    "/conversations/review-the-backend-rollout--claude-claude-session-1/messages"
+  );
+  assert.equal(
+    buildCanonicalConversationRoute(conversationRef, {
+      tab: "messages",
+      messageId: "assistant-uuid-1",
+    }),
+    "/conversations/review-the-backend-rollout--claude-claude-session-1/messages/assistant-uuid-1"
+  );
+  assert.equal(
+    buildCanonicalConversationRoute(conversationRef, { tab: "plans" }),
+    "/conversations/review-the-backend-rollout--claude-claude-session-1/plans"
   );
 });
 
