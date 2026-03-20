@@ -143,6 +143,10 @@ function normalizeLegacyEntityId(value?: string | null): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function looksLikeLegacySessionId(value: string): boolean {
+  return value.includes("-");
+}
+
 function encodePathSegment(value: string): string {
   return encodeURIComponent(value);
 }
@@ -412,6 +416,10 @@ function parseLegacyConversationRouteSegments(
   const [first, second, third, fourth] = segments;
 
   if (!first || !second) {
+    return null;
+  }
+
+  if (!looksLikeLegacySessionId(second)) {
     return null;
   }
 

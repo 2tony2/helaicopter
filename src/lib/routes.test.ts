@@ -167,6 +167,9 @@ test("catch-all parsing distinguishes legacy routes and rejects invalid canonica
       agentId: "agent-1",
     }
   );
+  assert.deepEqual(parseConversationRouteSegments([conversationRef, "unknown"]), {
+    kind: "invalid",
+  });
   assert.deepEqual(parseConversationRouteSegments([conversationRef, "unknown", "extra"]), {
     kind: "invalid",
   });
@@ -339,7 +342,7 @@ test("route decisions render valid canonical nested routes and 404 invalid canon
     }
   );
   assert.deepEqual(
-    decideConversationRoute(parseConversationRouteSegments([conversationRef, "unknown", "extra"]), {
+    decideConversationRoute(parseConversationRouteSegments([conversationRef, "unknown"]), {
       resolution: { conversationRef },
     }),
     {
