@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { calculateCost, formatCost } from "@/lib/pricing";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
+import { buildConversationTabRoute, buildConversationRoute } from "@/lib/routes";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -159,7 +160,11 @@ export function ConversationDagList() {
           {filtered?.map((conversation) => (
             <Link
               key={`${conversation.projectPath}/${conversation.sessionId}`}
-              href={`/conversations/${encodeURIComponent(conversation.projectPath)}/${conversation.sessionId}`}
+              href={
+                conversation.conversationRef
+                  ? buildConversationTabRoute(conversation.conversationRef, "messages")
+                  : buildConversationRoute(conversation.projectPath, conversation.sessionId)
+              }
             >
               <Card className="cursor-pointer border-slate-200 transition-colors hover:bg-accent/40">
                 <CardContent className="p-5">

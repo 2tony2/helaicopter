@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 type EvaluationDialogProps = {
   projectPath: string;
   sessionId: string;
+  parentSessionId?: string;
   onCreated: (evaluation: ConversationEvaluation) => void;
   onSubmitted?: () => void;
 };
@@ -38,6 +39,7 @@ type EvaluationDialogProps = {
 export function EvaluationDialog({
   projectPath,
   sessionId,
+  parentSessionId,
   onCreated,
   onSubmitted,
 }: EvaluationDialogProps) {
@@ -103,7 +105,9 @@ export function EvaluationDialog({
         scope,
         selectionInstruction,
       });
-      const body = await createConversationEvaluation(projectPath, sessionId, input);
+      const body = await createConversationEvaluation(projectPath, sessionId, input, {
+        parentSessionId,
+      });
 
       onCreated(body);
       onSubmitted?.();

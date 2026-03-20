@@ -95,6 +95,8 @@ export interface ConversationSummary {
   sessionId: string;
   projectPath: string;
   projectName: string;
+  routeSlug?: string;
+  conversationRef?: string;
   threadType: "main" | "subagent";
   firstMessage: string;
   timestamp: number;
@@ -130,6 +132,8 @@ export interface SubagentInfo {
   hasFile: boolean;
   projectPath: string;
   sessionId: string;
+  routeSlug?: string | null;
+  conversationRef?: string | null;
 }
 
 export interface ConversationDagNode {
@@ -148,7 +152,7 @@ export interface ConversationDagNode {
   totalTokens: number;
   timestamp: number;
   depth: number;
-  path: string;
+  path?: string | null;
   isRoot: boolean;
 }
 
@@ -528,12 +532,28 @@ export interface ContextWindowStats {
 
 export type PlanProvider = "claude" | "codex";
 
+export interface CanonicalConversationLink {
+  sessionId?: string;
+  projectPath?: string;
+  routeSlug?: string | null;
+  conversationRef?: string | null;
+}
+
+export interface ConversationRouteResolution {
+  conversationRef: string;
+  routeSlug: string;
+  projectPath: string;
+  sessionId: string;
+  threadType: "main" | "subagent";
+  parentSessionId?: string;
+}
+
 export interface ConversationPlanStep {
   step: string;
   status: string;
 }
 
-export interface ConversationPlan {
+export interface ConversationPlan extends CanonicalConversationLink {
   id: string;
   slug: string;
   title: string;
@@ -552,6 +572,9 @@ export interface ConversationPlan {
 export interface ProcessedConversation {
   sessionId: string;
   projectPath: string;
+  routeSlug?: string;
+  conversationRef?: string;
+  threadType?: "main" | "subagent";
   createdAt: number;
   lastUpdatedAt: number;
   isRunning: boolean;
@@ -628,7 +651,7 @@ export interface PlanSummary {
   projectPath?: string;
 }
 
-export interface PlanDetail {
+export interface PlanDetail extends CanonicalConversationLink {
   id: string;
   slug: string;
   title: string;

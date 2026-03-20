@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
+from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.server.config import Settings, load_settings
 
 from .db import create_olap_engine, create_oltp_engine
@@ -571,6 +572,8 @@ def _load_conversation(
     conversation.project_name = summary["projectName"]
     conversation.thread_type = summary.get("threadType", "main")
     conversation.first_message = summary["firstMessage"]
+    if existing_conversation is None or not conversation.route_slug:
+        conversation.route_slug = derive_route_slug(summary["firstMessage"])
     conversation.started_at = started_at
     conversation.ended_at = ended_at
     conversation.message_count = summary["messageCount"]

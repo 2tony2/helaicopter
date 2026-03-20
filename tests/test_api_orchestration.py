@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,13 +13,22 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from helaicopter_api.adapters.app_sqlite import SqliteAppStore
 from helaicopter_api.adapters.oats_artifacts import FileOatsRunStore
+from helaicopter_api.application import orchestration as orchestration_application
+from helaicopter_api.application.orchestration import _shape_run_record
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.ports.orchestration import StoredOatsRunRecord
 from helaicopter_api.ports.prefect import PrefectFlowRunRecord
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
-from helaicopter_db.models.oltp import FactOrchestrationRun, FactOrchestrationTaskAttempt, OltpBase
+from helaicopter_db.models.oltp import (
+    ConversationRecord,
+    FactOrchestrationRun,
+    FactOrchestrationTaskAttempt,
+    OltpBase,
+)
 from oats.models import (
     AgentInvocationResult,
     FeatureBranchSnapshot,
@@ -54,6 +62,49 @@ def _init_sqlite(project_root: Path) -> Settings:
     OltpBase.metadata.create_all(engine)
     engine.dispose()
     return settings
+
+
+def _insert_conversation_record(
+    session: Session,
+    *,
+    provider: str,
+    session_id: str,
+    project_path: str,
+    route_slug: str,
+    started_at: datetime,
+) -> None:
+    session.add(
+        ConversationRecord(
+            conversation_id=f"{provider}:{session_id}",
+            provider=provider,
+            session_id=session_id,
+            project_path=project_path,
+            project_name=project_path.removeprefix("codex:"),
+            thread_type="main",
+            first_message=route_slug.replace("-", " "),
+            route_slug=route_slug,
+            started_at=started_at,
+            ended_at=started_at + timedelta(minutes=5),
+            message_count=1,
+            model=None,
+            git_branch=None,
+            reasoning_effort=None,
+            speed=None,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_cache_write_tokens=0,
+            total_cache_read_tokens=0,
+            total_reasoning_tokens=0,
+            tool_use_count=0,
+            subagent_count=0,
+            task_count=0,
+            record_source="test",
+            source_file_modified_at=started_at,
+            loaded_at=started_at,
+            first_ingested_at=started_at,
+            last_refreshed_at=started_at,
+        )
+    )
 
 
 @contextmanager
@@ -435,7 +486,11 @@ class TestOrchestrationEndpoint:
             }
         ]
 
-    def test_run_list_reads_persisted_oats_facts_and_filters_sample_runs(self, tmp_path: Path) -> None:
+    def test_run_list_reads_persisted_oats_facts_and_filters_sample_runs(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         now = datetime.now(UTC)
         repo_root = tmp_path
         settings = _init_sqlite(repo_root)
@@ -539,10 +594,28 @@ class TestOrchestrationEndpoint:
                     ),
                 ]
             )
+            _insert_conversation_record(
+                session,
+                provider="claude",
+                session_id="claude-task-1",
+                project_path=str(repo_root).replace("/", "-"),
+                route_slug="ship-real-orchestration-run-task-api",
+                started_at=now - timedelta(minutes=10),
+            )
             session.commit()
         engine.dispose()
 
-        with orchestration_client(repo_root, settings=settings) as client:
+        monkeypatch.setattr(
+            orchestration_application,
+            "_resolve_conversation_identity",
+            lambda *args, **kwargs: pytest.fail("historical orchestration links should not use the generic resolver"),
+        )
+
+        with orchestration_client(
+            repo_root,
+            settings=settings,
+            app_sqlite_store=SqliteAppStore(db_path=settings.app_sqlite_path),
+        ) as client:
             response = client.get("/orchestration/oats")
 
         assert response.status_code == 200
@@ -550,8 +623,6 @@ class TestOrchestrationEndpoint:
         assert [run["runId"] for run in payload] == ["real-run-1"]
 
         run = payload[0]
-        encoded_claude_project = quote(str(repo_root).replace("/", "-"), safe="")
-
         assert run["contractVersion"] == "oats-runtime-v1"
         assert run["recordPath"] == "oats_local:real-run-1"
         assert run["status"] == "pending"
@@ -560,13 +631,83 @@ class TestOrchestrationEndpoint:
         assert [task["taskId"] for task in run["tasks"]] == ["task-api", "task-tests"]
         assert [task["status"] for task in run["tasks"]] == ["pending", "blocked"]
         assert run["tasks"][0]["invocation"]["conversationPath"] == (
-            f"/conversations/{encoded_claude_project}/claude-task-1"
+            "/conversations/by-ref/ship-real-orchestration-run-task-api--claude-claude-task-1"
         )
         assert run["tasks"][1]["dependsOn"] == ["task-api"]
         assert run["planner"] is None
         assert run["dag"]["stats"]["totalNodes"] == 2
         assert run["dag"]["stats"]["activeCount"] == 0
         assert run["dag"]["stats"]["providerBreakdown"] == {"claude": 2}
+
+    def test_run_list_emits_null_for_unresolved_non_null_session_links(self, tmp_path: Path) -> None:
+        now = datetime.now(UTC)
+        repo_root = tmp_path
+        settings = _init_sqlite(repo_root)
+        engine = create_engine(f"sqlite:///{settings.app_sqlite_path}")
+        with Session(engine) as session:
+            session.add(
+                FactOrchestrationRun(
+                    run_fact_id="oats_local:run-unresolved-link",
+                    run_source="oats_local",
+                    run_id="run-unresolved-link",
+                    flow_run_name=None,
+                    run_title="Run with unresolved link",
+                    source_path=str(repo_root / "docs" / "superpowers" / "plans" / "run.md"),
+                    repo_root=str(repo_root),
+                    config_path=str(repo_root / ".oats" / "config.toml"),
+                    artifact_root=str(repo_root / ".oats" / "runtime" / "run-unresolved-link"),
+                    status="running",
+                    canonical_status_source="runtime_state_snapshot",
+                    has_runtime_snapshot=True,
+                    has_terminal_record=True,
+                    task_count=1,
+                    completed_task_count=0,
+                    running_task_count=1,
+                    failed_task_count=0,
+                    task_attempt_count=1,
+                    started_at=now - timedelta(minutes=6),
+                    updated_at=now - timedelta(minutes=3),
+                    finished_at=None,
+                )
+            )
+            session.add(
+                FactOrchestrationTaskAttempt(
+                    task_attempt_fact_id="oats_local:run-unresolved-link:task-api:1",
+                    run_fact_id="oats_local:run-unresolved-link",
+                    run_source="oats_local",
+                    run_id="run-unresolved-link",
+                    task_id="task-api",
+                    task_title="Implement route",
+                    attempt=1,
+                    status="running",
+                    upstream_task_ids_json="[]",
+                    agent="claude",
+                    session_id="claude-task-missing",
+                    model=None,
+                    reasoning_effort=None,
+                    error=None,
+                    output_text="working",
+                    started_at=now - timedelta(minutes=4),
+                    updated_at=now - timedelta(minutes=3),
+                    finished_at=None,
+                    last_heartbeat_at=now - timedelta(minutes=3),
+                    last_progress_event_at=now - timedelta(minutes=3),
+                )
+            )
+            session.commit()
+        engine.dispose()
+
+        with orchestration_client(
+            repo_root,
+            settings=settings,
+            app_sqlite_store=SqliteAppStore(db_path=settings.app_sqlite_path),
+        ) as client:
+            response = client.get("/orchestration/oats")
+
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+        assert response.json()[0]["tasks"][0]["invocation"]["sessionId"] == "claude-task-missing"
+        assert response.json()[0]["tasks"][0]["invocation"]["conversationPath"] is None
 
     def test_run_list_overlays_prefect_state_for_matching_persisted_prefect_run(self, tmp_path: Path) -> None:
         now = datetime.now(UTC)
@@ -671,6 +812,14 @@ class TestOrchestrationEndpoint:
                     last_progress_event_at=now - timedelta(minutes=1),
                 )
             )
+            _insert_conversation_record(
+                session,
+                provider="codex",
+                session_id="thread-123",
+                project_path="codex:-repo",
+                route_slug="prefect-native-task-api",
+                started_at=now - timedelta(minutes=3),
+            )
             session.commit()
         engine.dispose()
 
@@ -696,6 +845,7 @@ class TestOrchestrationEndpoint:
         with orchestration_client(
             repo_root,
             settings=settings,
+            app_sqlite_store=SqliteAppStore(db_path=settings.app_sqlite_path),
             prefect_client=StubPrefectClient(),
         ) as client:
             response = client.get("/orchestration/oats")
@@ -707,9 +857,94 @@ class TestOrchestrationEndpoint:
         assert payload[0]["status"] == "completed"
         assert payload[0]["isRunning"] is False
         assert payload[0]["activeTaskId"] is None
-        encoded_project = quote("codex:-repo", safe="")
         assert payload[0]["tasks"][0]["invocation"]["conversationPath"] == (
-            f"/conversations/{encoded_project}/thread-123"
+            "/conversations/by-ref/prefect-native-task-api--codex-thread-123"
+        )
+
+    def test_run_record_shapes_canonical_planner_and_task_links(self, tmp_path: Path) -> None:
+        now = datetime.now(UTC)
+        repo_root = tmp_path
+        settings = _init_sqlite(repo_root)
+        engine = create_engine(f"sqlite:///{settings.app_sqlite_path}")
+        encoded_repo_root = str(repo_root).replace("/", "-")
+        with Session(engine) as session:
+            _insert_conversation_record(
+                session,
+                provider="codex",
+                session_id="planner-1",
+                project_path=f"codex:{encoded_repo_root}",
+                route_slug="plan-ship-real-orchestration-run",
+                started_at=now - timedelta(minutes=12),
+            )
+            _insert_conversation_record(
+                session,
+                provider="claude",
+                session_id="executor-1",
+                project_path=encoded_repo_root,
+                route_slug="implement-ship-real-orchestration-run",
+                started_at=now - timedelta(minutes=10),
+            )
+            session.commit()
+        engine.dispose()
+
+        shaped = _shape_run_record(
+            StoredOatsRunRecord(
+                path=repo_root / ".oats" / "runs" / "terminal.json",
+                record=RunExecutionRecord(
+                    run_id="run-with-links",
+                    run_title="Ship real orchestration run",
+                    repo_root=repo_root,
+                    config_path=repo_root / ".oats" / "config.toml",
+                    run_spec_path=repo_root / "runs" / "run.md",
+                    mode="writable",
+                    integration_branch="oats/overnight/run-with-links",
+                    task_pr_target="oats/overnight/run-with-links",
+                    final_pr_target="main",
+                    planner=AgentInvocationResult(
+                        agent="codex",
+                        role="planner",
+                        command=["codex", "exec"],
+                        cwd=repo_root,
+                        prompt="plan the run",
+                        session_id="planner-1",
+                        exit_code=0,
+                        started_at=now - timedelta(minutes=12),
+                        finished_at=now - timedelta(minutes=11),
+                    ),
+                    tasks=[
+                        TaskExecutionRecord(
+                            task_id="task-api",
+                            title="Implement route",
+                            depends_on=[],
+                            invocation=AgentInvocationResult(
+                                agent="claude",
+                                role="executor",
+                                command=["claude", "run"],
+                                cwd=repo_root,
+                                prompt="implement route",
+                                session_id="executor-1",
+                                exit_code=0,
+                                started_at=now - timedelta(minutes=10),
+                                finished_at=now - timedelta(minutes=9),
+                            ),
+                        )
+                    ],
+                    recorded_at=now - timedelta(minutes=8),
+                ),
+            ),
+            services=_services_stub(
+                settings=settings,
+                app_sqlite_store=SqliteAppStore(db_path=settings.app_sqlite_path),
+            ),
+        )
+
+        assert shaped.response.planner is not None
+        assert shaped.response.planner.conversation_path == (
+            "/conversations/by-ref/plan-ship-real-orchestration-run--codex-planner-1"
+        )
+        assert shaped.response.tasks[0].invocation is not None
+        assert shaped.response.tasks[0].invocation.conversation_path == (
+            "/conversations/by-ref/implement-ship-real-orchestration-run--claude-executor-1"
         )
 
     def test_orchestration_oats_index_includes_feature_branch_and_task_prs(self, tmp_path: Path) -> None:

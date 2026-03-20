@@ -9,6 +9,7 @@ import { Button } from "@/shared/ui/button";
 import { PlanViewer } from "./plan-viewer";
 import type { ConversationPlan, PlanDetail } from "@/lib/types";
 import { cn, formatModelName, getModelBadgeClasses } from "@/lib/utils";
+import { buildConversationTabRoute } from "@/lib/routes";
 
 type PlanLike = ConversationPlan | PlanDetail;
 
@@ -128,12 +129,14 @@ export function PlanPanel({
             Conversation
           </div>
           <MetadataValue mono>
-            {plan.projectPath && plan.sessionId ? (
+            {plan.conversationRef ? (
               <Link
-                href={`/conversations/${encodeURIComponent(plan.projectPath)}/${plan.sessionId}`}
+                href={buildConversationTabRoute(plan.conversationRef, "messages")}
                 className="hover:text-foreground underline underline-offset-4"
               >
-                {plan.projectPath}/{plan.sessionId}
+                {plan.projectPath && plan.sessionId
+                  ? `${plan.projectPath}/${plan.sessionId}`
+                  : plan.conversationRef}
               </Link>
             ) : (
               "none"

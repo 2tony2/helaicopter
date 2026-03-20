@@ -9,6 +9,7 @@ import pytest
 
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
 from helaicopter_api.adapters.codex_sqlite import FileCodexStore
+from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.ports.app_sqlite import (
     HistoricalConversationPlanStep,
     HistoricalConversationSummary,
@@ -102,6 +103,7 @@ def _create_app_db(path: Path) -> None:
               project_name TEXT NOT NULL,
               thread_type TEXT,
               first_message TEXT NOT NULL,
+              route_slug TEXT NOT NULL,
               started_at TEXT NOT NULL,
               ended_at TEXT NOT NULL,
               message_count INTEGER NOT NULL,
@@ -257,6 +259,7 @@ def _create_app_db(path: Path) -> None:
               project_name,
               thread_type,
               first_message,
+              route_slug,
               started_at,
               ended_at,
               message_count,
@@ -272,7 +275,7 @@ def _create_app_db(path: Path) -> None:
               tool_use_count,
               subagent_count,
               task_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "codex:019cdbff-dbb7-71d0-baaf-c669c55af628",
@@ -282,6 +285,7 @@ def _create_app_db(path: Path) -> None:
                 "helaicopter",
                 "main",
                 "Build the adapters",
+                "build-the-adapters",
                 "2026-03-10T09:00:00+00:00",
                 "2026-03-10T09:05:00+00:00",
                 1,
@@ -601,6 +605,145 @@ def _create_app_db(path: Path) -> None:
         connection.close()
 
 
+def _create_legacy_app_db_without_route_slug(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE conversations (
+              conversation_id TEXT PRIMARY KEY,
+              provider TEXT NOT NULL,
+              session_id TEXT NOT NULL,
+              project_path TEXT NOT NULL,
+              project_name TEXT NOT NULL,
+              thread_type TEXT,
+              first_message TEXT NOT NULL,
+              started_at TEXT NOT NULL,
+              ended_at TEXT NOT NULL,
+              message_count INTEGER NOT NULL,
+              model TEXT,
+              git_branch TEXT,
+              reasoning_effort TEXT,
+              speed TEXT,
+              total_input_tokens INTEGER NOT NULL,
+              total_output_tokens INTEGER NOT NULL,
+              total_cache_write_tokens INTEGER NOT NULL,
+              total_cache_read_tokens INTEGER NOT NULL,
+              total_reasoning_tokens INTEGER NOT NULL,
+              tool_use_count INTEGER NOT NULL,
+              subagent_count INTEGER NOT NULL,
+              task_count INTEGER NOT NULL
+            );
+
+            CREATE TABLE conversation_messages (
+              message_id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL,
+              ordinal INTEGER NOT NULL,
+              role TEXT NOT NULL,
+              timestamp TEXT NOT NULL,
+              model TEXT,
+              reasoning_tokens INTEGER NOT NULL,
+              speed TEXT,
+              input_tokens INTEGER NOT NULL,
+              output_tokens INTEGER NOT NULL,
+              cache_write_tokens INTEGER NOT NULL,
+              cache_read_tokens INTEGER NOT NULL,
+              text_preview TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO conversations (
+              conversation_id,
+              provider,
+              session_id,
+              project_path,
+              project_name,
+              thread_type,
+              first_message,
+              started_at,
+              ended_at,
+              message_count,
+              model,
+              git_branch,
+              reasoning_effort,
+              speed,
+              total_input_tokens,
+              total_output_tokens,
+              total_cache_write_tokens,
+              total_cache_read_tokens,
+              total_reasoning_tokens,
+              tool_use_count,
+              subagent_count,
+              task_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "claude:legacy-session",
+                "claude",
+                "legacy-session",
+                "-Users-tony-Code-helaicopter",
+                "helaicopter",
+                "main",
+                "Legacy schema title!!!",
+                "2026-03-10T09:00:00+00:00",
+                "2026-03-10T09:05:00+00:00",
+                1,
+                "claude-sonnet-4-5",
+                "main",
+                None,
+                "standard",
+                10,
+                5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO conversation_messages (
+              message_id,
+              conversation_id,
+              ordinal,
+              role,
+              timestamp,
+              model,
+              reasoning_tokens,
+              speed,
+              input_tokens,
+              output_tokens,
+              cache_write_tokens,
+              cache_read_tokens,
+              text_preview
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-msg-1",
+                "claude:legacy-session",
+                0,
+                "assistant",
+                "2026-03-10T09:00:01+00:00",
+                "claude-sonnet-4-5",
+                0,
+                "standard",
+                10,
+                5,
+                0,
+                0,
+                "Legacy body.",
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 class TestFileCodexStore:
     def test_missing_sources_return_empty_results(self, tmp_path: Path) -> None:
         store = FileCodexStore(
@@ -731,6 +874,7 @@ class TestSqliteAppStore:
         summaries = store.list_historical_conversations(project_path="codex:-Users-tony-Code-helaicopter")
         assert len(summaries) == 1
         assert summaries[0].conversation_id == "codex:019cdbff-dbb7-71d0-baaf-c669c55af628"
+        assert summaries[0].route_slug == "build-the-adapters"
         assert summaries[0].failed_tool_call_count == 1
         assert summaries[0].tool_breakdown == {"Read": 1}
         assert summaries[0].subagent_type_breakdown == {"reviewer": 1}
@@ -740,6 +884,7 @@ class TestSqliteAppStore:
             session_id="019cdbff-dbb7-71d0-baaf-c669c55af628",
         )
         assert conversation is not None
+        assert conversation.route_slug == "build-the-adapters"
         assert conversation.messages[0].blocks[0].text_content == "Added adapters."
         assert conversation.plans[0].steps[0].step == "Build adapters"
         assert conversation.subagents[0].nickname == "alpha"
@@ -813,3 +958,22 @@ class TestSqliteAppStore:
         store.delete_evaluation_prompt(created_prompt.prompt_id)
         prompt_ids = [prompt.prompt_id for prompt in store.list_evaluation_prompts()]
         assert created_prompt.prompt_id not in prompt_ids
+
+    def test_legacy_conversation_tables_without_route_slug_derive_slug_for_summary_and_detail(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        db_path = tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+        _create_legacy_app_db_without_route_slug(db_path)
+        store = SqliteAppStore(db_path=db_path)
+
+        summaries = store.list_historical_conversations(project_path="-Users-tony-Code-helaicopter")
+        conversation = store.get_historical_conversation(
+            project_path="-Users-tony-Code-helaicopter",
+            session_id="legacy-session",
+        )
+
+        assert len(summaries) == 1
+        assert summaries[0].route_slug == derive_route_slug("Legacy schema title!!!")
+        assert conversation is not None
+        assert conversation.route_slug == derive_route_slug("Legacy schema title!!!")

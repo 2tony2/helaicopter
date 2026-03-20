@@ -105,6 +105,18 @@ def _seed_plan_sources(tmp_path: Path) -> Settings:
             [
                 json.dumps(
                     {
+                        "type": "user",
+                        "uuid": "evt-claude-user",
+                        "timestamp": "2026-03-15T09:59:00Z",
+                        "sessionId": "claude-session-1",
+                        "message": {
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Review the plan panel"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
                         "type": "assistant",
                         "uuid": "evt-claude-plan",
                         "timestamp": "2026-03-15T10:00:00Z",
@@ -271,14 +283,26 @@ class TestPlansEndpoints:
         assert codex_plan["preview"] == "Codex rollout plan [-] Wire router [ ] Add tests"
         assert codex_plan["session_id"] == "019cdbff-dbb7-71d0-baaf-c669c55af628"
         assert codex_plan["project_path"] == "codex:-Users-tony-Code-helaicopter"
+        assert codex_plan["route_slug"] == "implement-the-plans-api"
+        assert (
+            codex_plan["conversation_ref"]
+            == "implement-the-plans-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628"
+        )
 
         claude_session_plan = payload[1]
         assert claude_session_plan["slug"] == "claude-session-rollout"
         assert claude_session_plan["model"] == "claude-sonnet-4-5"
+        assert claude_session_plan["route_slug"] == "review-the-plan-panel"
+        assert (
+            claude_session_plan["conversation_ref"]
+            == "review-the-plan-panel--claude-claude-session-1"
+        )
 
         file_plan = payload[2]
         assert file_plan["slug"] == "alpha"
         assert file_plan["source_path"].endswith("/.claude/plans/alpha.md")
+        assert file_plan["route_slug"] is None
+        assert file_plan["conversation_ref"] is None
 
     def test_detail_returns_session_plan_content_and_steps(self, plans_client: TestClient) -> None:
         plans = plans_client.get("/plans").json()
@@ -296,6 +320,8 @@ class TestPlansEndpoints:
             {"step": "Add tests", "status": "pending"},
         ]
         assert payload["content"].startswith("# Codex rollout plan")
+        assert payload["route_slug"] == "implement-the-plans-api"
+        assert payload["conversation_ref"] == "implement-the-plans-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628"
 
     def test_missing_plain_slug_returns_404(self, plans_client: TestClient) -> None:
         response = plans_client.get("/plans/missing-plan")

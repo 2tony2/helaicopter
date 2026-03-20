@@ -19,6 +19,11 @@ from helaicopter_api.application.codex_payloads import (
     parse_codex_update_plan_arguments,
     payload_for_line,
 )
+from helaicopter_api.application.conversation_refs import (
+    ConversationRouteTarget,
+    build_conversation_route_target,
+    derive_route_slug,
+)
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.contracts.plans import (
     PlanDetailResponse,
@@ -65,15 +70,31 @@ class _ExtractedPlan:
     source_path: str | None = None
     session_id: SessionId | None = None
     project_path: EncodedProjectKey | None = None
+    route_slug: str | None = None
+    conversation_ref: str | None = None
     explanation: str | None = None
     steps: list[plan_domain.PlanStepData] | None = None
+
+
+def _historical_conversation_route_targets(
+    services: BackendServices,
+) -> dict[tuple[str, SessionId], ConversationRouteTarget]:
+    return {
+        (summary.provider, summary.session_id): build_conversation_route_target(
+            summary.route_slug,
+            summary.provider,
+            summary.session_id,
+        )
+        for summary in services.app_sqlite_store.list_historical_conversations()
+    }
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_plans(services: InstanceOf[BackendServices]) -> list[PlanSummaryResponse]:
     """Return file-backed Claude plans plus session-backed Claude/Codex plans."""
-    claude_session_plans = _list_claude_session_plans(services)
-    codex_session_plans = _list_codex_session_plans(services)
+    route_targets = _historical_conversation_route_targets(services)
+    claude_session_plans = _list_claude_session_plans(services, route_targets=route_targets)
+    codex_session_plans = _list_codex_session_plans(services, route_targets=route_targets)
     file_plans = _list_claude_file_plans(services)
     return sorted(
         [*claude_session_plans, *codex_session_plans, *file_plans],
@@ -87,6 +108,7 @@ def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailR
     source = _decode_plan_id(plan_id)
     if source is None:
         return None
+    route_targets = _historical_conversation_route_targets(services)
 
     kind = source["kind"]
     if kind == "file":
@@ -99,13 +121,70 @@ def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailR
             project_path=claude_source["projectPath"],
             session_id=claude_source["sessionId"],
             event_id=claude_source["eventId"],
+            route_targets=route_targets,
         )
     codex_source = cast(CodexSessionPlanSource, source)
     return _get_codex_session_plan(
         services,
         session_id=codex_source["sessionId"],
         call_id=codex_source["callId"],
+        route_targets=route_targets,
     )
+
+
+def _session_route_target(
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
+    *,
+    provider: str,
+    session_id: SessionId,
+    first_message: str,
+) -> ConversationRouteTarget | None:
+    existing = route_targets.get((provider, session_id))
+    if existing is not None:
+        return existing
+    if not session_id:
+        return None
+    return build_conversation_route_target(derive_route_slug(first_message), provider, session_id)
+
+
+def _first_claude_user_message(events: list[RawConversationEvent]) -> str:
+    for event in events:
+        if event.type != "user" or event.message is None:
+            continue
+        message = event.message.root
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
+                    return block["text"][:200]
+        if isinstance(content, str) and content:
+            return content[:200]
+    return ""
+
+
+def _first_codex_user_message(lines: list[CodexSessionLine], thread: CodexThreadRecord | None) -> str:
+    if thread is not None and isinstance(thread.first_user_message, str) and thread.first_user_message.strip():
+        return thread.first_user_message[:200]
+    for line in lines:
+        if line.get("type") != "response_item":
+            continue
+        payload = payload_for_line(line)
+        if payload.get("type") != "message" or payload.get("role") != "user":
+            continue
+        content = payload.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "input_text":
+                continue
+            text = block.get("text")
+            if isinstance(text, str) and text and not text.startswith("<"):
+                return text[:200]
+    return ""
 
 
 def _list_claude_file_plans(services: BackendServices) -> list[PlanSummaryResponse]:
@@ -146,7 +225,11 @@ def _get_claude_file_plan(
     )
 
 
-def _list_claude_session_plans(services: BackendServices) -> list[PlanSummaryResponse]:
+def _list_claude_session_plans(
+    services: BackendServices,
+    *,
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
+) -> list[PlanSummaryResponse]:
     plans: list[PlanSummaryResponse] = []
     for project in services.claude_conversation_reader.list_projects():
         for session in services.claude_conversation_reader.list_sessions(project.dir_name):
@@ -160,6 +243,7 @@ def _list_claude_session_plans(services: BackendServices) -> list[PlanSummaryRes
                     session_id=session.session_id,
                     project_path=project.dir_name,
                     source_path=session.path,
+                    route_targets=route_targets,
                 )
             )
     return plans
@@ -171,6 +255,7 @@ def _get_claude_session_plan(
     project_path: EncodedProjectKey,
     session_id: SessionId,
     event_id: str,
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
 ) -> PlanDetailResponse | None:
     events = services.claude_conversation_reader.read_session_events(project_path, session_id)
     if not events:
@@ -181,6 +266,7 @@ def _get_claude_session_plan(
         session_id=session_id,
         project_path=project_path,
         source_path=source_path,
+        route_targets=route_targets,
     ):
         if event.id == _encode_plan_id(
             {
@@ -200,6 +286,7 @@ def _extract_claude_session_plans(
     session_id: SessionId,
     project_path: EncodedProjectKey,
     source_path: str | None,
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
 ) -> list[PlanSummaryResponse]:
     return [
         _plan_summary_response(plan)
@@ -208,6 +295,7 @@ def _extract_claude_session_plans(
             session_id=session_id,
             project_path=project_path,
             source_path=source_path,
+            route_targets=route_targets,
         )
     ]
 
@@ -218,6 +306,7 @@ def _extract_claude_session_details(
     session_id: SessionId,
     project_path: EncodedProjectKey,
     source_path: str | None,
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
 ) -> list[PlanDetailResponse]:
     return [
         _plan_detail_response(plan)
@@ -226,6 +315,7 @@ def _extract_claude_session_details(
             session_id=session_id,
             project_path=project_path,
             source_path=source_path,
+            route_targets=route_targets,
         )
     ]
 
@@ -236,9 +326,16 @@ def _extract_claude_session_plan_data(
     session_id: SessionId,
     project_path: EncodedProjectKey,
     source_path: str | None,
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
 ) -> list[_ExtractedPlan]:
     plans: list[_ExtractedPlan] = []
     latest_model: str | None = None
+    route_target = _session_route_target(
+        route_targets,
+        provider="claude",
+        session_id=session_id,
+        first_message=_first_claude_user_message(events),
+    )
 
     for event in events:
         latest_model = _claude_event_model(event) or latest_model
@@ -268,6 +365,8 @@ def _extract_claude_session_plan_data(
                 source_path=source_path,
                 session_id=session_id,
                 project_path=project_path,
+                route_slug=route_target.route_slug if route_target is not None else None,
+                conversation_ref=route_target.conversation_ref if route_target is not None else None,
                 preview=metadata.preview,
             )
         )
@@ -275,19 +374,30 @@ def _extract_claude_session_plan_data(
     return sorted(plans, key=lambda plan: -plan.timestamp)
 
 
-def _list_codex_session_plans(services: BackendServices) -> list[PlanSummaryResponse]:
+def _list_codex_session_plans(
+    services: BackendServices,
+    *,
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
+) -> list[PlanSummaryResponse]:
     thread_by_id = {thread.id: thread for thread in services.codex_store.list_threads()}
     plans: list[PlanSummaryResponse] = []
     for artifact in services.codex_store.list_session_artifacts():
         lines = _parse_codex_lines(artifact.content)
         project_path = _codex_project_path(lines, thread_by_id.get(artifact.session_id))
         session_id = SessionId(artifact.session_id)
+        route_target = _session_route_target(
+            route_targets,
+            provider="codex",
+            session_id=session_id,
+            first_message=_first_codex_user_message(lines, thread_by_id.get(artifact.session_id)),
+        )
         plans.extend(
             _extract_codex_session_plans(
                 lines,
                 session_id=session_id,
                 project_path=project_path,
                 source_path=artifact.path,
+                route_target=route_target,
             )
         )
     return plans
@@ -298,6 +408,7 @@ def _get_codex_session_plan(
     *,
     session_id: SessionId,
     call_id: str,
+    route_targets: dict[tuple[str, SessionId], ConversationRouteTarget],
 ) -> PlanDetailResponse | None:
     artifact = services.codex_store.read_session_artifact(session_id)
     if artifact is None:
@@ -305,11 +416,18 @@ def _get_codex_session_plan(
     thread = services.codex_store.get_thread(session_id)
     lines = _parse_codex_lines(artifact.content)
     project_path = _codex_project_path(lines, thread)
+    route_target = _session_route_target(
+        route_targets,
+        provider="codex",
+        session_id=session_id,
+        first_message=_first_codex_user_message(lines, thread),
+    )
     for plan in _extract_codex_session_plan_data(
         lines,
         session_id=session_id,
         project_path=project_path,
         source_path=artifact.path,
+        route_target=route_target,
     ):
         if plan.id == _encode_plan_id(
             {
@@ -328,6 +446,7 @@ def _extract_codex_session_plans(
     session_id: SessionId,
     project_path: EncodedProjectKey,
     source_path: str,
+    route_target: ConversationRouteTarget | None,
 ) -> list[PlanSummaryResponse]:
     return [
         _plan_summary_response(plan)
@@ -336,6 +455,7 @@ def _extract_codex_session_plans(
             session_id=session_id,
             project_path=project_path,
             source_path=source_path,
+            route_target=route_target,
         )
     ]
 
@@ -346,6 +466,7 @@ def _extract_codex_session_details(
     session_id: SessionId,
     project_path: EncodedProjectKey,
     source_path: str,
+    route_target: ConversationRouteTarget | None,
 ) -> list[PlanDetailResponse]:
     return [
         _plan_detail_response(plan)
@@ -354,6 +475,7 @@ def _extract_codex_session_details(
             session_id=session_id,
             project_path=project_path,
             source_path=source_path,
+            route_target=route_target,
         )
     ]
 
@@ -364,6 +486,7 @@ def _extract_codex_session_plan_data(
     session_id: SessionId,
     project_path: EncodedProjectKey,
     source_path: str,
+    route_target: ConversationRouteTarget | None,
 ) -> list[_ExtractedPlan]:
     plans: list[_ExtractedPlan] = []
     latest_model: str | None = None
@@ -414,6 +537,8 @@ def _extract_codex_session_plan_data(
                 source_path=source_path,
                 session_id=session_id,
                 project_path=project_path,
+                route_slug=route_target.route_slug if route_target is not None else None,
+                conversation_ref=route_target.conversation_ref if route_target is not None else None,
                 preview=summary.preview,
                 explanation=explanation,
                 steps=steps,
@@ -459,6 +584,8 @@ def _plan_summary_response(plan: _ExtractedPlan) -> PlanSummaryResponse:
         source_path=plan.source_path,
         session_id=plan.session_id,
         project_path=plan.project_path,
+        route_slug=plan.route_slug,
+        conversation_ref=plan.conversation_ref,
     )
 
 
@@ -474,6 +601,8 @@ def _plan_detail_response(plan: _ExtractedPlan) -> PlanDetailResponse:
         source_path=plan.source_path,
         session_id=plan.session_id,
         project_path=plan.project_path,
+        route_slug=plan.route_slug,
+        conversation_ref=plan.conversation_ref,
         explanation=plan.explanation,
         steps=[
             PlanStepResponse(step=step.step, status=step.status)

@@ -6,8 +6,11 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine, text
 
 from helaicopter_api.application.analytics import get_analytics
+from helaicopter_api.application import analytics as analytics_application
+from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.pure.analytics import (
@@ -50,6 +53,7 @@ def _summary(
         project_path=project_path,
         project_name="helaicopter",
         first_message="Ship the analytics port",
+        route_slug=derive_route_slug("Ship the analytics port"),
         started_at=started_at,
         ended_at=ended_at,
         message_count=3,
@@ -300,6 +304,128 @@ class TestPureAnalyticsAggregation:
 
 
 class TestApplicationAnalytics:
+    def test_warehouse_rows_derive_route_slug_from_first_message(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        engine = create_engine(f"sqlite:///{tmp_path / 'olap.sqlite'}", future=True)
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        CREATE TABLE fact_conversations (
+                          conversation_id TEXT PRIMARY KEY,
+                          provider TEXT NOT NULL,
+                          session_id TEXT NOT NULL,
+                          project_id TEXT NOT NULL,
+                          model_id TEXT,
+                          started_at TEXT NOT NULL,
+                          ended_at TEXT NOT NULL,
+                          first_message TEXT NOT NULL,
+                          message_count INTEGER NOT NULL,
+                          total_input_tokens INTEGER NOT NULL,
+                          total_output_tokens INTEGER NOT NULL,
+                          total_cache_write_tokens INTEGER NOT NULL,
+                          total_cache_read_tokens INTEGER NOT NULL,
+                          total_reasoning_tokens INTEGER NOT NULL,
+                          tool_use_count INTEGER NOT NULL,
+                          subagent_count INTEGER NOT NULL,
+                          task_count INTEGER NOT NULL
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        CREATE TABLE dim_projects (
+                          project_id TEXT PRIMARY KEY,
+                          provider TEXT NOT NULL,
+                          project_path TEXT NOT NULL,
+                          project_name TEXT NOT NULL
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        CREATE TABLE dim_models (
+                          model_id TEXT PRIMARY KEY,
+                          provider TEXT NOT NULL,
+                          model_name TEXT NOT NULL
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO dim_projects (project_id, provider, project_path, project_name)
+                        VALUES ('project-1', 'claude', '-Users-tony-Code-helaicopter', 'helaicopter')
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO dim_models (model_id, provider, model_name)
+                        VALUES ('model-1', 'claude', 'claude-sonnet-4-5-20250929')
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO fact_conversations (
+                          conversation_id,
+                          provider,
+                          session_id,
+                          project_id,
+                          model_id,
+                          started_at,
+                          ended_at,
+                          first_message,
+                          message_count,
+                          total_input_tokens,
+                          total_output_tokens,
+                          total_cache_write_tokens,
+                          total_cache_read_tokens,
+                          total_reasoning_tokens,
+                          tool_use_count,
+                          subagent_count,
+                          task_count
+                        ) VALUES (
+                          'claude:session-warehouse',
+                          'claude',
+                          'session-warehouse',
+                          'project-1',
+                          'model-1',
+                          '2026-03-17T06:00:00Z',
+                          '2026-03-17T07:00:00Z',
+                          'Warehouse analytics title!!!',
+                          3,
+                          10,
+                          5,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          1
+                        )
+                        """
+                    )
+                )
+
+            monkeypatch.setattr(analytics_application, "create_olap_engine", lambda _settings=None: engine)
+            services = _services_stub(settings=object())
+
+            rows = analytics_application.list_warehouse_historical_conversations(services)
+        finally:
+            engine.dispose()
+
+        assert len(rows) == 1
+        assert rows[0].route_slug == derive_route_slug("Warehouse analytics title!!!")
+
     def test_application_layer_loads_persisted_summaries_then_applies_explicit_filters(self) -> None:
         now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
         conversations = [

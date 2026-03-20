@@ -13,6 +13,7 @@ import { formatDistanceToNow } from "date-fns";
 import { MessageSquare, Wrench, Bot, ListChecks, Database, DollarSign } from "lucide-react";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { calculateCost, formatCost } from "@/lib/pricing";
+import { buildConversationTabRoute, buildConversationRoute } from "@/lib/routes";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -98,12 +99,20 @@ export function ConversationList() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered?.map((conv) => (
-            <Link
-              key={`${conv.projectPath}/${conv.sessionId}`}
-              href={`/conversations/${encodeURIComponent(conv.projectPath)}/${conv.sessionId}`}
-            >
-              <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+          {filtered?.map((conv) => {
+            const href = conv.conversationRef
+              ? buildConversationTabRoute(conv.conversationRef, "messages")
+              : conv.threadType === "main"
+                ? buildConversationRoute(conv.projectPath, conv.sessionId)
+                : undefined;
+
+            const content = (
+              <Card
+                className={[
+                  href ? "hover:bg-accent/50 cursor-pointer" : "opacity-80",
+                  "transition-colors",
+                ].join(" ")}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -122,6 +131,11 @@ export function ConversationList() {
                         <Badge variant="outline" className="text-xs capitalize">
                           {conv.threadType === "subagent" ? "sub-agent" : "main"}
                         </Badge>
+                        {!href && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            route unavailable
+                          </Badge>
+                        )}
                         {conv.model && (
                           <Badge className={`text-xs border-0 ${getModelBadgeClasses(conv.model)}`}>
                             {formatModelName(conv.model)}
@@ -207,8 +221,16 @@ export function ConversationList() {
                   </div>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            );
+
+            return href ? (
+              <Link key={`${conv.projectPath}/${conv.sessionId}`} href={href}>
+                {content}
+              </Link>
+            ) : (
+              <div key={`${conv.projectPath}/${conv.sessionId}`}>{content}</div>
+            );
+          })}
           {filtered?.length === 0 && (
             <p className="text-center text-muted-foreground py-8">
               No conversations found

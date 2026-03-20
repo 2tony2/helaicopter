@@ -21,6 +21,12 @@ from helaicopter_api.application.codex_payloads import (
     parse_codex_update_plan_arguments,
     payload_for_line,
 )
+from helaicopter_api.application.conversation_refs import (
+    ConversationRouteTarget,
+    build_conversation_route_target,
+    derive_route_slug,
+    parse_conversation_ref,
+)
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import (
     HistoricalConversationMessage,
@@ -47,6 +53,7 @@ from helaicopter_api.schema.conversations import (
     ConversationMessageResponse,
     ConversationPlanResponse,
     ConversationPlanStepResponse,
+    ConversationRefResolutionResponse,
     ConversationSubagentResponse,
     ConversationSummaryResponse,
     ConversationTaskResponse,
@@ -106,17 +113,39 @@ def get_conversation(
     *,
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> ConversationDetailResponse | None:
     """Return one conversation detail view from persisted data or live artifacts."""
     if historical := services.app_sqlite_store.get_historical_conversation(
         project_path=project_path,
         session_id=_session_id(session_id),
     ):
-        return _shape_historical_detail(historical)
+        return _shape_historical_detail(historical, services=services)
 
     if project_path.startswith("codex:"):
         return _get_codex_live_conversation(services, session_id=session_id, project_path=project_path)
-    return _get_claude_live_conversation(services, project_path=project_path, session_id=session_id)
+    return _get_claude_live_conversation(
+        services,
+        project_path=project_path,
+        session_id=session_id,
+        parent_session_id=parent_session_id,
+    )
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def resolve_conversation_ref(
+    services: InstanceOf[BackendServices],
+    *,
+    conversation_ref: str,
+) -> ConversationRefResolutionResponse | None:
+    parsed = parse_conversation_ref(conversation_ref)
+    if parsed is None:
+        return None
+    return _resolve_conversation_identity(
+        services,
+        provider=parsed.provider,
+        session_id=parsed.session_id,
+    )
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -190,27 +219,33 @@ def get_conversation_dag(
     *,
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> ConversationDagResponse | None:
     """Return the backend-owned DAG for one main or subagent conversation tree."""
+    root_session_id = _session_id(session_id)
+    root_parent_session_id = _session_id(parent_session_id) if parent_session_id else None
     cache: dict[tuple[str, SessionId | None, SessionId], ConversationDetailResponse | None] = {}
 
     def load_conversation(
         child_session_id: SessionId,
-        parent_session_id: SessionId | None,
+        parent_session_id_for_node: SessionId | None,
     ) -> ConversationDetailResponse | None:
-        cache_key = (project_path, parent_session_id, child_session_id)
+        effective_parent_session_id = parent_session_id_for_node
+        if child_session_id == root_session_id and effective_parent_session_id is None:
+            effective_parent_session_id = root_parent_session_id
+        cache_key = (project_path, effective_parent_session_id, child_session_id)
         if cache_key not in cache:
             cache[cache_key] = _load_conversation_for_dag(
                 services,
                 project_path=project_path,
                 session_id=child_session_id,
-                parent_session_id=parent_session_id,
+                parent_session_id=effective_parent_session_id,
             )
         return cache[cache_key]
 
     return build_conversation_dag(
         project_path=project_path,
-        root_session_id=_session_id(session_id),
+        root_session_id=root_session_id,
         load_conversation=load_conversation,
     )
 
@@ -273,12 +308,17 @@ def get_tasks(
     services: InstanceOf[BackendServices],
     *,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> TaskListResponse:
     """Return task payloads for a session from persisted storage or Claude artifacts."""
     typed_session_id = _session_id(session_id)
+    typed_parent_session_id = _session_id(parent_session_id) if parent_session_id else None
     tasks = services.app_sqlite_store.get_historical_tasks_for_session(typed_session_id)
     if tasks is None:
-        tasks = services.claude_task_reader.read_tasks(typed_session_id)
+        tasks = services.claude_task_reader.read_tasks(
+            typed_session_id,
+            parent_session_id=typed_parent_session_id,
+        )
     return TaskListResponse(
         session_id=typed_session_id,
         tasks=[_shape_conversation_task(task) for task in tasks or []],
@@ -289,6 +329,188 @@ def _provider_for_project_path(project_path: str) -> str:
     return "codex" if project_path.startswith("codex:") else "claude"
 
 
+def _conversation_route_target(
+    *,
+    session_id: str,
+    route_slug: str,
+    provider: str | None = None,
+    project_path: str | None = None,
+) -> ConversationRouteTarget:
+    resolved_provider = provider or _provider_for_project_path(project_path or "")
+    return build_conversation_route_target(route_slug, resolved_provider, session_id)
+
+
+def _conversation_route_target_from_first_message(
+    *,
+    session_id: str,
+    first_message: str,
+    provider: str | None = None,
+    project_path: str | None = None,
+) -> ConversationRouteTarget:
+    return _conversation_route_target(
+        session_id=session_id,
+        route_slug=derive_route_slug(first_message),
+        provider=provider,
+        project_path=project_path,
+    )
+
+
+def _conversation_ref_resolution(
+    *,
+    route_target: ConversationRouteTarget,
+    project_path: str,
+    thread_type: str,
+    parent_session_id: str | None = None,
+) -> ConversationRefResolutionResponse:
+    return ConversationRefResolutionResponse(
+        conversation_ref=route_target.conversation_ref,
+        route_slug=route_target.route_slug,
+        project_path=project_path,
+        session_id=_session_id(route_target.session_id),
+        thread_type=_conversation_thread_type(thread_type),
+        parent_session_id=_session_id(parent_session_id) if parent_session_id else None,
+    )
+
+
+def _resolve_conversation_identity(
+    services: BackendServices,
+    *,
+    provider: str,
+    session_id: str,
+) -> ConversationRefResolutionResponse | None:
+    persisted = _resolve_persisted_conversation_identity(services, provider=provider, session_id=session_id)
+    if persisted is not None:
+        return persisted
+    if provider == "codex":
+        return _resolve_live_codex_conversation_identity(services, session_id=session_id)
+    return _resolve_live_claude_conversation_identity(services, session_id=session_id)
+
+
+def _resolve_persisted_conversation_identity(
+    services: BackendServices,
+    *,
+    provider: str,
+    session_id: str,
+) -> ConversationRefResolutionResponse | None:
+    for summary in services.app_sqlite_store.list_historical_conversations():
+        if summary.provider != provider or summary.session_id != session_id:
+            continue
+        return _conversation_ref_resolution(
+            route_target=_conversation_route_target(
+                session_id=summary.session_id,
+                route_slug=summary.route_slug,
+                provider=summary.provider,
+            ),
+            project_path=summary.project_path,
+            thread_type=summary.thread_type,
+        )
+    return None
+
+
+def _resolve_live_codex_conversation_identity(
+    services: BackendServices,
+    *,
+    session_id: str,
+) -> ConversationRefResolutionResponse | None:
+    artifact = next((item for item in _codex_session_artifacts(services) if item.session_id == session_id), None)
+    if artifact is None:
+        return None
+    thread = _codex_threads_by_id(services).get(session_id)
+    summary, parent_session_id, _agent_role = _summarize_codex_artifact(artifact, thread=thread)
+    if summary is None:
+        return None
+    return _conversation_ref_resolution(
+        route_target=_conversation_route_target(
+            session_id=summary.session_id,
+            route_slug=summary.route_slug,
+            project_path=summary.project_path,
+        ),
+        project_path=summary.project_path,
+        thread_type=summary.thread_type,
+        parent_session_id=parent_session_id,
+    )
+
+
+def _resolve_live_claude_conversation_identity(
+    services: BackendServices,
+    *,
+    session_id: str,
+) -> ConversationRefResolutionResponse | None:
+    for project_dir in services.claude_conversation_reader.list_projects():
+        for session in services.claude_conversation_reader.list_sessions(project_dir.dir_name):
+            if session.session_id == session_id:
+                events = services.claude_conversation_reader.read_session_events(
+                    project_dir.dir_name,
+                    session.session_id,
+                )
+                if not events:
+                    return None
+                route_target = _conversation_route_target_from_first_message(
+                    session_id=session_id,
+                    first_message=_first_claude_user_message(events),
+                    project_path=project_dir.dir_name,
+                )
+                return _conversation_ref_resolution(
+                    route_target=route_target,
+                    project_path=project_dir.dir_name,
+                    thread_type="main",
+                )
+            child_events, _modified_at_ms = _read_claude_subagent_events(
+                services,
+                project_path=project_dir.dir_name,
+                parent_session_id=session.session_id,
+                session_id=session_id,
+            )
+            if not child_events:
+                continue
+            route_target = _conversation_route_target_from_first_message(
+                session_id=session_id,
+                first_message=_first_claude_user_message(child_events),
+                project_path=project_dir.dir_name,
+            )
+            return _conversation_ref_resolution(
+                route_target=route_target,
+                project_path=project_dir.dir_name,
+                thread_type="subagent",
+                parent_session_id=session.session_id,
+            )
+    return None
+
+
+def _resolved_subagent_route_target(
+    services: BackendServices,
+    *,
+    provider: str,
+    project_path: str,
+    parent_session_id: str,
+    agent_id: str,
+) -> ConversationRouteTarget | None:
+    resolved = _resolve_conversation_identity(services, provider=provider, session_id=agent_id)
+    if resolved is not None:
+        return _conversation_route_target(
+            session_id=resolved.session_id,
+            route_slug=resolved.route_slug,
+            project_path=resolved.project_path,
+        )
+
+    if provider != "claude":
+        return None
+
+    events, _modified_at_ms = _read_claude_subagent_events(
+        services,
+        project_path=project_path,
+        parent_session_id=parent_session_id,
+        session_id=agent_id,
+    )
+    if not events:
+        return None
+    return _conversation_route_target_from_first_message(
+        session_id=agent_id,
+        first_message=_first_claude_user_message(events),
+        project_path=project_path,
+    )
+
+
 def _load_conversation_for_dag(
     services: BackendServices,
     *,
@@ -296,20 +518,11 @@ def _load_conversation_for_dag(
     session_id: str,
     parent_session_id: str | None,
 ) -> ConversationDetailResponse | None:
-    conversation = get_conversation(
+    return get_conversation(
         services,
         project_path=project_path,
         session_id=session_id,
-    )
-    if conversation is not None:
-        return conversation
-    if project_path.startswith("codex:") or parent_session_id is None:
-        return None
-    return _get_claude_live_subagent_conversation(
-        services,
-        project_path=project_path,
         parent_session_id=parent_session_id,
-        session_id=session_id,
     )
 
 
@@ -324,19 +537,38 @@ def _merge_summary(
         summaries_by_key[key] = candidate
         return
     if candidate.is_running and not existing.is_running:
-        summaries_by_key[key] = candidate
+        summaries_by_key[key] = _preserve_authoritative_summary_identity(existing, candidate)
         return
     if candidate.last_updated_at >= existing.last_updated_at:
-        summaries_by_key[key] = candidate
+        summaries_by_key[key] = _preserve_authoritative_summary_identity(existing, candidate)
+
+
+def _preserve_authoritative_summary_identity(
+    existing: ConversationSummaryResponse,
+    candidate: ConversationSummaryResponse,
+) -> ConversationSummaryResponse:
+    return candidate.model_copy(
+        update={
+            "route_slug": existing.route_slug,
+            "conversation_ref": existing.conversation_ref,
+        }
+    )
 
 
 def _shape_historical_summary(summary: HistoricalConversationSummary) -> ConversationSummaryResponse:
     created_at = _to_epoch_ms(summary.started_at)
     last_updated_at = _to_epoch_ms(summary.ended_at)
+    route_target = _conversation_route_target(
+        session_id=summary.session_id,
+        route_slug=summary.route_slug,
+        provider=summary.provider,
+    )
     return ConversationSummaryResponse(
         session_id=summary.session_id,
         project_path=summary.project_path,
         project_name=summary.project_name,
+        route_slug=route_target.route_slug,
+        conversation_ref=route_target.conversation_ref,
         thread_type=_conversation_thread_type(summary.thread_type),
         first_message=summary.first_message,
         timestamp=created_at,
@@ -362,9 +594,18 @@ def _shape_historical_summary(summary: HistoricalConversationSummary) -> Convers
     )
 
 
-def _shape_historical_detail(record: HistoricalConversationRecord) -> ConversationDetailResponse:
+def _shape_historical_detail(
+    record: HistoricalConversationRecord,
+    *,
+    services: BackendServices,
+) -> ConversationDetailResponse:
     created_at = _to_epoch_ms(record.started_at)
     last_updated_at = _to_epoch_ms(record.ended_at)
+    route_target = _conversation_route_target(
+        session_id=record.session_id,
+        route_slug=record.route_slug,
+        provider=record.provider,
+    )
     messages = [_shape_historical_message(message) for message in record.messages]
     total_usage = ConversationUsageResponse(
         input_tokens=record.total_input_tokens,
@@ -395,9 +636,33 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
         ),
         default=0,
     )
+    subagents: list[ConversationSubagentResponse] = []
+    for subagent in record.subagents:
+        child_route_target = _resolved_subagent_route_target(
+            services,
+            provider=record.provider,
+            project_path=record.project_path,
+            parent_session_id=record.session_id,
+            agent_id=subagent.agent_id,
+        )
+        subagents.append(
+            ConversationSubagentResponse(
+                agent_id=_agent_id(subagent.agent_id),
+                description=subagent.description,
+                subagent_type=subagent.subagent_type,
+                nickname=subagent.nickname,
+                has_file=subagent.has_file,
+                project_path=record.project_path,
+                session_id=record.session_id,
+                route_slug=child_route_target.route_slug if child_route_target is not None else None,
+                conversation_ref=child_route_target.conversation_ref if child_route_target is not None else None,
+            )
+        )
     return ConversationDetailResponse(
         session_id=record.session_id,
         project_path=record.project_path,
+        route_slug=route_target.route_slug,
+        conversation_ref=route_target.conversation_ref,
         thread_type=_conversation_thread_type(record.thread_type),
         created_at=created_at,
         last_updated_at=last_updated_at,
@@ -413,6 +678,10 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
                 provider="codex" if plan.provider == "codex" else "claude",
                 timestamp=_to_epoch_ms(plan.timestamp),
                 model=plan.model,
+                session_id=record.session_id,
+                project_path=record.project_path,
+                route_slug=route_target.route_slug,
+                conversation_ref=route_target.conversation_ref,
                 explanation=plan.explanation,
                 steps=_shape_plan_steps(plan.steps),
             )
@@ -423,18 +692,7 @@ def _shape_historical_detail(record: HistoricalConversationRecord) -> Conversati
         git_branch=record.git_branch,
         start_time=created_at,
         end_time=last_updated_at,
-        subagents=[
-            ConversationSubagentResponse(
-                agent_id=_agent_id(subagent.agent_id),
-                description=subagent.description,
-                subagent_type=subagent.subagent_type,
-                nickname=subagent.nickname,
-                has_file=subagent.has_file,
-                project_path=record.project_path,
-                session_id=record.session_id,
-            )
-            for subagent in record.subagents
-        ],
+        subagents=subagents,
         context_analytics=ConversationContextAnalyticsResponse(
             buckets=[
                 ConversationContextBucketResponse(
@@ -671,10 +929,17 @@ def _summarize_claude_session(
         return None
 
     last_updated_at = max(end_timestamp, modified_at_ms)
+    route_target = _conversation_route_target_from_first_message(
+        session_id=session_id,
+        first_message=first_message,
+        project_path=project_path,
+    )
     return ConversationSummaryResponse(
         session_id=_session_id(session_id),
         project_path=project_path,
         project_name=_project_display_name(project_path),
+        route_slug=route_target.route_slug,
+        conversation_ref=route_target.conversation_ref,
         thread_type="main",
         first_message=first_message,
         timestamp=created_at,
@@ -703,10 +968,18 @@ def _get_claude_live_conversation(
     *,
     project_path: str,
     session_id: str,
+    parent_session_id: str | None = None,
 ) -> ConversationDetailResponse | None:
     events = services.claude_conversation_reader.read_session_events(project_path, _session_id(session_id))
     if not events:
-        return None
+        if parent_session_id is None:
+            return None
+        return _get_claude_live_subagent_conversation(
+            services,
+            project_path=project_path,
+            parent_session_id=parent_session_id,
+            session_id=session_id,
+        )
     return _shape_claude_live_conversation_detail(
         services,
         project_path=project_path,
@@ -751,12 +1024,22 @@ def _shape_claude_live_conversation_detail(
     modified_at_ms: float,
     thread_type: str,
 ) -> ConversationDetailResponse:
+    route_target = _conversation_route_target_from_first_message(
+        session_id=session_id,
+        first_message=_first_claude_user_message(events),
+        project_path=project_path,
+    )
     messages: list[ConversationMessageResponse] = []
     pending_tool_calls: dict[str, ConversationToolCallBlockResponse] = {}
     total_usage = _UsageTotals()
     bucket_totals: dict[str, _BucketTotals] = {}
     context_steps: list[ConversationContextStepResponse] = []
-    plans = _extract_claude_plans(events, session_id=session_id, project_path=project_path)
+    plans = _extract_claude_plans(
+        events,
+        session_id=session_id,
+        project_path=project_path,
+        route_target=route_target,
+    )
     model: str | None = None
     git_branch: str | None = None
     speed: str | None = None
@@ -907,6 +1190,8 @@ def _shape_claude_live_conversation_detail(
     return ConversationDetailResponse(
         session_id=_session_id(session_id),
         project_path=project_path,
+        route_slug=route_target.route_slug,
+        conversation_ref=route_target.conversation_ref,
         thread_type=_conversation_thread_type(thread_type),
         created_at=created_at,
         last_updated_at=last_updated_at,
@@ -977,6 +1262,13 @@ def _discover_claude_subagents(
     subagents: list[ConversationSubagentResponse] = []
     for agent_id in sorted(existing_files | set(discovered_meta)):
         meta = discovered_meta.get(agent_id, {})
+        route_target = _resolved_subagent_route_target(
+            services,
+            provider="claude",
+            project_path=project_path,
+            parent_session_id=session_id,
+            agent_id=agent_id,
+        )
         subagents.append(
             ConversationSubagentResponse(
                 agent_id=_agent_id(agent_id),
@@ -986,6 +1278,8 @@ def _discover_claude_subagents(
                 has_file=agent_id in existing_files,
                 project_path=project_path,
                 session_id=_session_id(session_id),
+                route_slug=route_target.route_slug if route_target is not None else None,
+                conversation_ref=route_target.conversation_ref if route_target is not None else None,
             )
         )
     return subagents
@@ -1099,11 +1393,23 @@ def _parse_claude_subagent_tool_result(content: Any) -> dict[str, str | None]:
     }
 
 
+def _first_claude_user_message(events: list[RawConversationEvent]) -> str:
+    for event in events:
+        if event.type != "user":
+            continue
+        message = _event_message(event)
+        if message.get("role") != "user":
+            continue
+        return _first_user_message_text(message)[:200]
+    return ""
+
+
 def _extract_claude_plans(
     events: list[RawConversationEvent],
     *,
     session_id: str,
     project_path: str,
+    route_target: ConversationRouteTarget,
 ) -> list[ConversationPlanResponse]:
     plans: list[ConversationPlanResponse] = []
     latest_model: str | None = None
@@ -1134,6 +1440,8 @@ def _extract_claude_plans(
                 model=latest_model,
                 session_id=_session_id(session_id),
                 project_path=project_path,
+                route_slug=route_target.route_slug,
+                conversation_ref=route_target.conversation_ref,
             )
         )
     return sorted(plans, key=lambda item: item.timestamp, reverse=True)
@@ -1302,10 +1610,17 @@ def _summarize_codex_artifact(
         float((thread.updated_at or 0) * 1000 if thread and thread.updated_at else 0),
     )
     first_user_message = thread.first_user_message if thread is not None else None
+    route_target = _conversation_route_target_from_first_message(
+        session_id=session_id,
+        first_message=(first_user_message or first_message or "")[:200],
+        project_path=project_path,
+    )
     summary = ConversationSummaryResponse(
         session_id=_session_id(session_id),
         project_path=project_path,
         project_name=project_name,
+        route_slug=route_target.route_slug,
+        conversation_ref=route_target.conversation_ref,
         thread_type="subagent" if parent_thread_id else "main",
         first_message=(first_user_message or first_message or "")[:200],
         timestamp=timestamp,
@@ -1347,6 +1662,11 @@ def _get_codex_live_conversation(
 
     thread_by_id = _codex_threads_by_id(services)
     thread = thread_by_id.get(session_id)
+    route_target = _conversation_route_target_from_first_message(
+        session_id=session_id,
+        first_message=((thread.first_user_message if thread is not None else None) or _first_codex_user_message_from_lines(lines))[:200],
+        project_path=project_path,
+    )
     messages: list[ConversationMessageResponse] = []
     pending_tool_calls: dict[str, ConversationToolCallBlockResponse] = {}
     pending_blocks: list[ConversationMessageBlockResponse] = []
@@ -1354,8 +1674,19 @@ def _get_codex_live_conversation(
     total_usage = _UsageTotals()
     bucket_totals: dict[str, _BucketTotals] = {}
     context_steps: list[ConversationContextStepResponse] = []
-    plans = _extract_codex_plans(lines, session_id=session_id, project_path=project_path)
-    subagents = _discover_codex_subagents(lines, session_id=session_id, project_path=project_path, thread_by_id=thread_by_id)
+    plans = _extract_codex_plans(
+        lines,
+        session_id=session_id,
+        project_path=project_path,
+        route_target=route_target,
+    )
+    subagents = _discover_codex_subagents(
+        services,
+        lines,
+        session_id=session_id,
+        project_path=project_path,
+        thread_by_id=thread_by_id,
+    )
     model: str | None = None
     reasoning_effort: str | None = None
     git_branch = thread.git_branch if thread else None
@@ -1577,6 +1908,8 @@ def _get_codex_live_conversation(
     return ConversationDetailResponse(
         session_id=_session_id(session_id),
         project_path=project_path,
+        route_slug=route_target.route_slug,
+        conversation_ref=route_target.conversation_ref,
         thread_type="subagent" if _parse_parent_thread_id(thread.source if thread else None) else "main",
         created_at=created_at,
         last_updated_at=max(end_time, artifact.modified_at * 1000, float((thread.updated_at or 0) * 1000 if thread and thread.updated_at else 0)),
@@ -1608,6 +1941,7 @@ def _extract_codex_plans(
     *,
     session_id: str,
     project_path: str,
+    route_target: ConversationRouteTarget,
 ) -> list[ConversationPlanResponse]:
     plans: list[ConversationPlanResponse] = []
     latest_model: str | None = None
@@ -1658,6 +1992,8 @@ def _extract_codex_plans(
                 model=latest_model,
                 session_id=_session_id(session_id),
                 project_path=project_path,
+                route_slug=route_target.route_slug,
+                conversation_ref=route_target.conversation_ref,
                 explanation=explanation,
                 steps=steps,
             )
@@ -1666,6 +2002,7 @@ def _extract_codex_plans(
 
 
 def _discover_codex_subagents(
+    services: BackendServices,
     lines: list[CodexSessionLine],
     *,
     session_id: str,
@@ -1698,6 +2035,13 @@ def _discover_codex_subagents(
         if not agent_id:
             continue
         thread = thread_by_id.get(agent_id)
+        route_target = _resolved_subagent_route_target(
+            services,
+            provider="codex",
+            project_path=project_path,
+            parent_session_id=session_id,
+            agent_id=agent_id,
+        )
         subagents[agent_id] = ConversationSubagentResponse(
             agent_id=_agent_id(agent_id),
             description=pending["description"],
@@ -1706,12 +2050,21 @@ def _discover_codex_subagents(
             has_file=agent_id in thread_by_id,
             project_path=project_path,
             session_id=_session_id(session_id),
+            route_slug=route_target.route_slug if route_target is not None else None,
+            conversation_ref=route_target.conversation_ref if route_target is not None else None,
         )
 
     for agent_id, thread in thread_by_id.items():
         if _parse_parent_thread_id(thread.source) != session_id:
             continue
         existing = subagents.get(agent_id)
+        route_target = _resolved_subagent_route_target(
+            services,
+            provider="codex",
+            project_path=project_path,
+            parent_session_id=session_id,
+            agent_id=agent_id,
+        )
         subagents[agent_id] = ConversationSubagentResponse(
             agent_id=_agent_id(agent_id),
             description=existing.description if existing else None,
@@ -1720,6 +2073,8 @@ def _discover_codex_subagents(
             has_file=True,
             project_path=project_path,
             session_id=_session_id(session_id),
+            route_slug=route_target.route_slug if route_target is not None else None,
+            conversation_ref=route_target.conversation_ref if route_target is not None else None,
         )
 
     return sorted(subagents.values(), key=lambda item: item.agent_id)
@@ -1930,6 +2285,19 @@ def _first_codex_user_message(payload: object) -> str:
     for text in _codex_message_texts(payload_dict.get("content"), input_mode=True):
         if text:
             return text
+    return ""
+
+
+def _first_codex_user_message_from_lines(lines: list[CodexSessionLine]) -> str:
+    for line in lines:
+        if _string_or_none(line.get("type")) != "response_item":
+            continue
+        payload = payload_for_line(line)
+        if _string_or_none(payload.get("type")) != "message":
+            continue
+        if _string_or_none(payload.get("role")) != "user":
+            continue
+        return _first_codex_user_message(payload)[:200]
     return ""
 
 

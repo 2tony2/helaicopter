@@ -126,6 +126,7 @@ def _write_app_db(path: Path) -> None:
               project_name TEXT NOT NULL,
               thread_type TEXT,
               first_message TEXT NOT NULL,
+              route_slug TEXT NOT NULL,
               started_at TEXT NOT NULL,
               ended_at TEXT NOT NULL,
               message_count INTEGER NOT NULL,
@@ -161,6 +162,7 @@ def _write_app_db(path: Path) -> None:
               project_name,
               thread_type,
               first_message,
+              route_slug,
               started_at,
               ended_at,
               message_count,
@@ -176,7 +178,7 @@ def _write_app_db(path: Path) -> None:
               tool_use_count,
               subagent_count,
               task_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "claude:historic-session",
@@ -186,6 +188,7 @@ def _write_app_db(path: Path) -> None:
                 "Code/helaicopter",
                 "main",
                 "Historic task run",
+                "historic-canonical-ref",
                 "2026-03-15T10:00:00Z",
                 "2026-03-15T10:30:00Z",
                 2,
@@ -224,6 +227,93 @@ def _write_app_db(path: Path) -> None:
         connection.close()
 
 
+def _insert_persisted_conversation_summary(
+    path: Path,
+    *,
+    provider: str,
+    session_id: str,
+    project_path: str,
+    project_name: str,
+    thread_type: str,
+    first_message: str,
+    route_slug: str,
+    started_at: str,
+    ended_at: str,
+    message_count: int = 0,
+    model: str | None = None,
+    git_branch: str | None = None,
+    reasoning_effort: str | None = None,
+    speed: str | None = None,
+    total_input_tokens: int = 0,
+    total_output_tokens: int = 0,
+    total_cache_write_tokens: int = 0,
+    total_cache_read_tokens: int = 0,
+    total_reasoning_tokens: int = 0,
+    tool_use_count: int = 0,
+    subagent_count: int = 0,
+    task_count: int = 0,
+) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            """
+            INSERT INTO conversations (
+              conversation_id,
+              provider,
+              session_id,
+              project_path,
+              project_name,
+              thread_type,
+              first_message,
+              route_slug,
+              started_at,
+              ended_at,
+              message_count,
+              model,
+              git_branch,
+              reasoning_effort,
+              speed,
+              total_input_tokens,
+              total_output_tokens,
+              total_cache_write_tokens,
+              total_cache_read_tokens,
+              total_reasoning_tokens,
+              tool_use_count,
+              subagent_count,
+              task_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"{provider}:{session_id}",
+                provider,
+                session_id,
+                project_path,
+                project_name,
+                thread_type,
+                first_message,
+                route_slug,
+                started_at,
+                ended_at,
+                message_count,
+                model,
+                git_branch,
+                reasoning_effort,
+                speed,
+                total_input_tokens,
+                total_output_tokens,
+                total_cache_write_tokens,
+                total_cache_read_tokens,
+                total_reasoning_tokens,
+                tool_use_count,
+                subagent_count,
+                task_count,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def _seed_sources(tmp_path: Path) -> Settings:
     claude_dir = tmp_path / ".claude"
     codex_dir = tmp_path / ".codex"
@@ -231,6 +321,7 @@ def _seed_sources(tmp_path: Path) -> Settings:
     claude_project_dir = claude_dir / "projects" / project_path
     claude_project_dir.mkdir(parents=True)
     claude_dir.joinpath("tasks", "claude-session-1").mkdir(parents=True)
+    claude_dir.joinpath("tasks", "claude-session-1", "claude-agent-1").mkdir(parents=True)
     codex_dir.joinpath("sessions", "2026", "03", "18").mkdir(parents=True)
     claude_subagents_dir = claude_project_dir / "claude-session-1" / "subagents"
     claude_subagents_dir.mkdir(parents=True)
@@ -380,6 +471,10 @@ def _seed_sources(tmp_path: Path) -> Settings:
 
     claude_dir.joinpath("tasks", "claude-session-1", "task-1.json").write_text(
         json.dumps({"taskId": "T007", "title": "Conversation API"}),
+        encoding="utf-8",
+    )
+    claude_dir.joinpath("tasks", "claude-session-1", "claude-agent-1", "task-1.json").write_text(
+        json.dumps({"taskId": "T008", "title": "Inspect DAG child thread"}),
         encoding="utf-8",
     )
     claude_dir.joinpath("history.jsonl").write_text(
@@ -744,19 +839,45 @@ class TestConversationEndpoints:
         assert codex_summary["reasoning_effort"] == "medium"
         assert codex_summary["total_reasoning_tokens"] == 22
         assert codex_summary["subagent_count"] == 1
+        assert codex_summary["route_slug"] == "implement-the-conversation-api"
+        assert (
+            codex_summary["conversation_ref"]
+            == "implement-the-conversation-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628"
+        )
 
         claude_live_summary = by_session["claude-session-1"]
         assert claude_live_summary["tool_breakdown"] == {"Bash": 1, "Task": 1}
         assert claude_live_summary["task_count"] == 1
         assert claude_live_summary["subagent_count"] == 1
+        assert claude_live_summary["route_slug"] == "review-the-backend-rollout"
+        assert (
+            claude_live_summary["conversation_ref"]
+            == "review-the-backend-rollout--claude-claude-session-1"
+        )
 
         codex_subagent_summary = by_session["019cdbff-dbb7-71d0-baaf-c669c55af629"]
         assert codex_subagent_summary["thread_type"] == "subagent"
+        assert codex_subagent_summary["route_slug"] == "inspect-the-dag-graph"
+        assert (
+            codex_subagent_summary["conversation_ref"]
+            == "inspect-the-dag-graph--codex-019cdbff-dbb7-71d0-baaf-c669c55af629"
+        )
+
+        persisted_summary = by_session["historic-session"]
+        assert persisted_summary["route_slug"] == "historic-canonical-ref"
+        assert persisted_summary["conversation_ref"] == "historic-canonical-ref--claude-historic-session"
 
         claude_detail = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/claude-session-1")
         assert claude_detail.status_code == 200
         claude_payload = claude_detail.json()
+        assert claude_payload["route_slug"] == "review-the-backend-rollout"
+        assert claude_payload["conversation_ref"] == "review-the-backend-rollout--claude-claude-session-1"
         assert claude_payload["plans"][0]["provider"] == "claude"
+        assert claude_payload["plans"][0]["route_slug"] == "review-the-backend-rollout"
+        assert (
+            claude_payload["plans"][0]["conversation_ref"]
+            == "review-the-backend-rollout--claude-claude-session-1"
+        )
         assert claude_payload["messages"][1]["blocks"][2]["tool_name"] == "Bash"
         assert claude_payload["messages"][1]["blocks"][2]["result"] == "python/helaicopter_api/router/router.py"
         assert claude_payload["subagents"] == [
@@ -768,6 +889,8 @@ class TestConversationEndpoints:
                 "has_file": True,
                 "project_path": "-Users-tony-Code-helaicopter",
                 "session_id": "claude-session-1",
+                "route_slug": "inspect-the-dag-graph",
+                "conversation_ref": "inspect-the-dag-graph--claude-claude-agent-1",
             }
         ]
         assert claude_payload["total_usage"] == {
@@ -782,9 +905,19 @@ class TestConversationEndpoints:
         )
         assert codex_detail.status_code == 200
         codex_payload = codex_detail.json()
+        assert codex_payload["route_slug"] == "implement-the-conversation-api"
+        assert (
+            codex_payload["conversation_ref"]
+            == "implement-the-conversation-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628"
+        )
         assert codex_payload["reasoning_effort"] == "medium"
         assert codex_payload["total_reasoning_tokens"] == 22
         assert codex_payload["plans"][0]["provider"] == "codex"
+        assert codex_payload["plans"][0]["route_slug"] == "implement-the-conversation-api"
+        assert (
+            codex_payload["plans"][0]["conversation_ref"]
+            == "implement-the-conversation-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628"
+        )
         assert codex_payload["plans"][0]["steps"] == [
             {"step": "Wire routers", "status": "in_progress"},
             {"step": "Add tests", "status": "pending"},
@@ -800,8 +933,15 @@ class TestConversationEndpoints:
                 "has_file": True,
                 "project_path": "codex:-Users-tony-Code-helaicopter",
                 "session_id": "019cdbff-dbb7-71d0-baaf-c669c55af628",
+                "route_slug": "inspect-the-dag-graph",
+                "conversation_ref": "inspect-the-dag-graph--codex-019cdbff-dbb7-71d0-baaf-c669c55af629",
             }
         ]
+
+        persisted_detail = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/historic-session")
+        assert persisted_detail.status_code == 200
+        assert persisted_detail.json()["route_slug"] == "historic-canonical-ref"
+        assert persisted_detail.json()["conversation_ref"] == "historic-canonical-ref--claude-historic-session"
 
         filtered = conversations_client.get(
             "/conversations",
@@ -842,8 +982,122 @@ class TestConversationEndpoints:
         assert codex_payload["thread_type"] == "subagent"
         assert codex_nested.json()["session_id"] == "019cdbff-dbb7-71d0-baaf-c669c55af629"
 
+    def test_canonical_live_claude_child_detail_requires_parent_session_id(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        missing = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/claude-agent-1")
+        response = conversations_client.get(
+            "/conversations/-Users-tony-Code-helaicopter/claude-agent-1",
+            params={"parent_session_id": "claude-session-1"},
+        )
+
+        assert missing.status_code == 404
+        assert response.status_code == 200
+        assert response.json()["session_id"] == "claude-agent-1"
+        assert response.json()["thread_type"] == "subagent"
+        assert response.json()["route_slug"] == "inspect-the-dag-graph"
+
     def test_missing_conversation_returns_404(self, conversations_client: TestClient) -> None:
         response = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/missing-session")
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Conversation not found"}
+
+    def test_list_preserves_persisted_canonical_identity_when_live_summary_is_fresher(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _insert_persisted_conversation_summary(
+            tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite",
+            provider="claude",
+            session_id="claude-session-1",
+            project_path="-Users-tony-Code-helaicopter",
+            project_name="Code/helaicopter",
+            thread_type="main",
+            first_message="Persisted canonical title",
+            route_slug="persisted-canonical-claude-session-1",
+            started_at="2026-03-16T09:00:00Z",
+            ended_at="2026-03-16T09:30:00Z",
+            message_count=1,
+            model="claude-sonnet-4-5",
+            git_branch="main",
+            speed="standard",
+        )
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                response = client.get("/conversations")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert response.status_code == 200
+        payload = {item["session_id"]: item for item in response.json()}
+        summary = payload["claude-session-1"]
+        assert summary["route_slug"] == "persisted-canonical-claude-session-1"
+        assert (
+            summary["conversation_ref"]
+            == "persisted-canonical-claude-session-1--claude-claude-session-1"
+        )
+        assert summary["tool_breakdown"] == {"Bash": 1, "Task": 1}
+
+    def test_conversation_by_ref_resolves_persisted_and_live_routes(self, conversations_client: TestClient) -> None:
+        persisted = conversations_client.get("/conversations/by-ref/stale-slug--claude-historic-session")
+        assert persisted.status_code == 200
+        assert persisted.json() == {
+            "conversation_ref": "historic-canonical-ref--claude-historic-session",
+            "route_slug": "historic-canonical-ref",
+            "project_path": "-Users-tony-Code-helaicopter",
+            "session_id": "historic-session",
+            "thread_type": "main",
+            "parent_session_id": None,
+        }
+
+        codex_live = conversations_client.get(
+            "/conversations/by-ref/old-title--codex-019cdbff-dbb7-71d0-baaf-c669c55af628"
+        )
+        assert codex_live.status_code == 200
+        assert codex_live.json() == {
+            "conversation_ref": "implement-the-conversation-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628",
+            "route_slug": "implement-the-conversation-api",
+            "project_path": "codex:-Users-tony-Code-helaicopter",
+            "session_id": "019cdbff-dbb7-71d0-baaf-c669c55af628",
+            "thread_type": "main",
+            "parent_session_id": None,
+        }
+
+        claude_subagent = conversations_client.get("/conversations/by-ref/outdated--claude-claude-agent-1")
+        assert claude_subagent.status_code == 200
+        assert claude_subagent.json() == {
+            "conversation_ref": "inspect-the-dag-graph--claude-claude-agent-1",
+            "route_slug": "inspect-the-dag-graph",
+            "project_path": "-Users-tony-Code-helaicopter",
+            "session_id": "claude-agent-1",
+            "thread_type": "subagent",
+            "parent_session_id": "claude-session-1",
+        }
+
+        claude_live_main = conversations_client.get("/conversations/by-ref/outdated--claude-claude-session-1")
+        assert claude_live_main.status_code == 200
+        assert claude_live_main.json() == {
+            "conversation_ref": "review-the-backend-rollout--claude-claude-session-1",
+            "route_slug": "review-the-backend-rollout",
+            "project_path": "-Users-tony-Code-helaicopter",
+            "session_id": "claude-session-1",
+            "thread_type": "main",
+            "parent_session_id": None,
+        }
+
+    def test_conversation_by_ref_returns_404_for_unknown_well_formed_ref(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get("/conversations/by-ref/unknown--codex-019cdbff-dbb7-71d0-baaf-deadbeef0000")
 
         assert response.status_code == 404
         assert response.json() == {"detail": "Conversation not found"}
@@ -896,6 +1150,10 @@ class TestConversationDagEndpoints:
             "Review the backend rollout",
             "Inspect the DAG graph",
         ]
+        assert [node["path"] for node in claude_payload["nodes"]] == [
+            "/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1",
+            "/conversations/by-ref/inspect-the-dag-graph--claude-claude-agent-1",
+        ]
 
         codex_dag = conversations_client.get(
             "/conversations/codex:-Users-tony-Code-helaicopter/019cdbff-dbb7-71d0-baaf-c669c55af628/dag"
@@ -914,15 +1172,123 @@ class TestConversationDagEndpoints:
             "total_tokens": 406,
         }
         assert codex_payload["nodes"][1]["subagent_type"] == "explorer"
-        assert codex_payload["nodes"][1]["path"].endswith(
-            "/019cdbff-dbb7-71d0-baaf-c669c55af628/subagents/019cdbff-dbb7-71d0-baaf-c669c55af629"
-        )
+        assert [node["path"] for node in codex_payload["nodes"]] == [
+            "/conversations/by-ref/implement-the-conversation-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628",
+            "/conversations/by-ref/inspect-the-dag-graph--codex-019cdbff-dbb7-71d0-baaf-c669c55af629",
+        ]
 
         missing = conversations_client.get(
             "/conversations/codex:-Users-tony-Code-helaicopter/missing-session/dag"
         )
         assert missing.status_code == 404
         assert missing.json() == {"detail": "Conversation DAG not found"}
+
+    def test_canonical_live_claude_child_dag_requires_parent_session_id(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        missing = conversations_client.get("/conversations/-Users-tony-Code-helaicopter/claude-agent-1/dag")
+        response = conversations_client.get(
+            "/conversations/-Users-tony-Code-helaicopter/claude-agent-1/dag",
+            params={"parent_session_id": "claude-session-1"},
+        )
+
+        assert missing.status_code == 404
+        assert response.status_code == 200
+        assert response.json()["root_session_id"] == "claude-agent-1"
+        assert response.json()["edges"] == []
+        assert response.json()["stats"] == {
+            "total_nodes": 1,
+            "total_edges": 0,
+            "total_subagent_nodes": 0,
+            "max_depth": 0,
+            "max_breadth": 1,
+            "leaf_count": 1,
+            "root_subagent_count": 0,
+            "total_messages": 2,
+            "total_tokens": 60,
+        }
+        assert (
+            response.json()["nodes"][0]["path"]
+            == "/conversations/by-ref/inspect-the-dag-graph--claude-claude-agent-1"
+        )
+
+    def test_dag_unresolved_child_threads_emit_null_paths(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        claude_session_path = (
+            settings.claude_projects_dir / "-Users-tony-Code-helaicopter" / "claude-session-1.jsonl"
+        )
+        with claude_session_path.open("a", encoding="utf-8") as handle:
+            handle.write("\n")
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "uuid": "claude-assistant-missing-child",
+                        "timestamp": "2026-03-18T09:00:25Z",
+                        "sessionId": "claude-session-1",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "tool-task-missing",
+                                    "name": "Task",
+                                    "input": {
+                                        "description": "Inspect missing child thread",
+                                        "subagent_type": "explorer",
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+            handle.write("\n")
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "claude-user-missing-child",
+                        "timestamp": "2026-03-18T09:00:26Z",
+                        "sessionId": "claude-session-1",
+                        "message": {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": "tool-task-missing",
+                                    "content": json.dumps(
+                                        {
+                                            "agentId": "claude-agent-missing",
+                                            "nickname": "Ghost",
+                                        }
+                                    ),
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                response = client.get("/conversations/-Users-tony-Code-helaicopter/claude-session-1/dag")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert response.status_code == 200
+        node_by_session_id = {node["session_id"]: node for node in response.json()["nodes"]}
+        assert node_by_session_id["claude-agent-missing"]["has_transcript"] is False
+        assert node_by_session_id["claude-agent-missing"]["path"] is None
 
 
 class TestProjectsHistoryAndTasks:
@@ -973,6 +1339,23 @@ class TestProjectsHistoryAndTasks:
             "tasks": [{"taskId": "T009", "title": "Historic persisted task"}],
         }
 
+        missing_child_tasks = conversations_client.get("/tasks/claude-agent-1")
+        assert missing_child_tasks.status_code == 200
+        assert missing_child_tasks.json() == {
+            "session_id": "claude-agent-1",
+            "tasks": [],
+        }
+
+        child_tasks = conversations_client.get(
+            "/tasks/claude-agent-1",
+            params={"parent_session_id": "claude-session-1"},
+        )
+        assert child_tasks.status_code == 200
+        assert child_tasks.json() == {
+            "session_id": "claude-agent-1",
+            "tasks": [{"taskId": "T008", "title": "Inspect DAG child thread"}],
+        }
+
     def test_openapi_exposes_new_routes_and_schemas(self, conversations_client: TestClient) -> None:
         response = conversations_client.get("/openapi.json")
 
@@ -980,6 +1363,7 @@ class TestProjectsHistoryAndTasks:
         schema = response.json()
         assert "/conversation-dags" in schema["paths"]
         assert "/conversations" in schema["paths"]
+        assert "/conversations/by-ref/{conversation_ref}" in schema["paths"]
         assert "/conversations/{project_path}/{session_id}" in schema["paths"]
         assert "/conversations/{project_path}/{session_id}/dag" in schema["paths"]
         assert "/conversations/{project_path}/{session_id}/subagents/{agent_id}" in schema["paths"]
@@ -1002,9 +1386,22 @@ class TestProjectsHistoryAndTasks:
             "/ConversationDagSummaryResponse"
         )
 
+        detail_get = schema["paths"]["/conversations/{project_path}/{session_id}"]["get"]
+        detail_parameters = {param["name"]: param for param in detail_get["parameters"]}
+        assert set(detail_parameters) == {"project_path", "session_id", "parent_session_id"}
+        assert detail_parameters["parent_session_id"]["in"] == "query"
+
         dag_detail_get = schema["paths"]["/conversations/{project_path}/{session_id}/dag"]["get"]
+        dag_detail_parameters = {param["name"]: param for param in dag_detail_get["parameters"]}
+        assert set(dag_detail_parameters) == {"project_path", "session_id", "parent_session_id"}
+        assert dag_detail_parameters["parent_session_id"]["in"] == "query"
         assert dag_detail_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/ConversationDagResponse"
+        )
+
+        by_ref_get = schema["paths"]["/conversations/by-ref/{conversation_ref}"]["get"]
+        assert by_ref_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+            "/ConversationRefResolutionResponse"
         )
 
         history_get = schema["paths"]["/history"]["get"]
@@ -1013,6 +1410,9 @@ class TestProjectsHistoryAndTasks:
         )
 
         tasks_get = schema["paths"]["/tasks/{session_id}"]["get"]
+        tasks_parameters = {param["name"]: param for param in tasks_get["parameters"]}
+        assert set(tasks_parameters) == {"session_id", "parent_session_id"}
+        assert tasks_parameters["parent_session_id"]["in"] == "query"
         assert tasks_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/TaskListResponse"
         )
@@ -1021,6 +1421,26 @@ class TestProjectsHistoryAndTasks:
         block_items = message_schema["properties"]["blocks"]["items"]
         assert block_items["discriminator"]["propertyName"] == "type"
         assert set(block_items["discriminator"]["mapping"]) == {"text", "thinking", "tool_call"}
+
+        summary_schema = schema["components"]["schemas"]["ConversationSummaryResponse"]
+        assert "route_slug" in summary_schema["properties"]
+        assert "conversation_ref" in summary_schema["properties"]
+
+        detail_schema = schema["components"]["schemas"]["ConversationDetailResponse"]
+        assert "route_slug" in detail_schema["properties"]
+        assert "conversation_ref" in detail_schema["properties"]
+
+        plan_schema = schema["components"]["schemas"]["ConversationPlanResponse"]
+        assert "route_slug" in plan_schema["properties"]
+        assert "conversation_ref" in plan_schema["properties"]
+
+        subagent_schema = schema["components"]["schemas"]["ConversationSubagentResponse"]
+        assert "route_slug" in subagent_schema["properties"]
+        assert "conversation_ref" in subagent_schema["properties"]
+
+        dag_node_schema = schema["components"]["schemas"]["ConversationDagNodeResponse"]
+        path_schema = dag_node_schema["properties"]["path"]
+        assert path_schema.get("nullable") is True or {"type": "null"} in path_schema.get("anyOf", [])
 
 
 def test_conversation_persistence_ids_make_entity_grain_explicit() -> None:

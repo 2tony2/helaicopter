@@ -279,6 +279,100 @@ test("saveSubscriptionSettings and createConversationEvaluation normalize FastAP
   }
 });
 
+test("createConversationEvaluation includes parent_session_id only for parent-scoped child routes", async () => {
+  setBaseUrl("https://api.example.test");
+  const seenRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const restoreFetch = installFetchStub(async (input, init) => {
+    seenRequests.push({
+      url: String(input),
+      body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+    });
+
+    return new Response(
+      JSON.stringify({
+        evaluation_id: "evaluation-child",
+        conversation_id: "claude:claude-agent-1",
+        prompt_id: "prompt-1",
+        provider: "codex",
+        model: "gpt-5",
+        status: "running",
+        scope: "full",
+        selection_instruction: null,
+        prompt_name: "Reviewer Sweep",
+        prompt_text: "Review the weakest turns.",
+        report_markdown: null,
+        raw_output: null,
+        error_message: null,
+        command: "codex exec --model gpt-5",
+        created_at: "2026-03-18T10:00:00Z",
+        finished_at: null,
+        duration_ms: null,
+      }),
+      {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  });
+
+  try {
+    await createConversationEvaluation("-Users-tony-Code-helaicopter", "claude-agent-1", {
+      provider: "codex",
+      model: "gpt-5",
+      promptId: "prompt-1",
+      promptName: "Reviewer Sweep",
+      promptText: "Review the weakest turns.",
+      scope: "full",
+      selectionInstruction: null,
+    });
+    await createConversationEvaluation(
+      "-Users-tony-Code-helaicopter",
+      "claude-agent-1",
+      {
+        provider: "codex",
+        model: "gpt-5",
+        promptId: "prompt-1",
+        promptName: "Reviewer Sweep",
+        promptText: "Review the weakest turns.",
+        scope: "full",
+        selectionInstruction: null,
+      },
+      {
+        parentSessionId: "claude-session-1",
+      }
+    );
+
+    assert.deepEqual(seenRequests, [
+      {
+        url: "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations",
+        body: {
+          provider: "codex",
+          model: "gpt-5",
+          promptId: "prompt-1",
+          promptName: "Reviewer Sweep",
+          promptText: "Review the weakest turns.",
+          scope: "full",
+          selectionInstruction: null,
+        },
+      },
+      {
+        url: "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations?parent_session_id=claude-session-1",
+        body: {
+          provider: "codex",
+          model: "gpt-5",
+          promptId: "prompt-1",
+          promptName: "Reviewer Sweep",
+          promptText: "Review the weakest turns.",
+          scope: "full",
+          selectionInstruction: null,
+        },
+      },
+    ]);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("createConversationEvaluation validates outgoing payloads before fetch", async () => {
   setBaseUrl("https://api.example.test");
   let fetchCalls = 0;

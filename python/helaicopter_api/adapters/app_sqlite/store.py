@@ -10,6 +10,7 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from pydantic import TypeAdapter, ValidationError
+from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.ports.app_sqlite import (
     AppSqliteStore,
     ConversationEvaluationRecord,
@@ -82,6 +83,7 @@ class SqliteAppStore(AppSqliteStore):
         try:
             clauses: list[str] = []
             params: list[object] = []
+            route_slug_select = _conversation_route_slug_select(connection)
             if project_path:
                 clauses.append("project_path = ?")
                 params.append(project_path)
@@ -100,6 +102,7 @@ class SqliteAppStore(AppSqliteStore):
                   project_name,
                   thread_type,
                   first_message,
+                  {route_slug_select},
                   started_at,
                   ended_at,
                   message_count,
@@ -150,8 +153,9 @@ class SqliteAppStore(AppSqliteStore):
             return None
 
         try:
+            route_slug_select = _conversation_route_slug_select(connection)
             row = connection.execute(
-                """
+                f"""
                 SELECT
                   conversation_id,
                   provider,
@@ -160,6 +164,7 @@ class SqliteAppStore(AppSqliteStore):
                   project_name,
                   thread_type,
                   first_message,
+                  {route_slug_select},
                   started_at,
                   ended_at,
                   message_count,
@@ -1101,6 +1106,17 @@ def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
+def _table_column_exists(connection: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(row["name"] == column_name for row in rows)
+
+
+def _conversation_route_slug_select(connection: sqlite3.Connection) -> str:
+    if _table_column_exists(connection, "conversations", "route_slug"):
+        return "route_slug"
+    return "NULL AS route_slug"
+
+
 def _require_table(connection: sqlite3.Connection, table_name: str) -> None:
     if not _table_exists(connection, table_name):
         raise RuntimeError(f"{table_name} table is unavailable in {connection.execute('PRAGMA database_list').fetchone()[2]}")
@@ -1185,6 +1201,7 @@ def _map_historical_summary(
         project_name=row["project_name"],
         thread_type=row["thread_type"] or "main",
         first_message=row["first_message"],
+        route_slug=row["route_slug"] or derive_route_slug(row["first_message"]),
         started_at=row["started_at"],
         ended_at=row["ended_at"],
         message_count=row["message_count"] or 0,

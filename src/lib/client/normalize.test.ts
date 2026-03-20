@@ -2,13 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const {
-  normalizeConversations,
   normalizeAnalytics,
+  normalizeConversationDag,
   normalizeConversationEvaluations,
   normalizeConversationDetail,
+  normalizeConversationRouteResolution,
+  normalizeConversations,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompts,
   normalizeOvernightOatsRuns,
+  normalizePlan,
   normalizeProjects,
   normalizeSubscriptionSettings,
   normalizeTasks,
@@ -28,11 +31,15 @@ const {
 } = await import(new URL("./schemas/subscriptions.ts", import.meta.url).href);
 const {
   conversation,
+  conversationByRef,
+  conversationDag,
+  conversationEvaluations,
   conversationDags,
   getBaseUrl,
   projects,
   setBaseUrl,
   subagent,
+  tasks,
 } = await import(new URL("./endpoints.ts", import.meta.url).href);
 
 async function importEndpointsWithApiBaseUrl(nextPublicApiBaseUrl?: string) {
@@ -89,6 +96,10 @@ test("endpoint builders target FastAPI routes without the Next /api prefix", () 
     subagent("-Users-tony-Code-helaicopter", "session-123", "agent-1"),
     "https://api.example.test/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
   );
+  assert.equal(
+    conversationByRef("review-the-backend-rollout--claude-claude-session-1"),
+    "https://api.example.test/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1"
+  );
 });
 
 test("endpoint builders infer the local FastAPI origin when the frontend runs on localhost", () => {
@@ -120,12 +131,83 @@ test("endpoint builders infer the local FastAPI origin when the frontend runs on
       subagent("-Users-tony-Code-helaicopter", "session-123", "agent-1"),
       "http://localhost:30000/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
     );
+    assert.equal(
+      conversationByRef("review-the-backend-rollout--claude-claude-session-1"),
+      "http://localhost:30000/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1"
+    );
   } finally {
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: originalWindow,
     });
   }
+});
+
+test("endpoint builders append parent_session_id only when the caller provides parentSessionId", () => {
+  setBaseUrl("https://api.example.test/");
+
+  assert.equal(
+    conversation("-Users-tony-Code-helaicopter", "claude-agent-1"),
+    "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1"
+  );
+  assert.equal(
+    conversation("-Users-tony-Code-helaicopter", "claude-agent-1", {
+      parentSessionId: "claude-session-1",
+    }),
+    "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1?parent_session_id=claude-session-1"
+  );
+
+  assert.equal(
+    conversationDag("-Users-tony-Code-helaicopter", "claude-agent-1"),
+    "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1/dag"
+  );
+  assert.equal(
+    conversationDag("-Users-tony-Code-helaicopter", "claude-agent-1", {
+      parentSessionId: "claude-session-1",
+    }),
+    "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1/dag?parent_session_id=claude-session-1"
+  );
+
+  assert.equal(
+    conversationEvaluations("-Users-tony-Code-helaicopter", "claude-agent-1"),
+    "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations"
+  );
+  assert.equal(
+    conversationEvaluations("-Users-tony-Code-helaicopter", "claude-agent-1", {
+      parentSessionId: "claude-session-1",
+    }),
+    "https://api.example.test/conversations/-Users-tony-Code-helaicopter/claude-agent-1/evaluations?parent_session_id=claude-session-1"
+  );
+
+  assert.equal(tasks("claude-agent-1"), "https://api.example.test/tasks/claude-agent-1");
+  assert.equal(
+    tasks("claude-agent-1", { parentSessionId: "claude-session-1" }),
+    "https://api.example.test/tasks/claude-agent-1?parent_session_id=claude-session-1"
+  );
+});
+
+test("normalizeConversations preserves canonical conversation refs from summary payloads", () => {
+  const normalized = normalizeConversations([
+    {
+      session_id: "claude-session-1",
+      project_path: "-Users-tony-Code-helaicopter",
+      project_name: "helaicopter",
+      route_slug: "review-the-backend-rollout",
+      conversation_ref: "review-the-backend-rollout--claude-claude-session-1",
+      thread_type: "main",
+      first_message: "Review the backend rollout",
+      timestamp: 1763000000000,
+      created_at: 1763000000000,
+      last_updated_at: 1763000001000,
+      is_running: false,
+    },
+  ]);
+
+  assert.equal(normalized[0].routeSlug, "review-the-backend-rollout");
+  assert.equal(
+    normalized[0].conversationRef,
+    "review-the-backend-rollout--claude-claude-session-1"
+  );
 });
 
 test("setBaseUrl continues to normalize absolute URLs for explicit overrides", () => {
@@ -280,6 +362,9 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   const normalized = normalizeConversationDetail({
     session_id: "session-123",
     project_path: "-Users-tony-Code-helaicopter",
+    route_slug: "review-the-backend-rollout",
+    conversation_ref: "review-the-backend-rollout--claude-session-123",
+    thread_type: "main",
     created_at: 1763000000000,
     last_updated_at: 1763000001000,
     is_running: false,
@@ -318,6 +403,8 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
         timestamp: 1763000000000,
         session_id: "session-123",
         project_path: "-Users-tony-Code-helaicopter",
+        route_slug: "review-the-backend-rollout",
+        conversation_ref: "review-the-backend-rollout--claude-session-123",
         source_path: "/tmp/plan.md",
         explanation: "Because",
         steps: [{ step: "Ship it", status: "pending" }],
@@ -337,6 +424,8 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
         has_file: true,
         project_path: "-Users-tony-Code-helaicopter",
         session_id: "agent-1",
+        route_slug: "inspect-the-dag-graph",
+        conversation_ref: "inspect-the-dag-graph--claude-agent-1",
       },
     ],
     context_analytics: {
@@ -376,6 +465,8 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   });
 
   assert.equal(normalized.sessionId, "session-123");
+  assert.equal(normalized.routeSlug, "review-the-backend-rollout");
+  assert.equal(normalized.conversationRef, "review-the-backend-rollout--claude-session-123");
   assert.deepEqual(normalized.totalUsage, {
     input_tokens: 100,
     output_tokens: 200,
@@ -395,9 +486,95 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   }
   assert.equal(firstBlock.toolUseId, "tool-1");
   assert.equal(normalized.plans[0].sessionId, "session-123");
+  assert.equal(normalized.plans[0].routeSlug, "review-the-backend-rollout");
+  assert.equal(
+    normalized.plans[0].conversationRef,
+    "review-the-backend-rollout--claude-session-123"
+  );
   assert.equal(normalized.subagents[0].agentId, "agent-1");
+  assert.equal(normalized.subagents[0].routeSlug, "inspect-the-dag-graph");
+  assert.equal(
+    normalized.subagents[0].conversationRef,
+    "inspect-the-dag-graph--claude-agent-1"
+  );
   assert.equal(normalized.contextAnalytics.buckets[0].cacheWriteTokens, 3);
   assert.equal(normalized.contextWindow.peakContextWindow, 44);
+});
+
+test("normalizeConversationDag preserves null paths for unresolved child routes", () => {
+  const normalized = normalizeConversationDag({
+    project_path: "-Users-tony-Code-helaicopter",
+    root_session_id: "claude-session-1",
+    nodes: [
+      {
+        id: "node-1",
+        session_id: "claude-agent-missing",
+        parent_session_id: "claude-session-1",
+        project_path: "-Users-tony-Code-helaicopter",
+        label: "Missing child",
+        thread_type: "subagent",
+        has_transcript: false,
+        timestamp: 1763000000000,
+        path: null,
+        is_root: false,
+      },
+    ],
+    edges: [],
+    stats: {
+      total_nodes: 1,
+      total_edges: 0,
+      total_subagent_nodes: 1,
+      max_depth: 1,
+      max_breadth: 1,
+      leaf_count: 1,
+      root_subagent_count: 0,
+      total_messages: 0,
+      total_tokens: 0,
+    },
+  });
+
+  assert.equal(normalized.nodes[0].path, null);
+});
+
+test("normalizePlan preserves canonical conversation link fields", () => {
+  const normalized = normalizePlan({
+    id: "plan-1",
+    slug: "claude-session-rollout",
+    title: "Claude Session Rollout",
+    content: "# Rollout",
+    provider: "claude",
+    timestamp: 1763000000000,
+    session_id: "claude-session-1",
+    project_path: "-Users-tony-Code-helaicopter",
+    route_slug: "review-the-plan-panel",
+    conversation_ref: "review-the-plan-panel--claude-claude-session-1",
+  });
+
+  assert.equal(normalized.routeSlug, "review-the-plan-panel");
+  assert.equal(
+    normalized.conversationRef,
+    "review-the-plan-panel--claude-claude-session-1"
+  );
+});
+
+test("normalizeConversationRouteResolution maps resolver payloads to frontend camelCase types", () => {
+  const normalized = normalizeConversationRouteResolution({
+    conversation_ref: "inspect-the-dag-graph--claude-claude-agent-1",
+    route_slug: "inspect-the-dag-graph",
+    project_path: "-Users-tony-Code-helaicopter",
+    session_id: "claude-agent-1",
+    thread_type: "subagent",
+    parent_session_id: "claude-session-1",
+  });
+
+  assert.deepEqual(normalized, {
+    conversationRef: "inspect-the-dag-graph--claude-claude-agent-1",
+    routeSlug: "inspect-the-dag-graph",
+    projectPath: "-Users-tony-Code-helaicopter",
+    sessionId: "claude-agent-1",
+    threadType: "subagent",
+    parentSessionId: "claude-session-1",
+  });
 });
 
 test("normalizeAnalytics accepts existing Next.js camelCase payloads", () => {

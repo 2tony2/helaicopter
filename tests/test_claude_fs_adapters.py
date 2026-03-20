@@ -125,3 +125,17 @@ class TestFileTaskReader:
         assert reader.read_tasks("session-1") == [
             ClaudeTaskPayload.model_validate({"taskId": "T007", "title": "Conversation API"})
         ]
+
+    def test_reads_parent_scoped_child_tasks_when_direct_session_dir_is_missing(self, tmp_path):
+        task_dir = tmp_path / "tasks" / "parent-session" / "child-session"
+        task_dir.mkdir(parents=True)
+        task_dir.joinpath("task-1.json").write_text(
+            '{"taskId":"T008","title":"Inspect DAG child thread"}',
+            encoding="utf-8",
+        )
+
+        reader = FileTaskReader(build_store(tmp_path))
+
+        assert reader.read_tasks("child-session", parent_session_id="parent-session") == [
+            ClaudeTaskPayload.model_validate({"taskId": "T008", "title": "Inspect DAG child thread"})
+        ]

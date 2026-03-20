@@ -15,6 +15,7 @@ import type {
   ConversationDagSummary,
   ConversationPlan,
   ConversationPlanStep,
+  ConversationRouteResolution,
   ConversationSummary,
   DatabaseArtifactStatus,
   DatabaseColumnSchema,
@@ -119,6 +120,14 @@ function stringOr(value: unknown, fallback = ""): string {
 }
 
 function nullableString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function nullableStringOrNull(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
   return typeof value === "string" ? value : undefined;
 }
 
@@ -261,6 +270,8 @@ function normalizeConversationPlan(value: unknown): ConversationPlan {
     timestamp: numberOr(item.timestamp),
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
+    routeSlug: nullableStringOrNull(item.route_slug),
+    conversationRef: nullableStringOrNull(item.conversation_ref),
     model: nullableString(item.model),
     sourcePath: nullableString(item.source_path),
     explanation: nullableString(item.explanation),
@@ -322,6 +333,8 @@ function normalizeSubagent(value: unknown): SubagentInfo {
     hasFile: booleanOr(item.has_file),
     projectPath: stringOr(item.project_path),
     sessionId: stringOr(item.session_id),
+    routeSlug: nullableStringOrNull(item.route_slug),
+    conversationRef: nullableStringOrNull(item.conversation_ref),
   };
 }
 
@@ -379,6 +392,8 @@ function normalizeConversationSummaryRecord(item: JsonRecord): ConversationSumma
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
     projectName: stringOr(item.project_name),
+    routeSlug: nullableString(item.route_slug),
+    conversationRef: nullableString(item.conversation_ref),
     threadType: normalizeThreadType(item.thread_type),
     firstMessage: stringOr(item.first_message),
     timestamp: numberOr(item.timestamp),
@@ -489,7 +504,7 @@ function normalizeConversationDagNode(value: unknown): ConversationDag["nodes"][
     totalTokens: numberOr(item.total_tokens),
     timestamp: numberOr(item.timestamp),
     depth: numberOr(item.depth),
-    path: stringOr(item.path),
+    path: item.path === null ? null : nullableString(item.path),
     isRoot: booleanOr(item.is_root),
   };
 }
@@ -527,6 +542,10 @@ export function normalizeConversationDetail(value: unknown): ProcessedConversati
   return {
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
+    routeSlug: nullableString(item.route_slug),
+    conversationRef: nullableString(item.conversation_ref),
+    threadType:
+      item.thread_type === undefined ? undefined : normalizeThreadType(item.thread_type),
     createdAt: numberOr(item.created_at),
     lastUpdatedAt: numberOr(item.last_updated_at),
     isRunning: booleanOr(item.is_running),
@@ -580,6 +599,22 @@ export function normalizePlan(value: unknown): PlanDetail {
     sourcePath: nullableString(item.source_path),
     sessionId: nullableString(item.session_id),
     projectPath: nullableString(item.project_path),
+    routeSlug: nullableStringOrNull(item.route_slug),
+    conversationRef: nullableStringOrNull(item.conversation_ref),
+  };
+}
+
+export function normalizeConversationRouteResolution(
+  value: unknown
+): ConversationRouteResolution {
+  const item = asRecord(value);
+  return {
+    conversationRef: stringOr(item.conversation_ref),
+    routeSlug: stringOr(item.route_slug),
+    projectPath: stringOr(item.project_path),
+    sessionId: stringOr(item.session_id),
+    threadType: normalizeThreadType(item.thread_type),
+    parentSessionId: nullableString(item.parent_session_id),
   };
 }
 

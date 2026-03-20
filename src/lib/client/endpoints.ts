@@ -60,6 +60,10 @@ function enc(segment: string) {
   return encodeURIComponent(segment);
 }
 
+type ParentSessionOptions = {
+  parentSessionId?: string;
+};
+
 // ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
@@ -76,16 +80,40 @@ export function conversations(opts?: { project?: string; days?: number }) {
   return api(`/conversations${qs({ project: opts?.project, days: opts?.days })}`);
 }
 
-export function conversation(projectPath: string, sessionId: string) {
-  return api(`/conversations/${enc(projectPath)}/${sessionId}`);
+export function conversation(projectPath: string, sessionId: string, opts?: ParentSessionOptions) {
+  return api(
+    `/conversations/${enc(projectPath)}/${sessionId}${qs({
+      parent_session_id: opts?.parentSessionId,
+    })}`
+  );
 }
 
-export function conversationDag(projectPath: string, sessionId: string) {
-  return api(`/conversations/${enc(projectPath)}/${sessionId}/dag`);
+export function conversationByRef(conversationRef: string) {
+  return api(`/conversations/by-ref/${enc(conversationRef)}`);
 }
 
-export function conversationEvaluations(projectPath: string, sessionId: string) {
-  return api(`/conversations/${enc(projectPath)}/${sessionId}/evaluations`);
+export function conversationDag(
+  projectPath: string,
+  sessionId: string,
+  opts?: ParentSessionOptions
+) {
+  return api(
+    `/conversations/${enc(projectPath)}/${sessionId}/dag${qs({
+      parent_session_id: opts?.parentSessionId,
+    })}`
+  );
+}
+
+export function conversationEvaluations(
+  projectPath: string,
+  sessionId: string,
+  opts?: ParentSessionOptions
+) {
+  return api(
+    `/conversations/${enc(projectPath)}/${sessionId}/evaluations${qs({
+      parent_session_id: opts?.parentSessionId,
+    })}`
+  );
 }
 
 export function conversationDags(opts?: {
@@ -109,8 +137,8 @@ export function subagent(projectPath: string, sessionId: string, agentId: string
 // Tasks
 // ---------------------------------------------------------------------------
 
-export function tasks(sessionId: string) {
-  return api(`/tasks/${sessionId}`);
+export function tasks(sessionId: string, opts?: ParentSessionOptions) {
+  return api(`/tasks/${sessionId}${qs({ parent_session_id: opts?.parentSessionId })}`);
 }
 
 // ---------------------------------------------------------------------------

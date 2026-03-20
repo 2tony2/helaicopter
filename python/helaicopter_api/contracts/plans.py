@@ -28,6 +28,8 @@ class PlanSummaryResponse(BaseModel):
     source_path: str | None = None
     session_id: SessionId | None = None
     project_path: EncodedProjectKey | None = None
+    route_slug: str | None = None
+    conversation_ref: str | None = None
 
 
 class PlanDetailResponse(BaseModel):
@@ -43,5 +45,7 @@ class PlanDetailResponse(BaseModel):
     source_path: str | None = None
     session_id: SessionId | None = None
     project_path: EncodedProjectKey | None = None
+    route_slug: str | None = None
+    conversation_ref: str | None = None
     explanation: str | None = None
     steps: list[PlanStepResponse] = []

@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ConfigDict, InstanceOf, validate_call
 
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.pure.analytics import build_analytics, filter_analytics_conversations
 from helaicopter_api.schema.analytics import AnalyticsDataResponse
@@ -130,6 +131,7 @@ def list_warehouse_historical_conversations(
                     project_path=str(row.project_path),
                     project_name=str(row.project_name),
                     first_message=str(row.first_message),
+                    route_slug=derive_route_slug(str(row.first_message)),
                     started_at=_serialize_datetime(row.started_at),
                     ended_at=_serialize_datetime(row.ended_at),
                     message_count=int(row.message_count or 0),

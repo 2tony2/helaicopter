@@ -48,6 +48,10 @@ type ConversationEvaluationCreateInput = {
   selectionInstruction: string | null;
 };
 
+type ConversationRequestOptions = {
+  parentSessionId?: string;
+};
+
 function readErrorMessage(payload: unknown): string | null {
   if (typeof payload !== "object" || payload === null) {
     return null;
@@ -132,7 +136,8 @@ export function deleteEvaluationPrompt(promptId: string): Promise<unknown> {
 export function createConversationEvaluation(
   projectPath: string,
   sessionId: string,
-  input: ConversationEvaluationCreateInput
+  input: ConversationEvaluationCreateInput,
+  opts?: ConversationRequestOptions
 ): Promise<ConversationEvaluation> {
   const parsedInput = conversationEvaluationCreateSchema.safeParse(input);
   if (!parsedInput.success) {
@@ -140,7 +145,7 @@ export function createConversationEvaluation(
   }
 
   return post(
-    endpoints.conversationEvaluations(projectPath, sessionId),
+    endpoints.conversationEvaluations(projectPath, sessionId, opts),
     parsedInput.data,
     conversationEvaluationSchema,
     normalizeConversationEvaluation

@@ -357,6 +357,49 @@
         }
       }
     },
+    "/conversations/by-ref/{conversation_ref}": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Conversation By Ref",
+        "description": "Resolve a stable conversation ref to the current canonical route target.",
+        "operationId": "conversation_by_ref_conversations_by_ref__conversation_ref__get",
+        "parameters": [
+          {
+            "name": "conversation_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRefResolutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/conversations/{project_path}/{session_id}": {
       "get": {
         "tags": [
@@ -382,6 +425,22 @@
             "schema": {
               "type": "string",
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "parent_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Session Id"
             }
           }
         ],
@@ -434,6 +493,22 @@
             "schema": {
               "type": "string",
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "parent_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Session Id"
             }
           }
         ],
@@ -631,6 +706,22 @@
               "type": "string",
               "title": "Session Id"
             }
+          },
+          {
+            "name": "parent_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Session Id"
+            }
           }
         ],
         "responses": {
@@ -684,6 +775,22 @@
             "schema": {
               "type": "string",
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "parent_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Session Id"
             }
           }
         ],
@@ -1454,6 +1561,22 @@
             "schema": {
               "type": "string",
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "parent_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Session Id"
             }
           }
         ],
@@ -2301,7 +2424,14 @@
             "default": 0
           },
           "path": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Path"
           },
           "is_root": {
@@ -2318,7 +2448,6 @@
           "thread_type",
           "has_transcript",
           "timestamp",
-          "path",
           "is_root"
         ],
         "title": "ConversationDagNodeResponse",
@@ -2430,6 +2559,14 @@
             "type": "string",
             "title": "Project Name",
             "description": "Human-readable project label or display path."
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
           },
           "thread_type": {
             "type": "string",
@@ -2584,6 +2721,8 @@
           "session_id",
           "project_path",
           "project_name",
+          "route_slug",
+          "conversation_ref",
           "thread_type",
           "first_message",
           "timestamp",
@@ -2605,6 +2744,14 @@
             "type": "string",
             "title": "Project Path",
             "description": "Opaque encoded project key used in URLs and persisted records."
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
           },
           "thread_type": {
             "type": "string",
@@ -2730,6 +2877,8 @@
         "required": [
           "session_id",
           "project_path",
+          "route_slug",
+          "conversation_ref",
           "created_at",
           "last_updated_at",
           "is_running"
@@ -3137,6 +3286,28 @@
             ],
             "title": "Project Path"
           },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
+          },
           "explanation": {
             "anyOf": [
               {
@@ -3187,6 +3358,55 @@
           "status"
         ],
         "title": "ConversationPlanStepResponse"
+      },
+      "ConversationRefResolutionResponse": {
+        "properties": {
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "project_path": {
+            "type": "string",
+            "title": "Project Path",
+            "description": "Opaque encoded project key used in URLs and persisted records."
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "thread_type": {
+            "type": "string",
+            "enum": [
+              "main",
+              "subagent"
+            ],
+            "title": "Thread Type"
+          },
+          "parent_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_ref",
+          "route_slug",
+          "project_path",
+          "session_id",
+          "thread_type"
+        ],
+        "title": "ConversationRefResolutionResponse"
       },
       "ConversationSubagentResponse": {
         "properties": {
@@ -3254,6 +3474,28 @@
               }
             ],
             "title": "Session Id"
+          },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
           }
         },
         "type": "object",
@@ -3278,6 +3520,14 @@
             "type": "string",
             "title": "Project Name",
             "description": "Human-readable project label or display path."
+          },
+          "route_slug": {
+            "type": "string",
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "type": "string",
+            "title": "Conversation Ref"
           },
           "thread_type": {
             "type": "string",
@@ -3429,6 +3679,8 @@
           "session_id",
           "project_path",
           "project_name",
+          "route_slug",
+          "conversation_ref",
           "thread_type",
           "first_message",
           "timestamp",
@@ -5909,6 +6161,28 @@
             ],
             "title": "Project Path"
           },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
+          },
           "explanation": {
             "anyOf": [
               {
@@ -6033,6 +6307,28 @@
               }
             ],
             "title": "Project Path"
+          },
+          "route_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Slug"
+          },
+          "conversation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Ref"
           }
         },
         "type": "object",

@@ -57,7 +57,14 @@ function DagCanvas({ dag }: { dag: ConversationDag }) {
         totalTokens: formatTokens(node.totalTokens),
         depth: node.depth,
         isRoot: node.isRoot,
-        onClick: () => router.push(node.path),
+        hasRoute: Boolean(node.path),
+        onClick: () => {
+          if (!node.path) {
+            return;
+          }
+
+          router.push(node.path);
+        },
       } satisfies ConversationDagNodeData,
     }));
     const edges: Edge[] = dag.edges.map((edge) => ({

@@ -20,6 +20,7 @@ class HistoricalConversationSummary(BaseModel):
     project_name: ProjectDisplayPath
     thread_type: str = "main"
     first_message: str
+    route_slug: str
     started_at: str
     ended_at: str
     message_count: int = 0
