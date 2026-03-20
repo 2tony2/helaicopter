@@ -13,6 +13,7 @@ const swrOptions = {
 export function usePlans() {
   return useSWR<PlanSummary[]>(
     endpoints.plans(),
+    // Rollout note: keep plans on the legacy normalize-only fetch path for this schema adoption step.
     (url: string) => requestJson(url, undefined, normalizePlans),
     swrOptions
   );
@@ -21,6 +22,7 @@ export function usePlans() {
 export function usePlan(slug?: string) {
   return useSWR<PlanDetail>(
     slug ? endpoints.plan(slug) : null,
+    // Rollout note: keep plan detail on the legacy normalize-only fetch path for this schema adoption step.
     (url: string) => requestJson(url, undefined, normalizePlan),
     swrOptions
   );
