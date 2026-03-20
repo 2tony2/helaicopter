@@ -29,7 +29,29 @@ def get_analytics(
     provider: str | None = None,
     now: datetime | None = None,
 ) -> AnalyticsDataResponse:
-    """Load persisted summaries, apply analytics filters, and aggregate the response."""
+    """Load persisted summaries, apply analytics filters, and aggregate the response.
+
+    Merges warehouse and SQLite conversation summaries, applies optional
+    provider and time-period filters, then delegates to the pure analytics
+    layer to compute token counts, costs, and per-day buckets.
+
+    Args:
+        services: Initialised backend services providing the SQLite store and
+            optional OLAP warehouse connection.
+        days: Optional rolling window in days. When ``None`` all available
+            history is included.
+        provider: Optional provider filter (``"claude"``, ``"codex"``, or
+            ``"all"``/``None`` for no filtering).
+        now: Reference timestamp used as the end of the rolling window.
+            Defaults to the current UTC time when omitted.
+
+    Returns:
+        Aggregated analytics data including token counts, costs, conversation
+        counts, and per-day time-series buckets.
+
+    Raises:
+        ValueError: If ``provider`` is not one of the supported values.
+    """
     normalized_provider = _normalize_provider(provider)
     current_time = _ensure_utc(now)
     conversations = _load_authoritative_analytics_conversations(services, now=current_time)
@@ -85,6 +107,20 @@ def _load_authoritative_analytics_conversations(
 def list_warehouse_historical_conversations(
     services: BackendServices,
 ) -> list[HistoricalConversationSummary]:
+    """Query the OLAP warehouse for historical conversation summaries.
+
+    Connects to the configured DuckDB/OLAP engine, executes the fact-table
+    join query, and returns one ``HistoricalConversationSummary`` per row.
+    Returns an empty list when the engine is unavailable or the query fails.
+
+    Args:
+        services: Initialised backend services; ``services.settings`` is used
+            to create the OLAP engine connection.
+
+    Returns:
+        List of conversation summaries sourced from the warehouse, or an empty
+        list if the warehouse is unconfigured or a ``SQLAlchemyError`` is raised.
+    """
     settings = getattr(services, "settings", None)
     if settings is None:
         return []

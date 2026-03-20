@@ -6,6 +6,8 @@ from helaicopter_api.schema.common import CamelCaseHttpResponseModel
 
 
 class PrefectOatsMetadataResponse(CamelCaseHttpResponseModel):
+    """OATS-specific metadata attached to a Prefect deployment or flow run."""
+
     run_title: str | None = None
     source_path: str | None = None
     repo_root: str | None = None
@@ -15,6 +17,8 @@ class PrefectOatsMetadataResponse(CamelCaseHttpResponseModel):
 
 
 class PrefectDeploymentResponse(CamelCaseHttpResponseModel):
+    """Prefect deployment record with optional OATS metadata."""
+
     deployment_id: str
     deployment_name: str
     flow_id: str | None = None
@@ -28,6 +32,8 @@ class PrefectDeploymentResponse(CamelCaseHttpResponseModel):
 
 
 class PrefectFlowRunResponse(CamelCaseHttpResponseModel):
+    """Prefect flow run record with state, deployment linkage, and optional OATS analytics."""
+
     flow_run_id: str
     flow_run_name: str | None = None
     deployment_id: str | None = None
@@ -45,6 +51,8 @@ class PrefectFlowRunResponse(CamelCaseHttpResponseModel):
 
 
 class PrefectFlowRunAnalyticsResponse(CamelCaseHttpResponseModel):
+    """Task-level analytics summary for a Prefect flow run."""
+
     run_status: str
     task_count: int = 0
     completed_task_count: int = 0
@@ -55,6 +63,8 @@ class PrefectFlowRunAnalyticsResponse(CamelCaseHttpResponseModel):
 
 
 class PrefectWorkerResponse(CamelCaseHttpResponseModel):
+    """Prefect worker record with heartbeat and work pool association."""
+
     worker_id: str
     worker_name: str
     work_pool_name: str | None = None
@@ -63,6 +73,8 @@ class PrefectWorkerResponse(CamelCaseHttpResponseModel):
 
 
 class PrefectWorkPoolResponse(CamelCaseHttpResponseModel):
+    """Prefect work pool record with type, status, and concurrency configuration."""
+
     work_pool_id: str
     work_pool_name: str
     type: str | None = None

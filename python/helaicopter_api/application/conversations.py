@@ -74,6 +74,11 @@ _CODEX_SESSION_ID_PATTERN = re.compile(
 )
 _ACTIVE_WINDOW = timedelta(minutes=1)
 _MAX_RESULT_LENGTH = 20_000
+_CACHE_MISS = object()
+
+
+def _cache_key(prefix: str, *parts: object) -> str:
+    return ":".join([prefix, *(str(part) for part in parts)])
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -83,28 +88,52 @@ def list_conversations(
     project: str | None = None,
     days: int | None = None,
 ) -> list[ConversationSummaryResponse]:
-    """Return merged persisted and live conversation summaries."""
-    summaries_by_key: dict[tuple[str, str], ConversationSummaryResponse] = {}
+    """Return merged persisted and live conversation summaries.
 
-    for summary in services.app_sqlite_store.list_historical_conversations(
+    Reads from the SQLite historical store first; if no persisted records exist
+    the function falls back to scanning live Claude filesystem and Codex SQLite
+    artifacts. Results are sorted by recency and cached on ``services.cache``.
+
+    Args:
+        services: Initialised backend services.
+        project: Optional encoded project path to restrict results to a single
+            project. Supports both Claude (plain path) and Codex
+            (``"codex:"``-prefixed) paths.
+        days: Optional rolling window in days used to limit the returned
+            conversations by recency.
+
+    Returns:
+        Deduplicated, recency-sorted list of conversation summaries.
+    """
+    cache_key = _cache_key("conversation_summaries", project or "*", days or "all")
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if isinstance(cached, list):
+        return cached
+
+    summaries_by_key: dict[tuple[str, str], ConversationSummaryResponse] = {}
+    historical_summaries = services.app_sqlite_store.list_historical_conversations(
         project_path=project,
         days=days,
-    ):
+    )
+    for summary in historical_summaries:
         shaped = _shape_historical_summary(summary)
         _merge_summary(summaries_by_key, shaped)
 
-    if project is None or not project.startswith("codex:"):
-        for shaped in _list_claude_live_summaries(services, project=project, days=days):
-            _merge_summary(summaries_by_key, shaped)
+    if not historical_summaries:
+        if project is None or not project.startswith("codex:"):
+            for shaped in _list_claude_live_summaries(services, project=project, days=days):
+                _merge_summary(summaries_by_key, shaped)
 
-    if project is None or project.startswith("codex:"):
-        for shaped in _list_codex_live_summaries(services, project=project, days=days):
-            _merge_summary(summaries_by_key, shaped)
+        if project is None or project.startswith("codex:"):
+            for shaped in _list_codex_live_summaries(services, project=project, days=days):
+                _merge_summary(summaries_by_key, shaped)
 
-    return sorted(
+    result = sorted(
         summaries_by_key.values(),
         key=lambda item: (-item.last_updated_at, item.project_path, item.session_id),
     )
+    services.cache.set(cache_key, result)
+    return result
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -115,21 +144,55 @@ def get_conversation(
     session_id: str,
     parent_session_id: str | None = None,
 ) -> ConversationDetailResponse | None:
-    """Return one conversation detail view from persisted data or live artifacts."""
+    """Return one conversation detail view from persisted data or live artifacts.
+
+    Tries the SQLite historical store first, then falls back to the appropriate
+    live provider (Codex SQLite or Claude filesystem). Results are cached on
+    ``services.cache``.
+
+    Args:
+        services: Initialised backend services.
+        project_path: Encoded project path that identifies the workspace.
+        session_id: Provider-specific session identifier.
+        parent_session_id: Optional parent session ID required when fetching
+            a Claude sub-agent conversation from live filesystem artifacts.
+
+    Returns:
+        A fully populated ``ConversationDetailResponse`` when the conversation
+        is found, otherwise ``None``.
+    """
+    cache_key = _cache_key(
+        "conversation_detail",
+        project_path,
+        session_id,
+        parent_session_id or "*",
+    )
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, ConversationDetailResponse):
+        return cached
+
+    conversation: ConversationDetailResponse | None
     if historical := services.app_sqlite_store.get_historical_conversation(
         project_path=project_path,
         session_id=_session_id(session_id),
     ):
-        return _shape_historical_detail(historical, services=services)
+        conversation = _shape_historical_detail(historical, services=services)
+    elif project_path.startswith("codex:"):
+        conversation = _get_codex_live_conversation(
+            services,
+            session_id=session_id,
+            project_path=project_path,
+        )
+    else:
+        conversation = _get_claude_live_conversation(
+            services,
+            project_path=project_path,
+            session_id=session_id,
+            parent_session_id=parent_session_id,
+        )
 
-    if project_path.startswith("codex:"):
-        return _get_codex_live_conversation(services, session_id=session_id, project_path=project_path)
-    return _get_claude_live_conversation(
-        services,
-        project_path=project_path,
-        session_id=session_id,
-        parent_session_id=parent_session_id,
-    )
+    services.cache.set(cache_key, conversation)
+    return conversation
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -138,14 +201,36 @@ def resolve_conversation_ref(
     *,
     conversation_ref: str,
 ) -> ConversationRefResolutionResponse | None:
+    """Resolve a conversation reference string to its canonical identity.
+
+    Parses the structured reference, looks up the matching persisted or live
+    conversation, and returns routing metadata. Results are cached on
+    ``services.cache``.
+
+    Args:
+        services: Initialised backend services.
+        conversation_ref: A structured reference string in the format
+            ``<route_slug>--<provider>-<session_id>``.
+
+    Returns:
+        A ``ConversationRefResolutionResponse`` when the reference resolves
+        to a known conversation, otherwise ``None``.
+    """
+    cache_key = _cache_key("conversation_ref", conversation_ref)
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, ConversationRefResolutionResponse):
+        return cached
+
     parsed = parse_conversation_ref(conversation_ref)
     if parsed is None:
         return None
-    return _resolve_conversation_identity(
+    resolved = _resolve_conversation_identity(
         services,
         provider=parsed.provider,
         session_id=parsed.session_id,
     )
+    services.cache.set(cache_key, resolved)
+    return resolved
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -185,7 +270,28 @@ def list_conversation_dags(
     days: int | None = None,
     provider: ConversationDagProviderParam | None = None,
 ) -> list[ConversationDagSummaryResponse]:
-    """Return main conversations with backend-built sub-agent DAG summaries."""
+    """Return main conversations with backend-built sub-agent DAG summaries.
+
+    Filters conversation summaries to those that have sub-agents, builds a DAG
+    for each, and returns combined summary+DAG objects. Results are cached on
+    ``services.cache``.
+
+    Args:
+        services: Initialised backend services.
+        project: Optional encoded project path filter.
+        days: Optional rolling window in days.
+        provider: Optional provider filter (``"claude"``, ``"codex"``, or
+            ``None``/``"all"`` for no filtering).
+
+    Returns:
+        List of ``ConversationDagSummaryResponse`` objects for conversations
+        that contain at least one sub-agent, sorted by recency.
+    """
+    cache_key = _cache_key("conversation_dags", project or "*", days or "all", provider or "all")
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if isinstance(cached, list):
+        return cached
+
     provider_filter = None if provider in {None, "all"} else provider
     summaries = list_conversations(services, project=project, days=days)
     dag_summaries: list[ConversationDagSummaryResponse] = []
@@ -210,6 +316,7 @@ def list_conversation_dags(
             )
         )
 
+    services.cache.set(cache_key, dag_summaries)
     return dag_summaries
 
 
@@ -221,7 +328,32 @@ def get_conversation_dag(
     session_id: str,
     parent_session_id: str | None = None,
 ) -> ConversationDagResponse | None:
-    """Return the backend-owned DAG for one main or subagent conversation tree."""
+    """Return the backend-owned DAG for one main or subagent conversation tree.
+
+    Recursively loads sub-agent conversations and delegates to the pure DAG
+    builder. Results are cached on ``services.cache``.
+
+    Args:
+        services: Initialised backend services.
+        project_path: Encoded project path that identifies the workspace.
+        session_id: Root session ID whose DAG should be built.
+        parent_session_id: Optional parent session ID used when the root
+            session is itself a Claude sub-agent.
+
+    Returns:
+        A ``ConversationDagResponse`` describing the agent hierarchy, or
+        ``None`` when the root conversation cannot be loaded.
+    """
+    cache_key = _cache_key(
+        "conversation_dag",
+        project_path,
+        session_id,
+        parent_session_id or "*",
+    )
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, ConversationDagResponse):
+        return cached
+
     root_session_id = _session_id(session_id)
     root_parent_session_id = _session_id(parent_session_id) if parent_session_id else None
     cache: dict[tuple[str, SessionId | None, SessionId], ConversationDetailResponse | None] = {}
@@ -243,16 +375,35 @@ def get_conversation_dag(
             )
         return cache[cache_key]
 
-    return build_conversation_dag(
+    dag = build_conversation_dag(
         project_path=project_path,
         root_session_id=root_session_id,
         load_conversation=load_conversation,
     )
+    services.cache.set(cache_key, dag)
+    return dag
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_projects(services: InstanceOf[BackendServices]) -> list[ProjectResponse]:
-    """Return aggregated project rows derived from merged conversation summaries."""
+    """Return aggregated project rows derived from merged conversation summaries.
+
+    Groups all conversation summaries by project path and computes per-project
+    session counts and last-activity timestamps. Results are cached on
+    ``services.cache``.
+
+    Args:
+        services: Initialised backend services.
+
+    Returns:
+        List of ``ProjectResponse`` objects sorted by most recent activity,
+        then alphabetically by display name.
+    """
+    cache_key = "projects"
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if isinstance(cached, list):
+        return cached
+
     projects: dict[str, ProjectResponse] = {}
     for summary in list_conversations(services):
         existing = projects.get(summary.project_path)
@@ -269,10 +420,12 @@ def list_projects(services: InstanceOf[BackendServices]) -> list[ProjectResponse
         if summary.last_updated_at > existing.last_activity:
             existing.last_activity = summary.last_updated_at
 
-    return sorted(
+    result = sorted(
         projects.values(),
         key=lambda item: (-item.last_activity, item.display_name.lower()),
     )
+    services.cache.set(cache_key, result)
+    return result
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -281,7 +434,20 @@ def list_history(
     *,
     limit: int,
 ) -> list[HistoryEntryResponse]:
-    """Return merged Claude and Codex history entries."""
+    """Return merged Claude and Codex history entries.
+
+    Reads history from both the Claude filesystem history reader and the Codex
+    SQLite store, merges them, and returns the most recent entries up to
+    ``limit``.
+
+    Args:
+        services: Initialised backend services.
+        limit: Maximum number of history entries to return.
+
+    Returns:
+        List of ``HistoryEntryResponse`` objects sorted by timestamp descending,
+        truncated to ``limit`` items.
+    """
     entries = [
         HistoryEntryResponse(
             display=item.display,
@@ -310,7 +476,21 @@ def get_tasks(
     session_id: str,
     parent_session_id: str | None = None,
 ) -> TaskListResponse:
-    """Return task payloads for a session from persisted storage or Claude artifacts."""
+    """Return task payloads for a session from persisted storage or Claude artifacts.
+
+    Checks the SQLite historical store first; falls back to the Claude task
+    filesystem reader when no persisted records exist.
+
+    Args:
+        services: Initialised backend services.
+        session_id: Provider-specific session identifier.
+        parent_session_id: Optional parent session ID used to scope the Claude
+            filesystem task lookup.
+
+    Returns:
+        A ``TaskListResponse`` containing the session ID and its associated
+        task list (may be empty).
+    """
     typed_session_id = _session_id(session_id)
     typed_parent_session_id = _session_id(parent_session_id) if parent_session_id else None
     tasks = services.app_sqlite_store.get_historical_tasks_for_session(typed_session_id)

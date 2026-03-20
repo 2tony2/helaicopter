@@ -32,6 +32,7 @@ from helaicopter_api.contracts.plans import (
 )
 from helaicopter_api.domain import plans as plan_domain
 from helaicopter_api.ports.claude_fs import RawConversationEvent
+from helaicopter_api.ports.app_sqlite import HistoricalPlanSummary
 from helaicopter_api.ports.codex_sqlite import CodexThreadRecord
 
 
@@ -55,6 +56,7 @@ class CodexSessionPlanSource(TypedDict):
 
 PlanSource = FilePlanSource | ClaudeSessionPlanSource | CodexSessionPlanSource
 _PLAN_SOURCE_ADAPTER = TypeAdapter(PlanSource)
+_CACHE_MISS = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,20 +93,69 @@ def _historical_conversation_route_targets(
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_plans(services: InstanceOf[BackendServices]) -> list[PlanSummaryResponse]:
-    """Return file-backed Claude plans plus session-backed Claude/Codex plans."""
-    route_targets = _historical_conversation_route_targets(services)
-    claude_session_plans = _list_claude_session_plans(services, route_targets=route_targets)
-    codex_session_plans = _list_codex_session_plans(services, route_targets=route_targets)
+    """Return file-backed Claude plans plus session-backed Claude/Codex plans.
+
+    Prefers SQLite-persisted historical plan summaries when available. Falls
+    back to scanning live Claude filesystem sessions and Codex SQLite artifacts.
+    Results are sorted newest-first and cached on ``services.cache``.
+
+    Args:
+        services: Initialised backend services providing the plan reader,
+            conversation reader, Codex store, and SQLite store.
+
+    Returns:
+        List of ``PlanSummaryResponse`` objects sorted by descending timestamp,
+        then alphabetically by title.
+    """
+    cached = services.cache.get("plans", _CACHE_MISS)
+    if isinstance(cached, list):
+        return cached
+
     file_plans = _list_claude_file_plans(services)
-    return sorted(
-        [*claude_session_plans, *codex_session_plans, *file_plans],
-        key=lambda plan: (-plan.timestamp, plan.title.lower()),
-    )
+    historical_plan_summaries = services.app_sqlite_store.list_historical_plan_summaries()
+
+    if historical_plan_summaries:
+        plans = sorted(
+            [
+                *_historical_plan_summary_responses(historical_plan_summaries),
+                *file_plans,
+            ],
+            key=lambda plan: (-plan.timestamp, plan.title.lower()),
+        )
+    else:
+        route_targets = _historical_conversation_route_targets(services)
+        claude_session_plans = _list_claude_session_plans(services, route_targets=route_targets)
+        codex_session_plans = _list_codex_session_plans(services, route_targets=route_targets)
+        plans = sorted(
+            [*claude_session_plans, *codex_session_plans, *file_plans],
+            key=lambda plan: (-plan.timestamp, plan.title.lower()),
+        )
+    services.cache.set("plans", plans)
+    return plans
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailResponse | None:
-    """Return one plan by encoded id or legacy Claude file slug."""
+    """Return one plan by encoded id or legacy Claude file slug.
+
+    Decodes the ``plan_id`` to determine its source kind (file, Claude session,
+    or Codex session), loads the matching artifact, and returns a full detail
+    response. Results are cached on ``services.cache``.
+
+    Args:
+        services: Initialised backend services providing the plan reader,
+            conversation reader, and Codex store.
+        plan_id: Base64url-encoded plan source descriptor, or a legacy Claude
+            plan file slug.
+
+    Returns:
+        A ``PlanDetailResponse`` when the plan is found, otherwise ``None``.
+    """
+    cache_key = f"plan:{plan_id}"
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, PlanDetailResponse):
+        return cached
+
     source = _decode_plan_id(plan_id)
     if source is None:
         return None
@@ -113,23 +164,27 @@ def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailR
     kind = source["kind"]
     if kind == "file":
         file_source = cast(FilePlanSource, source)
-        return _get_claude_file_plan(services, file_source["slug"], plan_id)
-    if kind == "claude-session":
+        plan = _get_claude_file_plan(services, file_source["slug"], plan_id)
+    elif kind == "claude-session":
         claude_source = cast(ClaudeSessionPlanSource, source)
-        return _get_claude_session_plan(
+        plan = _get_claude_session_plan(
             services,
             project_path=claude_source["projectPath"],
             session_id=claude_source["sessionId"],
             event_id=claude_source["eventId"],
             route_targets=route_targets,
         )
-    codex_source = cast(CodexSessionPlanSource, source)
-    return _get_codex_session_plan(
-        services,
-        session_id=codex_source["sessionId"],
-        call_id=codex_source["callId"],
-        route_targets=route_targets,
-    )
+    else:
+        codex_source = cast(CodexSessionPlanSource, source)
+        plan = _get_codex_session_plan(
+            services,
+            session_id=codex_source["sessionId"],
+            call_id=codex_source["callId"],
+            route_targets=route_targets,
+        )
+
+    services.cache.set(cache_key, plan)
+    return plan
 
 
 def _session_route_target(
@@ -587,6 +642,35 @@ def _plan_summary_response(plan: _ExtractedPlan) -> PlanSummaryResponse:
         route_slug=plan.route_slug,
         conversation_ref=plan.conversation_ref,
     )
+
+
+def _historical_plan_summary_responses(
+    plans: list[HistoricalPlanSummary],
+) -> list[PlanSummaryResponse]:
+    return [
+        PlanSummaryResponse(
+            id=plan.plan_id,
+            slug=plan.slug,
+            title=plan.title,
+            preview=plan.preview,
+            provider=plan.provider,
+            timestamp=_to_epoch_ms(plan.timestamp),
+            model=plan.model,
+            session_id=plan.session_id,
+            project_path=plan.project_path,
+            route_slug=plan.route_slug,
+            conversation_ref=(
+                build_conversation_route_target(
+                    plan.route_slug,
+                    plan.provider,
+                    plan.session_id,
+                ).conversation_ref
+                if plan.route_slug and plan.session_id
+                else None
+            ),
+        )
+        for plan in plans
+    ]
 
 
 def _plan_detail_response(plan: _ExtractedPlan) -> PlanDetailResponse:

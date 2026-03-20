@@ -184,9 +184,6 @@ test("canonical tab routes render without nested detail validation", async () =>
     [`/conversations/by-ref/${encodeURIComponent(canonicalRef)}`]: {
       body: makeResolution(),
     },
-    [`/conversations/${encodeURIComponent(projectPath)}/${sessionId}`]: {
-      body: makeConversationDetail(),
-    },
   });
 
   const handlePage = createConversationPageHandler(deps);
@@ -200,6 +197,9 @@ test("canonical tab routes render without nested detail validation", async () =>
   assert.equal(result.viewer.initialMessageId, undefined);
   assert.equal(result.viewer.initialPlanId, undefined);
   assert.equal(result.viewer.initialSubagentId, undefined);
+  assert.deepEqual(deps.fetchCalls.map((call) => call.path), [
+    `/conversations/by-ref/${encodeURIComponent(canonicalRef)}`,
+  ]);
 });
 
 test("child canonical routes fetch detail with parent_session_id and pass parentSessionId to the viewer", async () => {
@@ -208,10 +208,6 @@ test("child canonical routes fetch detail with parent_session_id and pass parent
     [`/conversations/by-ref/${encodeURIComponent(childRef)}`]: {
       body: makeChildResolution(),
     },
-    [`/conversations/${encodeURIComponent(projectPath)}/claude-agent-1?parent_session_id=${sessionId}`]:
-      {
-        body: makeChildConversationDetail(),
-      },
   });
 
   const handlePage = createConversationPageHandler(deps);
@@ -223,10 +219,7 @@ test("child canonical routes fetch detail with parent_session_id and pass parent
   assert.equal(result.kind, "render");
   assert.deepEqual(
     deps.fetchCalls.map((call) => call.path),
-    [
-      `/conversations/by-ref/${encodeURIComponent(childRef)}`,
-      `/conversations/${encodeURIComponent(projectPath)}/claude-agent-1?parent_session_id=${sessionId}`,
-    ]
+    [`/conversations/by-ref/${encodeURIComponent(childRef)}`]
   );
   assert.equal(result.viewer.sessionId, "claude-agent-1");
   assert.equal(result.viewer.parentSessionId, sessionId);

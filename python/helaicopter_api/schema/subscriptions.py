@@ -30,6 +30,8 @@ class SubscriptionSettingsUpdateRequest(BaseModel):
 
 
 class ProviderSubscriptionSettingResponse(CamelCaseHttpResponseModel):
+    """Current subscription configuration for a single provider."""
+
     provider: ProviderName
     has_subscription: bool = False
     monthly_cost: float = 0.0

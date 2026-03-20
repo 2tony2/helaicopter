@@ -87,6 +87,19 @@ class HistoricalConversationPlan(BaseModel):
     steps: list[HistoricalConversationPlanStep] = []
 
 
+class HistoricalPlanSummary(BaseModel):
+    plan_id: str
+    slug: str
+    title: str
+    preview: str
+    provider: ProviderName
+    timestamp: str
+    model: str | None = None
+    session_id: SessionId | None = None
+    project_path: EncodedProjectKey | None = None
+    route_slug: str | None = None
+
+
 class HistoricalConversationSubagent(BaseModel):
     subagent_row_id: str
     agent_id: str
@@ -217,6 +230,10 @@ class AppSqliteStore(Protocol):
         self, session_id: SessionId
     ) -> list[HistoricalConversationTask] | None:
         """Return persisted task payloads for one session, or ``None`` if missing."""
+        ...
+
+    def list_historical_plan_summaries(self) -> list[HistoricalPlanSummary]:
+        """Return persisted conversation-backed plan summaries from the OLTP SQLite DB."""
         ...
 
     def ensure_default_evaluation_prompt(self) -> EvaluationPromptRecord:

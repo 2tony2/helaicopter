@@ -113,14 +113,22 @@ export default function MyPage() {
 
 ### Feature component organization
 
-Keep components in their domain folder:
+The codebase is migrating to an explicit layer structure. New code should follow these conventions:
 
-- `components/analytics/` — dashboard charts, KPI cards
-- `components/conversation/` — message display, DAG views
-- `components/orchestration/` — OATS and Prefect panels
-- `components/databases/` — database status and inspection
-- `components/plans/` — plan viewing
-- `components/evaluations/` — prompt management
+- `src/features/<domain>/components/` — feature-owned components (e.g., `src/features/plans/components/`)
+- `src/shared/ui/` — reusable UI primitives (shadcn-style components)
+- `src/shared/layout/` — shared layout pieces (sidebar, headers)
+- `src/views/<domain>/` — page-level composition components
+
+Legacy `src/components/` paths remain as compatibility shims and continue to work, but new additions should go into the layer structure above.
+
+Current domain locations:
+- `src/components/analytics/` — dashboard charts, KPI cards (not yet migrated)
+- `src/components/conversation/` — message display, DAG views (not yet migrated)
+- `src/components/orchestration/` — OATS and Prefect panels (not yet migrated)
+- `src/components/databases/` — database status and inspection (not yet migrated)
+- `src/features/plans/components/` — plan viewing (migrated)
+- `src/components/evaluations/` — prompt management (not yet migrated)
 
 ## Type system
 

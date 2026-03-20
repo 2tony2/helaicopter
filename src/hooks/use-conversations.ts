@@ -53,20 +53,14 @@ const swrOptions = {
   revalidateOnReconnect: false,
 };
 
-const conversationSwrOptions = {
-  ...swrOptions,
-  refreshInterval: 3_000,
-};
+const conversationSwrOptions = swrOptions;
 
 const analyticsSwrOptions = {
   ...swrOptions,
   refreshInterval: 15_000,
 };
 
-const projectsSwrOptions = {
-  ...swrOptions,
-  refreshInterval: 15_000,
-};
+const projectsSwrOptions = swrOptions;
 
 export function useProjects() {
   return useSWR<ProjectInfo[]>(

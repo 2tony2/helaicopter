@@ -46,17 +46,23 @@ class OrchestrationTaskResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationFeatureBranchResponse(CamelCaseHttpResponseModel):
+    """Feature branch associated with an orchestration run."""
+
     name: str
     base_branch: str | None = None
 
 
 class OrchestrationReviewSummaryResponse(CamelCaseHttpResponseModel):
+    """Aggregated pull request review state for an orchestration task."""
+
     blocking_state: str
     approvals: int = 0
     changes_requested: int = 0
 
 
 class OrchestrationTaskPullRequestResponse(CamelCaseHttpResponseModel):
+    """Pull request snapshot for an individual orchestration task branch."""
+
     number: int | None = None
     url: str | None = None
     state: str
@@ -72,6 +78,8 @@ class OrchestrationTaskPullRequestResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationFinalPullRequestResponse(CamelCaseHttpResponseModel):
+    """Final integration pull request snapshot for a completed orchestration run."""
+
     number: int | None = None
     url: str | None = None
     state: str
@@ -85,6 +93,8 @@ class OrchestrationFinalPullRequestResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationOperationHistoryResponse(CamelCaseHttpResponseModel):
+    """A single recorded operation event in an orchestration run or task history."""
+
     kind: str
     status: str
     session_id: SessionId | None = None
@@ -94,6 +104,8 @@ class OrchestrationOperationHistoryResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationDagNodeResponse(CamelCaseHttpResponseModel):
+    """A single node (planner or task) in the orchestration run DAG."""
+
     id: str
     kind: Literal["planner", "task"]
     label: str
@@ -113,6 +125,8 @@ class OrchestrationDagNodeResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationDagEdgeResponse(CamelCaseHttpResponseModel):
+    """A directed dependency edge between two nodes in the orchestration DAG."""
+
     id: str
     source: str
     target: str
@@ -120,6 +134,8 @@ class OrchestrationDagEdgeResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationDagStatsResponse(CamelCaseHttpResponseModel):
+    """Aggregate structural and status statistics for an orchestration run DAG."""
+
     total_nodes: int = 0
     total_edges: int = 0
     max_depth: int = 0
@@ -134,6 +150,8 @@ class OrchestrationDagStatsResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationDagResponse(CamelCaseHttpResponseModel):
+    """Complete DAG representation for an orchestration run, including nodes, edges, and stats."""
+
     nodes: list[OrchestrationDagNodeResponse] = []
     edges: list[OrchestrationDagEdgeResponse] = []
     stats: OrchestrationDagStatsResponse
@@ -172,6 +190,8 @@ class OrchestrationRunResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationRunFactResponse(CamelCaseHttpResponseModel):
+    """Canonical fact record summarising the outcome of a single orchestration run."""
+
     run_id: RunId
     run_title: str
     source_kind: Literal["runtime_snapshot", "terminal_record"]
@@ -192,6 +212,8 @@ class OrchestrationRunFactResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationTaskAttemptFactResponse(CamelCaseHttpResponseModel):
+    """Canonical fact record for a single task attempt within an orchestration run."""
+
     run_id: RunId
     task_id: TaskId
     task_title: str
@@ -205,6 +227,8 @@ class OrchestrationTaskAttemptFactResponse(CamelCaseHttpResponseModel):
 
 
 class OrchestrationFactsResponse(CamelCaseHttpResponseModel):
+    """Canonical routing facts for all runs and task attempts across a project."""
+
     canonical_rules: list[str] = []
     run_facts: list[OrchestrationRunFactResponse] = []
     task_attempt_facts: list[OrchestrationTaskAttemptFactResponse] = []

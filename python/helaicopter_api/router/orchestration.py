@@ -22,7 +22,12 @@ orchestration_router = APIRouter(prefix="/orchestration", tags=["orchestration"]
 async def orchestration_oats_index(
     services: BackendServices = Depends(get_services),
 ) -> list[OrchestrationRunResponse]:
-    """View over repo-local OATS runtime and record files."""
+    """List all OATS run records found in the local runtime directory.
+
+    Returns:
+        A list of OATS run records parsed from repo-local runtime and record
+        files, each describing the run ID, status, and associated task attempts.
+    """
     return list_oats_runs(services)
 
 
@@ -35,7 +40,12 @@ async def orchestration_oats_index(
 async def orchestration_oats_facts(
     services: BackendServices = Depends(get_services),
 ) -> OrchestrationFactsResponse:
-    """Canonical run and task-attempt facts derived from repo-local OATS artifacts."""
+    """Return canonical analytics facts derived from repo-local OATS artifacts.
+
+    Returns:
+        Aggregated orchestration facts including run counts, task-attempt
+        outcomes, and timing metrics computed from all local OATS records.
+    """
     return get_oats_facts(services)
 
 
@@ -49,6 +59,14 @@ async def orchestration_oats_refresh(
     run_id: str,
     services: BackendServices = Depends(get_services),
 ) -> OrchestrationRunResponse:
+    """Refresh the stacked PR state for a persisted OATS run.
+
+    Args:
+        run_id: Unique identifier of the OATS run to refresh.
+
+    Returns:
+        The updated OATS run record reflecting the latest stacked PR state.
+    """
     return refresh_oats_run(services, run_id)
 
 
@@ -62,4 +80,12 @@ async def orchestration_oats_resume(
     run_id: str,
     services: BackendServices = Depends(get_services),
 ) -> OrchestrationRunResponse:
+    """Resume a stalled or paused OATS run, re-triggering stacked PR progression.
+
+    Args:
+        run_id: Unique identifier of the OATS run to resume.
+
+    Returns:
+        The updated OATS run record after the resume action has been dispatched.
+    """
     return resume_oats_run(services, run_id)

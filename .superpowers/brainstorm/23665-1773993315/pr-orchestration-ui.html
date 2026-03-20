@@ -1,0 +1,86 @@
+<h2>Design Section 3: Backend Surface and UI</h2>
+<p class="subtitle">Keep the existing orchestration hub, but make branch and PR lifecycle visible both inline on task nodes and in a dedicated stacked-PR inspector.</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Extended orchestration run detail</div>
+    <div class="mockup-body">
+      <div style="display:grid; gap:14px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <span class="mock-button">feature: oats/overnight/customer-onboarding</span>
+          <span class="mock-button">final PR: waiting for review</span>
+          <span class="mock-button">3 task PRs</span>
+          <span class="mock-button">1 conflict resolved</span>
+        </div>
+
+        <div class="split">
+          <div class="mockup">
+            <div class="mockup-header">Execution DAG</div>
+            <div class="mockup-body">
+              <div style="display:grid; gap:10px;">
+                <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">
+                  Task A<br>
+                  <small>branch: oats/task/task-a</small><br>
+                  <small>PR: merged into feature</small>
+                </div>
+                <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">
+                  Task B<br>
+                  <small>branch: oats/task/task-b</small><br>
+                  <small>PR: checks green, merge queued</small>
+                </div>
+                <div style="padding:10px; border:1px dashed rgba(0,0,0,.18); border-radius:10px;">
+                  Each task node gets lightweight git / PR badges and actions history
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mockup">
+            <div class="mockup-header">Stacked PR inspector</div>
+            <div class="mockup-body">
+              <div style="display:grid; gap:8px;">
+                <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">
+                  Feature PR → <code>main</code><br><small>manual final gate</small>
+                </div>
+                <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">
+                  Task B PR → Task A branch<br><small>merge operator: codex</small>
+                </div>
+                <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">
+                  Task A PR → feature branch<br><small>merged</small>
+                </div>
+                <div style="padding:10px; border:1px dashed rgba(0,0,0,.18); border-radius:10px;">
+                  Selected item shows operation log, checks, conflict sessions, worktree path, and GitHub snapshot
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Backend contract changes</div>
+    <div class="mockup-body">
+      <ul>
+        <li>Extend <code>/orchestration/oats</code> responses with <strong>featureBranch</strong>, <strong>finalPr</strong>, <strong>taskBranches</strong>, <strong>taskPrs</strong>, and <strong>operationHistory</strong>.</li>
+        <li>Add normalized summary fields for node badges: PR state, merge state, check rollup, conflict count.</li>
+        <li>Keep the existing DAG response, but add branch-parent and PR-parent relationships so the UI can render the stack without re-deriving it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">UI behavior</div>
+    <div class="mockup-body">
+      <ul>
+        <li>Run list cards show feature-branch health, task PR counts, and final-review status.</li>
+        <li>DAG nodes show compact git / PR badges directly on the node.</li>
+        <li>Detail pane adds tabs or sections for <strong>Execution</strong>, <strong>PR Stack</strong>, and <strong>Session Links</strong>.</li>
+        <li>Selecting a task highlights both its execution node and its stacked PR record.</li>
+      </ul>
+    </div>
+  </div>
+</div>
