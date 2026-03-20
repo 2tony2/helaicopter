@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from helaicopter_api.application import plans as plans_module
 from helaicopter_api.bootstrap.services import build_services
+from helaicopter_api.domain import plans as domain_plans
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -207,14 +207,14 @@ class TestPlansEndpoints:
         application = create_app()
         application.dependency_overrides[get_services] = lambda: services
         summarize_calls = 0
-        original = plans_module._summarize_plan_content
+        original = domain_plans.summarize_plan_content
 
-        def count_calls(content: str, fallback_slug: str) -> dict[str, str]:
+        def count_calls(content: str, fallback_slug: str) -> domain_plans.PlanContentSummary:
             nonlocal summarize_calls
             summarize_calls += 1
             return original(content, fallback_slug)
 
-        monkeypatch.setattr(plans_module, "_summarize_plan_content", count_calls)
+        monkeypatch.setattr(domain_plans, "summarize_plan_content", count_calls)
 
         try:
             with TestClient(application) as client:
