@@ -1,0 +1,69 @@
+---
+title: Repo Layer Rules
+description: Phase-1 frontend and backend layer boundaries for Helaicopter.
+---
+
+## Purpose
+
+This note records the repo-layer rules introduced in phase 1 so the frontend and backend keep a predictable dependency direction as the codebase moves out of legacy catch-all folders.
+
+## Frontend Layers
+
+The current frontend layers are:
+
+- `src/app/*` for Next.js route entrypoints, layouts, params, and other framework-owned files
+- `src/views/*` for page-level composition
+- `src/features/*` for user-facing behavior and feature-owned hooks/components
+- `src/shared/*` for reusable UI primitives, shared layout pieces, client helpers, types, and utilities
+
+Allowed import direction flows inward:
+
+```text
+src/app -> src/views -> src/features -> src/shared
+```
+
+Practical rules for phase 1:
+
+- `src/app/*` files stay thin. They should bind route params, choose the screen entrypoint, and avoid accumulating business logic, data shaping, or large UI trees.
+- `src/views/*` may compose `src/features/*` and `src/shared/*`, but they do not import back up from `src/app/*`.
+- `src/features/*` may depend on `src/shared/*`, but they do not import from `src/views/*` or `src/app/*`.
+- `src/shared/*` stays at the bottom of the frontend stack and does not import from `src/features/*`, `src/views/*`, or `src/app/*`.
+
+Phase 1 keeps the existing shared/frontend re-export shims temporary so imports can migrate safely. Legacy files under folders such as `src/components/*` and `src/hooks/*` can continue to re-export from the new layer locations for now, but those shims are transitional and should be removed as call sites are updated.
+
+- New or touched code should import from the new layer paths, not from the temporary compatibility shims.
+
+## Backend Layers
+
+The backend layers follow the same dependency-direction principle:
+
+- `router/*` handles HTTP transport concerns
+- `application/*` coordinates use cases and workflows
+- `domain/*` owns business concepts and rules
+- `contracts/*` defines request, response, and integration DTOs
+- `ports/*` defines infrastructure interfaces owned by inner layers
+- `adapters/*` implements those ports for concrete systems
+
+Allowed import direction:
+
+```text
+router -> application -> domain
+application -> ports
+application -> contracts
+adapters -> ports
+adapters -> domain
+adapters -> contracts
+```
+
+Practical backend rules:
+
+- `router/*` files stay transport-only. They parse requests, call application services, and shape HTTP responses without absorbing workflow or persistence logic.
+- `application/*` orchestrates use cases, cross-port work, and contract mapping.
+- `domain/*` stays free of HTTP, framework, SQL, and filesystem details.
+- `contracts/*` hold transport and integration shapes, not business rules.
+- `ports/*` define the interfaces that inner layers rely on.
+- `adapters/*` translate between external systems and the inner `ports`, `domain`, and `contracts` layers.
+
+## Enforcement
+
+Phase 1 enforces the frontend dependency direction with ESLint `no-restricted-imports` guardrails for `src/views/*`, `src/features/*`, and `src/shared/*`. Backend enforcement remains primarily architectural and test-based in this phase, with the same dependency rules documented here for future guardrails.

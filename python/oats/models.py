@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from helaicopter_domain.ids import RunId, SessionId, TaskId
 from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
+from oats.stacked_prs import BranchStrategy
 
 
 class RepoSettings(BaseModel):
@@ -153,7 +154,10 @@ class PlannedTask(BaseModel):
     acceptance_criteria: list[str] = []
     validation_commands: list[str] = []
     branch_name: str
+    parent_branch: str = ""
     pr_base: str
+    branch_strategy: BranchStrategy = "feature_base"
+    initial_task_status: TaskRuntimeStatus = "pending"
 
 
 class ExecutionPlan(BaseModel):
@@ -168,6 +172,67 @@ class ExecutionPlan(BaseModel):
     require_manual_final_review: bool
     final_pr_title: str
     tasks: list[PlannedTask]
+
+
+class FeatureBranchSnapshot(BaseModel):
+    name: str
+    base_branch: str | None = None
+
+
+class ReviewSummary(BaseModel):
+    blocking_state: Literal["clear", "changes_requested", "commented", "unknown"] = "clear"
+    approvals: int = 0
+    changes_requested: int = 0
+
+
+class TaskPullRequestSnapshot(BaseModel):
+    number: int | None = None
+    url: str | None = None
+    state: Literal["not_created", "open", "merged", "closed", "blocked"] = "not_created"
+    merge_gate_status: Literal[
+        "not_ready",
+        "awaiting_checks",
+        "awaiting_review_clearance",
+        "merge_ready",
+        "merged",
+    ] = "not_ready"
+    base_branch: str | None = None
+    head_branch: str | None = None
+    mergeability: str | None = None
+    checks_summary: dict[str, object] = Field(default_factory=dict)
+    review_summary: ReviewSummary = Field(default_factory=ReviewSummary)
+    snapshot_source: str | None = None
+    last_refreshed_at: datetime | None = None
+    is_stale: bool = False
+
+
+class FinalPullRequestSnapshot(BaseModel):
+    number: int | None = None
+    url: str | None = None
+    state: Literal["not_created", "open", "ready_for_review", "merged", "closed"] = "not_created"
+    review_gate_status: Literal["not_created", "awaiting_human", "merged"] = "not_created"
+    base_branch: str | None = None
+    head_branch: str | None = None
+    checks_summary: dict[str, object] = Field(default_factory=dict)
+    snapshot_source: str | None = None
+    last_refreshed_at: datetime | None = None
+    is_stale: bool = False
+
+
+class OperationHistoryEntry(BaseModel):
+    kind: Literal[
+        "pr_create",
+        "pr_merge",
+        "pr_retarget",
+        "conflict_resolution",
+        "refresh",
+        "resume",
+    ]
+    status: Literal["started", "succeeded", "failed"]
+    session_id: SessionId | None = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime | None = None
+    details: dict[str, object] = Field(default_factory=dict)
 
 
 class PullRequestPlan(BaseModel):
@@ -274,12 +339,21 @@ class TaskRuntimeRecord(BaseModel):
     title: str
     depends_on: list[str] = []
     branch_name: str
+    parent_branch: str = ""
     pr_base: str
     agent: ProviderName
     role: Literal["executor"] = "executor"
     status: TaskRuntimeStatus = "pending"
     attempts: int = 0
+    task_pr: TaskPullRequestSnapshot = Field(default_factory=TaskPullRequestSnapshot)
+    operation_history: list[OperationHistoryEntry] = Field(default_factory=list)
     invocation: InvocationRuntimeRecord | None = None
+
+    @model_validator(mode="after")
+    def populate_parent_branch(self) -> "TaskRuntimeRecord":
+        if not self.parent_branch:
+            self.parent_branch = self.pr_base
+        return self
 
 
 class RunPlanSnapshot(BaseModel):
@@ -312,7 +386,7 @@ class RuntimeProgressEvent(BaseModel):
 
 
 class RunRuntimeState(BaseModel):
-    contract_version: Literal["oats-runtime-v1"] = "oats-runtime-v1"
+    contract_version: Literal["oats-runtime-v1", "oats-runtime-v2"] = "oats-runtime-v2"
     run_id: RunId
     run_title: str
     repo_root: Path
@@ -323,7 +397,15 @@ class RunRuntimeState(BaseModel):
     task_pr_target: str
     final_pr_target: str
     runtime_dir: Path
+    feature_branch: FeatureBranchSnapshot | None = None
     status: RunRuntimeStatus = "pending"
+    stack_status: Literal[
+        "building",
+        "awaiting_task_merge",
+        "ready_for_final_review",
+        "completed",
+        "resolving_conflict",
+    ] = "building"
     active_task_id: TaskId | None = None
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -331,4 +413,16 @@ class RunRuntimeState(BaseModel):
     finished_at: datetime | None = None
     planner: InvocationRuntimeRecord | None = None
     tasks: list[TaskRuntimeRecord] = []
+    final_pr: FinalPullRequestSnapshot = Field(default_factory=FinalPullRequestSnapshot)
+    active_operation: OperationHistoryEntry | None = None
+    operation_history: list[OperationHistoryEntry] = Field(default_factory=list)
     final_record_path: Path | None = None
+
+    @model_validator(mode="after")
+    def populate_feature_branch(self) -> "RunRuntimeState":
+        if self.feature_branch is None:
+            self.feature_branch = FeatureBranchSnapshot(
+                name=self.integration_branch,
+                base_branch=self.final_pr_target,
+            )
+        return self

@@ -2,6 +2,7 @@ import type {
   ConversationEvaluation,
   DatabaseStatus,
   EvaluationPrompt,
+  OvernightOatsRunRecord,
   SubscriptionSettings,
 } from "@/lib/types";
 import { databaseStatusSchema } from "./schemas/database.ts";
@@ -21,6 +22,7 @@ import {
   normalizeConversationEvaluation,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompt,
+  normalizeOvernightOatsRun,
   normalizeSubscriptionSettings,
 } from "./normalize.ts";
 
@@ -159,4 +161,12 @@ export function saveSubscriptionSettings(
     subscriptionSettingsSchema,
     normalizeSubscriptionSettings
   );
+}
+
+export function refreshOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
+  return post(endpoints.orchestrationOatsRefresh(runId), undefined, normalizeOvernightOatsRun);
+}
+
+export function resumeOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
+  return post(endpoints.orchestrationOatsResume(runId), undefined, normalizeOvernightOatsRun);
 }

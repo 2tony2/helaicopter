@@ -87,6 +87,20 @@ def execute_compiled_task_attempt(
     attempt: int | None = None,
 ) -> CompiledTaskResult:
     resolved_attempt = attempt if attempt is not None else _resolve_attempt()
+    if _task_is_merge_gated(task_node) and not _upstream_prs_merged(task_node, artifact_store):
+        artifact_store.write_task_checkpoint(
+            task_node,
+            status="blocked",
+            attempt=resolved_attempt,
+            upstream_task_ids=list(upstream_results),
+            merge_gate_status="not_ready",
+        )
+        return CompiledTaskResult(
+            task_id=task_node.task_id,
+            attempt=resolved_attempt,
+            status="blocked",
+            upstream_task_ids=sorted(upstream_results),
+        )
     prepared_worktree = prepare_task_worktree(payload, task_node)
     live_state = _LiveCheckpointState()
     artifact_store.write_task_checkpoint(
@@ -210,11 +224,18 @@ def _oats_executor(
         acceptance_criteria=list(task_node.acceptance_criteria),
         validation_commands=list(task_node.validation_commands),
         branch_name=(task_node.repo_context.task_branch if task_node.repo_context else task_node.task_id),
-        pr_base=(
-            task_node.repo_context.integration_branch
+        parent_branch=(
+            task_node.repo_context.parent_branch
             if task_node.repo_context
             else payload.repo_base_branch
         ),
+        pr_base=(
+            task_node.repo_context.pr_base
+            if task_node.repo_context
+            else payload.repo_base_branch
+        ),
+        branch_strategy=task_node.branch_strategy,
+        initial_task_status=task_node.initial_task_status,
     )
     prompt = build_task_prompt(
         planned_task,
@@ -283,6 +304,27 @@ def _resolve_attempt() -> int:
     if isinstance(value, int) and value >= 1:
         return value
     return 1
+
+
+def _task_is_merge_gated(task_node: PrefectTaskNode) -> bool:
+    return (
+        task_node.initial_task_status == "blocked"
+        or task_node.branch_strategy == "after_dependency_merges"
+    )
+
+
+def _upstream_prs_merged(
+    task_node: PrefectTaskNode,
+    artifact_store: LocalArtifactCheckpointStore,
+) -> bool:
+    for dependency in task_node.depends_on:
+        checkpoint = artifact_store.read_task_checkpoint(dependency)
+        if checkpoint is None:
+            return False
+        task_pr = checkpoint.task_pr or {}
+        if task_pr.get("state") != "merged":
+            return False
+    return True
 
 
 def _runtime_value(getter: Callable[[], Any] | Any) -> Any:

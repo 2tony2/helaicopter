@@ -8,6 +8,7 @@ import tempfile
 
 from pydantic import BaseModel
 
+from oats.models import TaskPullRequestSnapshot
 from oats.prefect.models import PrefectFlowPayload, PrefectTaskNode
 
 
@@ -19,6 +20,7 @@ class FlowRunArtifactPaths(BaseModel):
 
 
 class LocalFlowRunMetadata(BaseModel):
+    run_id: str | None = None
     flow_run_id: str
     flow_run_name: str | None = None
     run_title: str
@@ -32,10 +34,14 @@ class LocalFlowRunMetadata(BaseModel):
 
 
 class LocalTaskCheckpoint(BaseModel):
+    run_id: str | None = None
     flow_run_id: str
     flow_run_name: str | None = None
     task_id: str
     task_title: str
+    parent_branch: str | None = None
+    merge_gate_status: str | None = None
+    task_pr: dict[str, object] | None = None
     status: str
     attempt: int
     upstream_task_ids: list[str]
@@ -77,6 +83,7 @@ class LocalArtifactCheckpointStore:
         self.paths.tasks_dir.mkdir(parents=True, exist_ok=True)
         self.paths.attempts_dir.mkdir(parents=True, exist_ok=True)
         metadata = LocalFlowRunMetadata(
+            run_id=self._payload.run_id,
             flow_run_id=self._flow_run_id,
             flow_run_name=self._flow_run_name,
             run_title=self._payload.run_title,
@@ -114,12 +121,19 @@ class LocalArtifactCheckpointStore:
         last_progress_event_at: str | None = None,
         result: dict[str, object] | None = None,
         error: str | None = None,
+        merge_gate_status: str | None = None,
+        task_pr: TaskPullRequestSnapshot | dict[str, object] | None = None,
     ) -> Path:
+        task_pr_payload = _task_pr_payload(task_node, status=status, task_pr=task_pr)
         checkpoint = LocalTaskCheckpoint(
+            run_id=self._payload.run_id,
             flow_run_id=self._flow_run_id,
             flow_run_name=self._flow_run_name,
             task_id=task_node.task_id,
             task_title=task_node.title,
+            parent_branch=task_node.repo_context.parent_branch if task_node.repo_context else None,
+            merge_gate_status=merge_gate_status or str(task_pr_payload.get("merge_gate_status", "not_ready")),
+            task_pr=task_pr_payload,
             status=status,
             attempt=attempt,
             upstream_task_ids=sorted(upstream_task_ids),
@@ -142,6 +156,12 @@ class LocalArtifactCheckpointStore:
         _atomic_write_json(current_checkpoint, payload)
         self._touch_metadata()
         return current_checkpoint
+
+    def read_task_checkpoint(self, task_id: str) -> LocalTaskCheckpoint | None:
+        path = self.paths.tasks_dir / f"{task_id}.json"
+        if not path.exists():
+            return None
+        return LocalTaskCheckpoint.model_validate_json(path.read_text(encoding="utf-8"))
 
     def _touch_metadata(self) -> None:
         metadata = LocalFlowRunMetadata.model_validate_json(
@@ -168,3 +188,24 @@ def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _task_pr_payload(
+    task_node: PrefectTaskNode,
+    *,
+    status: str,
+    task_pr: TaskPullRequestSnapshot | dict[str, object] | None,
+) -> dict[str, object]:
+    if isinstance(task_pr, TaskPullRequestSnapshot):
+        return task_pr.model_dump(mode="json")
+    if isinstance(task_pr, dict):
+        return task_pr
+    state = "not_created" if status == "blocked" else "open"
+    merge_gate_status = "not_ready" if state != "merged" else "merged"
+    return TaskPullRequestSnapshot(
+        state=state,
+        merge_gate_status=merge_gate_status,
+        base_branch=(task_node.repo_context.pr_base if task_node.repo_context else None),
+        head_branch=(task_node.repo_context.task_branch if task_node.repo_context else None),
+        snapshot_source="prefect_artifact",
+    ).model_dump(mode="json")

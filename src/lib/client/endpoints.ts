@@ -166,6 +166,14 @@ export function orchestrationOats() {
   return api("/orchestration/oats");
 }
 
+export function orchestrationOatsRefresh(runId: string) {
+  return api(`/orchestration/oats/${enc(runId)}/refresh`);
+}
+
+export function orchestrationOatsResume(runId: string) {
+  return api(`/orchestration/oats/${enc(runId)}/resume`);
+}
+
 export function orchestrationPrefectDeployments() {
   return api("/orchestration/prefect/deployments");
 }

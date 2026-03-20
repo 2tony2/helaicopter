@@ -288,6 +288,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /conversations/{project_path}/{session_id}/subagents/{agent_id}:
+    get:
+      tags:
+      - conversations
+      summary: Conversations Subagent Detail
+      description: Return one subagent transcript beneath its parent conversation
+        route.
+      operationId: conversations_subagent_detail_conversations__project_path___session_id__subagents__agent_id__get
+      parameters:
+      - name: project_path
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Path
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /databases/status:
     get:
       tags:
@@ -512,6 +552,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /gateway/direction:
+    get:
+      tags:
+      - gateway
+      summary: Describe the primary backend gateway direction across platform surfaces.
+      operationId: gateway_direction_gateway_direction_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayDirectionResponse'
   /history:
     get:
       tags:
@@ -564,6 +617,73 @@ paths:
                   $ref: '#/components/schemas/OrchestrationRunResponse'
                 type: array
                 title: Response Orchestration Oats Index Orchestration Oats Get
+  /orchestration/oats/facts:
+    get:
+      tags:
+      - orchestration
+      summary: List canonical OATS orchestration analytics facts.
+      description: Canonical run and task-attempt facts derived from repo-local OATS
+        artifacts.
+      operationId: orchestration_oats_facts_orchestration_oats_facts_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationFactsResponse'
+  /orchestration/oats/{run_id}/refresh:
+    post:
+      tags:
+      - orchestration
+      summary: Refresh stacked PR state for a persisted OATS run.
+      operationId: orchestration_oats_refresh_orchestration_oats__run_id__refresh_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationRunResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /orchestration/oats/{run_id}/resume:
+    post:
+      tags:
+      - orchestration
+      summary: Resume stacked PR state for a persisted OATS run.
+      operationId: orchestration_oats_resume_orchestration_oats__run_id__resume_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationRunResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /orchestration/prefect/deployments:
     get:
       tags:
@@ -1279,6 +1399,8 @@ components:
         message_id:
           type: string
           title: Message Id
+          description: Source/provider message identifier captured in context analytics;
+            not the persisted conversation message row ID.
         index:
           type: integer
           title: Index
@@ -2356,8 +2478,10 @@ components:
         key:
           type: string
           enum:
+          - frontend_cache
           - sqlite
           - duckdb
+          - prefect_postgres
           title: Key
         label:
           type: string
@@ -2368,8 +2492,10 @@ components:
         role:
           type: string
           enum:
+          - cache
           - metadata
           - inspection
+          - orchestration
           title: Role
         availability:
           type: string
@@ -2378,6 +2504,16 @@ components:
           - missing
           - unreachable
           title: Availability
+        health:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Health
+        operationalStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Operationalstatus
         note:
           anyOf:
           - type: string
@@ -2412,6 +2548,27 @@ components:
           type: integer
           title: Tablecount
           default: 0
+        sizeBytes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sizebytes
+        sizeDisplay:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sizedisplay
+        inventorySummary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Inventorysummary
+        load:
+          items:
+            $ref: '#/components/schemas/DatabaseLoadMetricResponse'
+          type: array
+          title: Load
+          default: []
         tables:
           items:
             $ref: '#/components/schemas/DatabaseTableSchemaResponse'
@@ -2428,14 +2585,20 @@ components:
       title: DatabaseArtifactStatusResponse
     DatabaseArtifactsResponse:
       properties:
+        frontendCache:
+          $ref: '#/components/schemas/DatabaseArtifactStatusResponse'
         sqlite:
           $ref: '#/components/schemas/DatabaseArtifactStatusResponse'
         duckdb:
           $ref: '#/components/schemas/DatabaseArtifactStatusResponse'
+        prefectPostgres:
+          $ref: '#/components/schemas/DatabaseArtifactStatusResponse'
       type: object
       required:
+      - frontendCache
       - sqlite
       - duckdb
+      - prefectPostgres
       title: DatabaseArtifactsResponse
     DatabaseColumnSchemaResponse:
       properties:
@@ -2468,6 +2631,26 @@ components:
       - name
       - type
       title: DatabaseColumnSchemaResponse
+    DatabaseLoadMetricResponse:
+      properties:
+        label:
+          type: string
+          title: Label
+        value:
+          anyOf:
+          - type: number
+          - type: integer
+          - type: 'null'
+          title: Value
+        displayValue:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Displayvalue
+      type: object
+      required:
+      - label
+      title: DatabaseLoadMetricResponse
     DatabaseRefreshRequest:
       properties:
         force:
@@ -2490,11 +2673,15 @@ components:
       properties:
         analyticsReadBackend:
           type: string
-          const: legacy
+          enum:
+          - legacy
+          - duckdb
           title: Analyticsreadbackend
         conversationSummaryReadBackend:
           type: string
-          const: legacy
+          enum:
+          - legacy
+          - duckdb
           title: Conversationsummaryreadbackend
       type: object
       required:
@@ -2595,12 +2782,46 @@ components:
           type: integer
           title: Rowcount
           default: 0
+        sizeBytes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sizebytes
+        sizeDisplay:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sizedisplay
         columns:
           items:
             $ref: '#/components/schemas/DatabaseColumnSchemaResponse'
           type: array
           title: Columns
           default: []
+        servingClass:
+          type: string
+          title: Servingclass
+          default: not-served
+        integrationType:
+          type: string
+          title: Integrationtype
+          default: unclassified
+        fastapiRoutes:
+          items:
+            type: string
+          type: array
+          title: Fastapiroutes
+          default: []
+        sqlalchemyModel:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sqlalchemymodel
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
       type: object
       required:
       - name
@@ -2680,6 +2901,63 @@ components:
       - promptText
       title: EvaluationPromptUpdateRequest
       description: Payload accepted by the prompt update endpoint.
+    GatewayDirectionResponse:
+      properties:
+        gatewayDirection:
+          type: string
+          title: Gatewaydirection
+          default: fastapi-first
+        frontendCallsVia:
+          type: string
+          title: Frontendcallsvia
+          default: fastapi
+        backendEntrypoint:
+          type: string
+          title: Backendentrypoint
+          default: fastapi
+        surfaces:
+          items:
+            $ref: '#/components/schemas/GatewaySurfaceResponse'
+          type: array
+          title: Surfaces
+          default: []
+      type: object
+      title: GatewayDirectionResponse
+    GatewaySurfaceResponse:
+      properties:
+        key:
+          type: string
+          title: Key
+        owner:
+          type: string
+          title: Owner
+        servingClass:
+          type: string
+          title: Servingclass
+        integrationType:
+          type: string
+          title: Integrationtype
+        isPrimary:
+          type: boolean
+          title: Isprimary
+          default: false
+        pathPrefixes:
+          items:
+            type: string
+          type: array
+          title: Pathprefixes
+          default: []
+        note:
+          type: string
+          title: Note
+      type: object
+      required:
+      - key
+      - owner
+      - servingClass
+      - integrationType
+      - note
+      title: GatewaySurfaceResponse
     HTTPValidationError:
       properties:
         detail:
@@ -2913,6 +3191,94 @@ components:
           default: 0
       type: object
       title: OrchestrationDagStatsResponse
+    OrchestrationFactsResponse:
+      properties:
+        canonicalRules:
+          items:
+            type: string
+          type: array
+          title: Canonicalrules
+          default: []
+        runFacts:
+          items:
+            $ref: '#/components/schemas/OrchestrationRunFactResponse'
+          type: array
+          title: Runfacts
+          default: []
+        taskAttemptFacts:
+          items:
+            $ref: '#/components/schemas/OrchestrationTaskAttemptFactResponse'
+          type: array
+          title: Taskattemptfacts
+          default: []
+      type: object
+      title: OrchestrationFactsResponse
+    OrchestrationFeatureBranchResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        baseBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Basebranch
+      type: object
+      required:
+      - name
+      title: OrchestrationFeatureBranchResponse
+    OrchestrationFinalPullRequestResponse:
+      properties:
+        number:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Number
+        url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Url
+        state:
+          type: string
+          title: State
+        reviewGateStatus:
+          type: string
+          title: Reviewgatestatus
+        baseBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Basebranch
+        headBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Headbranch
+        checksSummary:
+          additionalProperties: true
+          type: object
+          title: Checkssummary
+          default: {}
+        snapshotSource:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshotsource
+        lastRefreshedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lastrefreshedat
+        isStale:
+          type: boolean
+          title: Isstale
+          default: false
+      type: object
+      required:
+      - state
+      - reviewGateStatus
+      title: OrchestrationFinalPullRequestResponse
     OrchestrationInvocationResponse:
       properties:
         agent:
@@ -2964,6 +3330,11 @@ components:
         startedAt:
           type: string
           title: Startedat
+        lastHeartbeatAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lastheartbeatat
         finishedAt:
           anyOf:
           - type: string
@@ -2990,6 +3361,141 @@ components:
       - startedAt
       title: OrchestrationInvocationResponse
       description: Agent invocation snapshot.
+    OrchestrationOperationHistoryResponse:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        status:
+          type: string
+          title: Status
+        sessionId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sessionid
+        startedAt:
+          type: string
+          title: Startedat
+        finishedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Finishedat
+        details:
+          additionalProperties: true
+          type: object
+          title: Details
+          default: {}
+      type: object
+      required:
+      - kind
+      - status
+      - startedAt
+      title: OrchestrationOperationHistoryResponse
+    OrchestrationReviewSummaryResponse:
+      properties:
+        blockingState:
+          type: string
+          title: Blockingstate
+        approvals:
+          type: integer
+          title: Approvals
+          default: 0
+        changesRequested:
+          type: integer
+          title: Changesrequested
+          default: 0
+      type: object
+      required:
+      - blockingState
+      title: OrchestrationReviewSummaryResponse
+    OrchestrationRunFactResponse:
+      properties:
+        runId:
+          type: string
+          title: Runid
+        runTitle:
+          type: string
+          title: Runtitle
+        sourceKind:
+          type: string
+          enum:
+          - runtime_snapshot
+          - terminal_record
+          title: Sourcekind
+        canonicalReason:
+          type: string
+          title: Canonicalreason
+        status:
+          type: string
+          enum:
+          - pending
+          - planning
+          - running
+          - completed
+          - failed
+          - timed_out
+          title: Status
+        taskCount:
+          type: integer
+          title: Taskcount
+          default: 0
+        attemptCount:
+          type: integer
+          title: Attemptcount
+          default: 0
+        completedTaskCount:
+          type: integer
+          title: Completedtaskcount
+          default: 0
+        failedTaskCount:
+          type: integer
+          title: Failedtaskcount
+          default: 0
+        pendingTaskCount:
+          type: integer
+          title: Pendingtaskcount
+          default: 0
+        runningTaskCount:
+          type: integer
+          title: Runningtaskcount
+          default: 0
+        timedOutTaskCount:
+          type: integer
+          title: Timedouttaskcount
+          default: 0
+        activeTaskId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Activetaskid
+        isRunning:
+          type: boolean
+          title: Isrunning
+          default: false
+        isStale:
+          type: boolean
+          title: Isstale
+          default: false
+        runtimeStatePath:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Runtimestatepath
+        terminalRecordPath:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Terminalrecordpath
+      type: object
+      required:
+      - runId
+      - runTitle
+      - sourceKind
+      - canonicalReason
+      - status
+      title: OrchestrationRunFactResponse
     OrchestrationRunResponse:
       properties:
         source:
@@ -3037,6 +3543,15 @@ components:
           - failed
           - timed_out
           title: Status
+        stackStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stackstatus
+        featureBranch:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationFeatureBranchResponse'
+          - type: 'null'
         activeTaskId:
           anyOf:
           - type: string
@@ -3061,6 +3576,16 @@ components:
             $ref: '#/components/schemas/OrchestrationTaskResponse'
           type: array
           title: Tasks
+          default: []
+        finalPr:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationFinalPullRequestResponse'
+          - type: 'null'
+        operationHistory:
+          items:
+            $ref: '#/components/schemas/OrchestrationOperationHistoryResponse'
+          type: array
+          title: Operationhistory
           default: []
         createdAt:
           type: string
@@ -3100,6 +3625,129 @@ components:
       - dag
       title: OrchestrationRunResponse
       description: Full orchestration run record.
+    OrchestrationTaskAttemptFactResponse:
+      properties:
+        runId:
+          type: string
+          title: Runid
+        taskId:
+          type: string
+          title: Taskid
+        taskTitle:
+          type: string
+          title: Tasktitle
+        attemptNumber:
+          type: integer
+          title: Attemptnumber
+        sourceKind:
+          type: string
+          enum:
+          - runtime_snapshot
+          - terminal_record
+          title: Sourcekind
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - succeeded
+          - failed
+          - timed_out
+          - skipped
+          - blocked
+          title: Status
+        agent:
+          anyOf:
+          - type: string
+            enum:
+            - claude
+            - codex
+          - type: 'null'
+          title: Agent
+        sessionId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sessionid
+        exitCode:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Exitcode
+        timedOut:
+          type: boolean
+          title: Timedout
+          default: false
+      type: object
+      required:
+      - runId
+      - taskId
+      - taskTitle
+      - attemptNumber
+      - sourceKind
+      - status
+      title: OrchestrationTaskAttemptFactResponse
+    OrchestrationTaskPullRequestResponse:
+      properties:
+        number:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Number
+        url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Url
+        state:
+          type: string
+          title: State
+        mergeGateStatus:
+          type: string
+          title: Mergegatestatus
+        baseBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Basebranch
+        headBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Headbranch
+        mergeability:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mergeability
+        checksSummary:
+          additionalProperties: true
+          type: object
+          title: Checkssummary
+          default: {}
+        reviewSummary:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationReviewSummaryResponse'
+          - type: 'null'
+        snapshotSource:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshotsource
+        lastRefreshedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lastrefreshedat
+        isStale:
+          type: boolean
+          title: Isstale
+          default: false
+      type: object
+      required:
+      - state
+      - mergeGateStatus
+      title: OrchestrationTaskPullRequestResponse
     OrchestrationTaskResponse:
       properties:
         taskId:
@@ -3114,6 +3762,11 @@ components:
           type: array
           title: Dependson
           default: []
+        parentBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parentbranch
         status:
           type: string
           enum:
@@ -3129,6 +3782,16 @@ components:
           type: integer
           title: Attempts
           default: 0
+        taskPr:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationTaskPullRequestResponse'
+          - type: 'null'
+        operationHistory:
+          items:
+            $ref: '#/components/schemas/OrchestrationOperationHistoryResponse'
+          type: array
+          title: Operationhistory
+          default: []
         invocation:
           anyOf:
           - $ref: '#/components/schemas/OrchestrationInvocationResponse'
@@ -3325,6 +3988,40 @@ components:
       - deploymentId
       - deploymentName
       title: PrefectDeploymentResponse
+    PrefectFlowRunAnalyticsResponse:
+      properties:
+        runStatus:
+          type: string
+          title: Runstatus
+        taskCount:
+          type: integer
+          title: Taskcount
+          default: 0
+        completedTaskCount:
+          type: integer
+          title: Completedtaskcount
+          default: 0
+        runningTaskCount:
+          type: integer
+          title: Runningtaskcount
+          default: 0
+        failedTaskCount:
+          type: integer
+          title: Failedtaskcount
+          default: 0
+        taskAttemptCount:
+          type: integer
+          title: Taskattemptcount
+          default: 0
+        lastUpdatedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lastupdatedat
+      type: object
+      required:
+      - runStatus
+      title: PrefectFlowRunAnalyticsResponse
     PrefectFlowRunResponse:
       properties:
         flowRunId:
@@ -3388,6 +4085,10 @@ components:
         oatsMetadata:
           anyOf:
           - $ref: '#/components/schemas/PrefectOatsMetadataResponse'
+          - type: 'null'
+        analytics:
+          anyOf:
+          - $ref: '#/components/schemas/PrefectFlowRunAnalyticsResponse'
           - type: 'null'
       type: object
       required:
@@ -3664,6 +4365,9 @@ tags:
   description: Database refresh state and artifact inspection.
 - name: evaluations
   description: Evaluation prompt management and conversation review workflows.
+- name: gateway
+  description: Backend-owned API gateway direction across frontend, stores, cache,
+    and orchestration surfaces.
 - name: history
   description: Merged CLI history from Claude and Codex.
 - name: plans
@@ -3675,4 +4379,4 @@ tags:
 - name: tasks
   description: Task payloads associated with Claude sessions.
 - name: orchestration
-  description: OATS run orchestration.
+  description: Prefect-first orchestration plus legacy OATS compatibility surfaces.

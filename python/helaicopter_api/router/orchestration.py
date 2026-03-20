@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from helaicopter_api.application.oats_run_actions import refresh_oats_run, resume_oats_run
 from helaicopter_api.application.orchestration import get_oats_facts, list_oats_runs
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.schema.orchestration import OrchestrationFactsResponse, OrchestrationRunResponse
@@ -36,3 +37,29 @@ async def orchestration_oats_facts(
 ) -> OrchestrationFactsResponse:
     """Canonical run and task-attempt facts derived from repo-local OATS artifacts."""
     return get_oats_facts(services)
+
+
+@orchestration_router.post(
+    "/oats/{run_id}/refresh",
+    response_model=OrchestrationRunResponse,
+    response_model_by_alias=True,
+    summary="Refresh stacked PR state for a persisted OATS run.",
+)
+async def orchestration_oats_refresh(
+    run_id: str,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunResponse:
+    return refresh_oats_run(services, run_id)
+
+
+@orchestration_router.post(
+    "/oats/{run_id}/resume",
+    response_model=OrchestrationRunResponse,
+    response_model_by_alias=True,
+    summary="Resume stacked PR state for a persisted OATS run.",
+)
+async def orchestration_oats_resume(
+    run_id: str,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunResponse:
+    return resume_oats_run(services, run_id)

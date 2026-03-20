@@ -20,9 +20,14 @@ from helaicopter_api.schema.orchestration import (
     OrchestrationDagNodeResponse,
     OrchestrationDagResponse,
     OrchestrationDagStatsResponse,
+    OrchestrationFeatureBranchResponse,
+    OrchestrationFinalPullRequestResponse,
     OrchestrationInvocationResponse,
+    OrchestrationOperationHistoryResponse,
+    OrchestrationReviewSummaryResponse,
     OrchestrationRunFactResponse,
     OrchestrationRunResponse,
+    OrchestrationTaskPullRequestResponse,
     OrchestrationTaskAttemptFactResponse,
     OrchestrationTaskResponse,
 )
@@ -65,7 +70,25 @@ class _ShapedRun:
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationRunResponse]:
     """Return persisted OATS orchestration runs from the authoritative facts tables."""
-    return _list_persisted_oats_runs(services)
+    runs_by_id: dict[str, _ShapedRun] = {}
+
+    for stored in services.oats_run_store.list_run_records():
+        _merge_run(runs_by_id, _shape_run_record(stored))
+    for stored in services.oats_run_store.list_runtime_states():
+        _merge_run(runs_by_id, _shape_runtime_state(stored))
+    for response in _list_persisted_oats_runs(services):
+        _merge_run(
+            runs_by_id,
+            _ShapedRun(
+                response=response,
+                last_updated_at=_parse_datetime_value(response.last_updated_at) or datetime.now(UTC),
+            ),
+        )
+
+    return [
+        shaped.response
+        for shaped in sorted(runs_by_id.values(), key=lambda item: item.last_updated_at, reverse=True)
+    ]
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -277,11 +300,15 @@ def _shape_persisted_run(
         task_pr_target="",
         final_pr_target="",
         status=run_status,
+        stack_status=None,
+        feature_branch=None,
         active_task_id=active_task_id,
         heartbeat_at=_isoformat(latest_heartbeat_at),
         finished_at=_isoformat(finished_at),
         planner=None,
         tasks=tasks,
+        final_pr=None,
+        operation_history=[],
         created_at=_isoformat(created_at) or "",
         last_updated_at=_isoformat(last_updated_at) or "",
         is_running=run_status in ACTIVE_RUN_STATUSES and active_task_id is not None,
@@ -487,11 +514,15 @@ def _shape_runtime_state(stored: StoredOatsRuntimeState) -> _ShapedRun:
         task_pr_target=state.task_pr_target,
         final_pr_target=state.final_pr_target,
         status=status,
+        stack_status=state.stack_status,
+        feature_branch=_shape_feature_branch(state),
         active_task_id=active_task_id,
         heartbeat_at=heartbeat_at,
         finished_at=_isoformat(state.finished_at),
         planner=planner,
         tasks=tasks,
+        final_pr=_shape_final_pr(state),
+        operation_history=[_shape_operation_history(entry) for entry in state.operation_history],
         created_at=_isoformat(state.started_at) or heartbeat_at or "",
         last_updated_at=_isoformat(last_updated_at) or "",
         is_running=not is_stale and state.status in ACTIVE_RUN_STATUSES and state.finished_at is None,
@@ -528,11 +559,15 @@ def _shape_run_record(stored: StoredOatsRunRecord) -> _ShapedRun:
         task_pr_target=record.task_pr_target,
         final_pr_target=record.final_pr_target,
         status=status,
+        stack_status=None,
+        feature_branch=None,
         active_task_id=None,
         heartbeat_at=_isoformat(recorded_at),
         finished_at=_isoformat(recorded_at),
         planner=planner,
         tasks=tasks,
+        final_pr=None,
+        operation_history=[],
         created_at=_isoformat(recorded_at) or "",
         last_updated_at=_isoformat(recorded_at) or "",
         is_running=False,
@@ -566,8 +601,11 @@ def _shape_runtime_task(
         task_id=task.task_id,
         title=task.title,
         depends_on=list(task.depends_on),
+        parent_branch=task.parent_branch,
         status=status,
         attempts=task.attempts,
+        task_pr=_shape_task_pr(task),
+        operation_history=[_shape_operation_history(entry) for entry in task.operation_history],
         invocation=invocation,
     )
 
@@ -578,9 +616,79 @@ def _shape_record_task(task: TaskExecutionRecord, repo_root: Path) -> Orchestrat
         task_id=task.task_id,
         title=task.title,
         depends_on=list(task.depends_on),
+        parent_branch=None,
         status=_derive_task_status(task.invocation),
         attempts=0,
+        task_pr=None,
+        operation_history=[],
         invocation=invocation,
+    )
+
+
+def _shape_feature_branch(state: RunRuntimeState) -> OrchestrationFeatureBranchResponse | None:
+    if state.feature_branch is None:
+        return None
+    return OrchestrationFeatureBranchResponse(
+        name=state.feature_branch.name,
+        base_branch=state.feature_branch.base_branch,
+    )
+
+
+def _shape_task_pr(task: TaskRuntimeRecord) -> OrchestrationTaskPullRequestResponse | None:
+    task_pr = task.task_pr
+    if task_pr is None:
+        return None
+    review_summary = (
+        OrchestrationReviewSummaryResponse(
+            blocking_state=task_pr.review_summary.blocking_state,
+            approvals=task_pr.review_summary.approvals,
+            changes_requested=task_pr.review_summary.changes_requested,
+        )
+        if task_pr.review_summary is not None
+        else None
+    )
+    return OrchestrationTaskPullRequestResponse(
+        number=task_pr.number,
+        url=task_pr.url,
+        state=task_pr.state,
+        merge_gate_status=task_pr.merge_gate_status,
+        base_branch=task_pr.base_branch,
+        head_branch=task_pr.head_branch,
+        mergeability=task_pr.mergeability,
+        checks_summary=dict(task_pr.checks_summary),
+        review_summary=review_summary,
+        snapshot_source=task_pr.snapshot_source,
+        last_refreshed_at=_isoformat(task_pr.last_refreshed_at),
+        is_stale=task_pr.is_stale,
+    )
+
+
+def _shape_final_pr(state: RunRuntimeState) -> OrchestrationFinalPullRequestResponse | None:
+    final_pr = state.final_pr
+    if final_pr is None:
+        return None
+    return OrchestrationFinalPullRequestResponse(
+        number=final_pr.number,
+        url=final_pr.url,
+        state=final_pr.state,
+        review_gate_status=final_pr.review_gate_status,
+        base_branch=final_pr.base_branch,
+        head_branch=final_pr.head_branch,
+        checks_summary=dict(final_pr.checks_summary),
+        snapshot_source=final_pr.snapshot_source,
+        last_refreshed_at=_isoformat(final_pr.last_refreshed_at),
+        is_stale=final_pr.is_stale,
+    )
+
+
+def _shape_operation_history(entry) -> OrchestrationOperationHistoryResponse:
+    return OrchestrationOperationHistoryResponse(
+        kind=entry.kind,
+        status=entry.status,
+        session_id=entry.session_id,
+        started_at=_isoformat(entry.started_at) or "",
+        finished_at=_isoformat(entry.finished_at),
+        details=dict(entry.details),
     )
 
 

@@ -4,11 +4,15 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+from helaicopter_domain.vocab import TaskRuntimeStatus
 from helaicopter_domain.vocab import ProviderName
+from oats.stacked_prs import BranchStrategy
 
 
 class PrefectTaskRepoContext(BaseModel):
     integration_branch: str
+    parent_branch: str
+    pr_base: str
     task_branch: str
     worktree_path: Path
 
@@ -24,6 +28,8 @@ class PrefectTaskNode(BaseModel):
     acceptance_criteria: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     validation_commands: list[str] = Field(default_factory=list)
+    branch_strategy: BranchStrategy = "feature_base"
+    initial_task_status: TaskRuntimeStatus = "pending"
     repo_context: PrefectTaskRepoContext | None = None
 
 
@@ -38,6 +44,7 @@ class PrefectTaskGraph(BaseModel):
 
 
 class PrefectFlowPayload(BaseModel):
+    run_id: str | None = None
     run_title: str
     source_path: Path
     repo_root: Path

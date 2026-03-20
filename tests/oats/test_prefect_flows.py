@@ -115,6 +115,38 @@ def test_execute_compiled_flow_graph_retries_without_corrupting_local_artifacts(
     assert second_attempt["status"] == "completed"
 
 
+def test_execute_compiled_flow_graph_blocks_multi_dependency_task_until_upstream_pr_merges(
+    tmp_path: Path,
+) -> None:
+    payload = _merge_gated_payload(tmp_path)
+
+    result = execute_compiled_flow_graph(
+        payload,
+        executor=_simple_executor,
+        flow_run_id="flow-run-1",
+    )
+
+    assert result.task_results["verify"].status == "blocked"
+    verify_checkpoint = json.loads(
+        (result.artifact_root / "tasks" / "verify.json").read_text(encoding="utf-8")
+    )
+    assert verify_checkpoint["merge_gate_status"] == "not_ready"
+
+
+def test_flow_run_metadata_persists_run_id_for_backend_joining(tmp_path: Path) -> None:
+    payload = _single_task_payload(tmp_path)
+
+    result = execute_compiled_flow_graph(
+        payload,
+        executor=_simple_executor,
+        flow_run_id="flow-run-1",
+    )
+
+    metadata = json.loads(result.metadata_path.read_text(encoding="utf-8"))
+    assert metadata["run_id"] == "run-123"
+    assert metadata["flow_run_id"] == "flow-run-1"
+
+
 def test_shared_prefect_flow_entrypoint_accepts_serialized_payload(tmp_path: Path) -> None:
     payload = _single_task_payload(tmp_path)
     seen: list[str] = []
@@ -377,6 +409,7 @@ def test_local_flow_run_analytics_summarize_task_attempt_facts(tmp_path: Path) -
 def _sample_payload(tmp_path: Path) -> PrefectFlowPayload:
     repo_root = tmp_path
     return PrefectFlowPayload(
+        run_id="run-123",
         run_title="Run: Prefect Flow Runtime",
         source_path=repo_root / "examples" / "prefect_flow_runtime.md",
         repo_root=repo_root,
@@ -424,6 +457,7 @@ def _sample_payload(tmp_path: Path) -> PrefectFlowPayload:
 def _single_task_payload(tmp_path: Path) -> PrefectFlowPayload:
     repo_root = tmp_path
     return PrefectFlowPayload(
+        run_id="run-123",
         run_title="Run: Retry Safe Task",
         source_path=repo_root / "examples" / "prefect_retry_safe.md",
         repo_root=repo_root,
@@ -433,6 +467,73 @@ def _single_task_payload(tmp_path: Path) -> PrefectFlowPayload:
         default_concurrency=1,
         tasks=[PrefectTaskNode(task_id="plan", title="Plan", prompt="Write a plan.", agent="codex")],
         task_graph=PrefectTaskGraph(nodes=[], edges=[]),
+    )
+
+
+def _merge_gated_payload(tmp_path: Path) -> PrefectFlowPayload:
+    repo_root = tmp_path
+    return PrefectFlowPayload(
+        run_id="run-123",
+        run_title="Run: Merge Gated",
+        source_path=repo_root / "examples" / "merge_gated.md",
+        repo_root=repo_root,
+        config_path=repo_root / ".oats" / "config.toml",
+        repo_base_branch="main",
+        worktree_dir=".oats-worktrees",
+        default_concurrency=2,
+        tasks=[
+            PrefectTaskNode(
+                task_id="plan",
+                title="Plan",
+                prompt="Write a plan.",
+                agent="codex",
+                repo_context={
+                    "integration_branch": "oats/overnight/merge-gated",
+                    "parent_branch": "oats/overnight/merge-gated",
+                    "pr_base": "oats/overnight/merge-gated",
+                    "task_branch": "oats/task/plan",
+                    "worktree_path": ".oats-worktrees/merge-gated/plan",
+                },
+            ),
+            PrefectTaskNode(
+                task_id="build",
+                title="Build",
+                prompt="Implement the runtime.",
+                depends_on=["plan"],
+                agent="claude",
+                repo_context={
+                    "integration_branch": "oats/overnight/merge-gated",
+                    "parent_branch": "oats/task/plan",
+                    "pr_base": "oats/task/plan",
+                    "task_branch": "oats/task/build",
+                    "worktree_path": ".oats-worktrees/merge-gated/build",
+                },
+            ),
+            PrefectTaskNode(
+                task_id="verify",
+                title="Verify",
+                prompt="Run validation.",
+                depends_on=["plan", "build"],
+                agent="codex",
+                branch_strategy="after_dependency_merges",
+                initial_task_status="blocked",
+                repo_context={
+                    "integration_branch": "oats/overnight/merge-gated",
+                    "parent_branch": "oats/overnight/merge-gated",
+                    "pr_base": "oats/overnight/merge-gated",
+                    "task_branch": "oats/task/verify",
+                    "worktree_path": ".oats-worktrees/merge-gated/verify",
+                },
+            ),
+        ],
+        task_graph=PrefectTaskGraph(
+            nodes=[],
+            edges=[
+                PrefectTaskEdge(upstream_task_id="plan", downstream_task_id="build"),
+                PrefectTaskEdge(upstream_task_id="plan", downstream_task_id="verify"),
+                PrefectTaskEdge(upstream_task_id="build", downstream_task_id="verify"),
+            ],
+        ),
     )
 
 
@@ -447,3 +548,18 @@ def _repo_config_stub():
             }
         }
     )
+
+
+def _simple_executor(
+    payload: PrefectFlowPayload,
+    task_node: PrefectTaskNode,
+    upstream_results: dict[str, dict[str, object]],
+    attempt: int,
+    worktree_path: Path,
+) -> dict[str, object]:
+    del payload, worktree_path
+    return {
+        "task_id": task_node.task_id,
+        "attempt": attempt,
+        "upstream_task_ids": sorted(upstream_results),
+    }

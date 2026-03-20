@@ -388,7 +388,12 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
     cache_creation_input_tokens: 3,
     cache_read_input_tokens: 4,
   });
-  assert.equal(normalized.messages[0].blocks[0].toolUseId, "tool-1");
+  const firstBlock = normalized.messages[0].blocks[0];
+  assert.equal(firstBlock.type, "tool_call");
+  if (firstBlock.type !== "tool_call") {
+    throw new Error("Expected the first block to be a tool call.");
+  }
+  assert.equal(firstBlock.toolUseId, "tool-1");
   assert.equal(normalized.plans[0].sessionId, "session-123");
   assert.equal(normalized.subagents[0].agentId, "agent-1");
   assert.equal(normalized.contextAnalytics.buckets[0].cacheWriteTokens, 3);
@@ -954,6 +959,180 @@ test("normalizeOvernightOatsRuns removes the frontend-only required evaluation f
   assert.equal(runs[0].evaluation, undefined);
   assert.equal(runs[0].tasks[0].invocation, null);
   assert.equal(runs[0].dag.nodes[0].exitCode, undefined);
+});
+
+test("normalizeOvernightOatsRuns preserves stacked PR orchestration state", () => {
+  const runs = normalizeOvernightOatsRuns([
+    {
+      source: "overnight-oats",
+      contract_version: "oats-runtime-v2",
+      run_id: "run-2",
+      run_title: "Stacked PR rollout",
+      repo_root: "/Users/tony/Code/helaicopter",
+      config_path: "/Users/tony/Code/helaicopter/.oats/config.toml",
+      run_spec_path: "/Users/tony/Code/helaicopter/.oats/runs/run-2/spec.md",
+      mode: "full-program",
+      integration_branch: "oats/overnight/runtime-facts",
+      task_pr_target: "oats/overnight/runtime-facts",
+      final_pr_target: "main",
+      status: "running",
+      stack_status: "awaiting_task_merge",
+      feature_branch: {
+        name: "oats/overnight/runtime-facts",
+        base_branch: "main",
+      },
+      final_pr: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+        state: "open",
+        review_gate_status: "awaiting_human",
+        base_branch: "main",
+        head_branch: "oats/overnight/runtime-facts",
+        checks_summary: {
+          total: 5,
+          passing: 5,
+        },
+        snapshot_source: "github",
+        last_refreshed_at: "2026-03-20T09:15:00Z",
+        is_stale: false,
+      },
+      operation_history: [
+        {
+          kind: "refresh",
+          status: "succeeded",
+          session_id: "refresh-session",
+          started_at: "2026-03-20T09:10:00Z",
+          finished_at: "2026-03-20T09:10:30Z",
+          details: {
+            merged_prs: 1,
+          },
+        },
+      ],
+      active_task_id: "task-tests",
+      heartbeat_at: "2026-03-20T09:15:00Z",
+      finished_at: null,
+      planner: null,
+      tasks: [
+        {
+          task_id: "task-api",
+          title: "Implement route",
+          depends_on: [],
+          parent_branch: "oats/overnight/runtime-facts",
+          status: "succeeded",
+          attempts: 1,
+          task_pr: {
+            number: 11,
+            url: "https://github.com/example/repo/pull/11",
+            state: "merged",
+            merge_gate_status: "merged",
+            base_branch: "oats/overnight/runtime-facts",
+            head_branch: "oats/task/task-api",
+            mergeability: "mergeable",
+            checks_summary: {
+              total: 4,
+              passing: 4,
+            },
+            review_summary: {
+              blocking_state: "clear",
+              approvals: 1,
+              changes_requested: 0,
+            },
+            snapshot_source: "github",
+            last_refreshed_at: "2026-03-20T09:15:00Z",
+            is_stale: false,
+          },
+          operation_history: [
+            {
+              kind: "pr_merge",
+              status: "succeeded",
+              session_id: "merge-session",
+              started_at: "2026-03-20T09:00:00Z",
+              finished_at: "2026-03-20T09:01:00Z",
+              details: {
+                merge_commit_sha: "abc123",
+              },
+            },
+          ],
+          invocation: null,
+        },
+        {
+          task_id: "task-tests",
+          title: "Patch UI",
+          depends_on: ["task-api"],
+          parent_branch: "oats/task/task-api",
+          status: "blocked",
+          attempts: 2,
+          task_pr: {
+            number: 12,
+            state: "open",
+            merge_gate_status: "awaiting_checks",
+            base_branch: "oats/task/task-api",
+            head_branch: "oats/task/task-tests",
+            mergeability: "unknown",
+            checks_summary: {
+              total: 2,
+              passing: 1,
+              failing: 1,
+            },
+            review_summary: {
+              blocking_state: "commented",
+              approvals: 0,
+              changes_requested: 0,
+            },
+            snapshot_source: "github",
+            last_refreshed_at: "2026-03-20T09:15:00Z",
+            is_stale: true,
+          },
+          operation_history: [
+            {
+              kind: "conflict_resolution",
+              status: "started",
+              session_id: "resolver-session",
+              started_at: "2026-03-20T09:12:00Z",
+              finished_at: null,
+              details: {
+                attempt: 1,
+              },
+            },
+          ],
+          invocation: null,
+        },
+      ],
+      created_at: "2026-03-20T08:45:00Z",
+      last_updated_at: "2026-03-20T09:15:00Z",
+      is_running: true,
+      recorded_at: "2026-03-20T09:15:00Z",
+      record_path: "/Users/tony/Code/helaicopter/.oats/runs/run-2.json",
+      dag: {
+        nodes: [],
+        edges: [],
+        stats: {
+          total_nodes: 0,
+          total_edges: 0,
+          max_depth: 0,
+          max_breadth: 0,
+          root_count: 0,
+          provider_breakdown: {},
+          timed_out_count: 0,
+          active_count: 0,
+          pending_count: 0,
+          failed_count: 0,
+          succeeded_count: 0,
+        },
+      },
+    },
+  ]);
+
+  assert.equal(runs[0].contractVersion, "oats-runtime-v2");
+  assert.equal(runs[0].stackStatus, "awaiting_task_merge");
+  assert.equal(runs[0].featureBranch?.name, "oats/overnight/runtime-facts");
+  assert.equal(runs[0].finalPr?.reviewGateStatus, "awaiting_human");
+  assert.equal(runs[0].operationHistory[0].sessionId, "refresh-session");
+  assert.equal(runs[0].tasks[0].parentBranch, "oats/overnight/runtime-facts");
+  assert.equal(runs[0].tasks[0].taskPr?.mergeGateStatus, "merged");
+  assert.equal(runs[0].tasks[0].taskPr?.reviewSummary?.approvals, 1);
+  assert.equal(runs[0].tasks[1].taskPr?.isStale, true);
+  assert.equal(runs[0].tasks[1].operationHistory[0].kind, "conflict_resolution");
 });
 
 test("normalizeSubscriptionSettings maps provider records for analytics settings", () => {

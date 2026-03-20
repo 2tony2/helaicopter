@@ -176,10 +176,10 @@ def test_wave_two_domain_catalog_centralizes_high_value_vocabularies() -> None:
 
 
 def test_wave_two_domain_catalog_exposes_nominal_ids_and_split_project_path_semantics() -> None:
+    from helaicopter_api.contracts.plans import PlanDetailResponse
     from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
     from helaicopter_api.ports.claude_fs import ProjectDir
     from helaicopter_api.schema.conversations import ConversationDetailResponse, ProjectResponse
-    from helaicopter_api.schema.plans import PlanDetailResponse
     from helaicopter_db.utils import provider_for_project_path
     from helaicopter_domain.ids import ConversationId, EvaluationId, PlanId, PromptId, SessionId
     from helaicopter_domain.paths import (
@@ -200,6 +200,7 @@ def test_wave_two_domain_catalog_exposes_nominal_ids_and_split_project_path_sema
     assert _type_hints(HistoricalConversationSummary)["session_id"] == SessionId
     assert _type_hints(evaluation_prompt_record)["prompt_id"] == PromptId
     assert _type_hints(conversation_evaluation_record)["evaluation_id"] == EvaluationId
+    assert PlanDetailResponse.__module__ == "helaicopter_api.contracts.plans"
     assert _type_hints(PlanDetailResponse)["id"] == PlanId
 
     assert _type_hints(ConversationDetailResponse)["project_path"] == EncodedProjectKey

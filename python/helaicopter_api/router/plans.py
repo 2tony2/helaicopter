@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from helaicopter_api.application.plans import get_plan, list_plans
 from helaicopter_api.bootstrap.services import BackendServices
-from helaicopter_api.schema.plans import PlanDetailResponse, PlanSummaryResponse
+from helaicopter_api.contracts.plans import (
+    PlanDetailResponse,
+    PlanSummaryResponse,
+)
 from helaicopter_api.server.dependencies import get_services
 
 plans_router = APIRouter(prefix="/plans", tags=["plans"])

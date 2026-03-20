@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, TypedDict, cast
@@ -16,20 +15,19 @@ from helaicopter_domain.vocab import ProviderName
 
 from helaicopter_api.application.codex_payloads import (
     CodexSessionLine,
-    CodexUpdatePlanArguments,
-    CodexUpdatePlanStep,
     parse_codex_session_lines,
     parse_codex_update_plan_arguments,
     payload_for_line,
 )
 from helaicopter_api.bootstrap.services import BackendServices
-from helaicopter_api.ports.claude_fs import RawConversationEvent
-from helaicopter_api.ports.codex_sqlite import CodexThreadRecord
-from helaicopter_api.schema.plans import (
+from helaicopter_api.contracts.plans import (
     PlanDetailResponse,
     PlanStepResponse,
     PlanSummaryResponse,
 )
+from helaicopter_api.domain import plans as plan_domain
+from helaicopter_api.ports.claude_fs import RawConversationEvent
+from helaicopter_api.ports.codex_sqlite import CodexThreadRecord
 
 
 class FilePlanSource(TypedDict):
@@ -68,7 +66,7 @@ class _ExtractedPlan:
     session_id: SessionId | None = None
     project_path: EncodedProjectKey | None = None
     explanation: str | None = None
-    steps: list[PlanStepResponse] | None = None
+    steps: list[plan_domain.PlanStepData] | None = None
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -113,13 +111,13 @@ def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailR
 def _list_claude_file_plans(services: BackendServices) -> list[PlanSummaryResponse]:
     plans: list[PlanSummaryResponse] = []
     for plan_file in services.claude_plan_reader.list_plans():
-        metadata = _summarize_plan_content(plan_file.content, plan_file.slug)
+        metadata = plan_domain.summarize_plan_content(plan_file.content, plan_file.slug)
         plans.append(
             PlanSummaryResponse(
                 id=PlanId(_encode_plan_id({"kind": "file", "slug": plan_file.slug})),
-                slug=metadata["slug"],
-                title=metadata["title"],
-                preview=metadata["preview"],
+                slug=metadata.slug,
+                title=metadata.title,
+                preview=metadata.preview,
                 provider="claude",
                 timestamp=plan_file.modified_at * 1000,
                 source_path=plan_file.path,
@@ -136,11 +134,11 @@ def _get_claude_file_plan(
     plan_file = services.claude_plan_reader.read_plan(slug)
     if plan_file is None:
         return None
-    metadata = _summarize_plan_content(plan_file.content, slug)
+    metadata = plan_domain.summarize_plan_content(plan_file.content, slug)
     return PlanDetailResponse(
         id=PlanId(plan_id),
-        slug=metadata["slug"],
-        title=metadata["title"],
+        slug=metadata.slug,
+        title=metadata.title,
         content=plan_file.content,
         provider="claude",
         timestamp=plan_file.modified_at * 1000,
@@ -250,7 +248,7 @@ def _extract_claude_session_plan_data(
         event_id = event.uuid.strip()
         if not event_id:
             continue
-        metadata = _summarize_plan_content(content, event.slug or session_id)
+        metadata = plan_domain.summarize_plan_content(content, event.slug or session_id)
         plans.append(
             _ExtractedPlan(
                 id=_encode_plan_id(
@@ -261,8 +259,8 @@ def _extract_claude_session_plan_data(
                         "eventId": event_id,
                     }
                 ),
-                slug=metadata["slug"],
-                title=metadata["title"],
+                slug=metadata.slug,
+                title=metadata.title,
                 content=content,
                 provider="claude",
                 timestamp=_to_epoch_ms(event.timestamp),
@@ -270,7 +268,7 @@ def _extract_claude_session_plan_data(
                 source_path=source_path,
                 session_id=session_id,
                 project_path=project_path,
-                preview=metadata["preview"],
+                preview=metadata.preview,
             )
         )
 
@@ -392,12 +390,12 @@ def _extract_codex_session_plan_data(
         args = parse_codex_update_plan_arguments(payload.get("arguments"))
         if args is None:
             continue
-        explanation = _parse_codex_explanation(args)
-        steps = _parse_codex_plan_steps(args.get("plan"))
+        explanation = plan_domain.parse_codex_explanation(args)
+        steps = plan_domain.parse_codex_plan_steps(args.get("plan"))
         if explanation is None and not steps:
             continue
 
-        slug, title, preview, content = _summarize_codex_plan(call_id, explanation, steps)
+        summary = plan_domain.summarize_codex_plan(call_id, explanation, steps)
         plans.append(
             _ExtractedPlan(
                 id=_encode_plan_id(
@@ -407,16 +405,16 @@ def _extract_codex_session_plan_data(
                         "callId": call_id,
                     }
                 ),
-                slug=slug,
-                title=title,
-                content=content,
+                slug=summary.slug,
+                title=summary.title,
+                content=summary.content,
                 provider="codex",
                 timestamp=_to_epoch_ms(line.get("timestamp")),
                 model=latest_model,
                 source_path=source_path,
                 session_id=session_id,
                 project_path=project_path,
-                preview=preview,
+                preview=summary.preview,
                 explanation=explanation,
                 steps=steps,
             )
@@ -477,54 +475,11 @@ def _plan_detail_response(plan: _ExtractedPlan) -> PlanDetailResponse:
         session_id=plan.session_id,
         project_path=plan.project_path,
         explanation=plan.explanation,
-        steps=plan.steps or [],
+        steps=[
+            PlanStepResponse(step=step.step, status=step.status)
+            for step in (plan.steps or [])
+        ],
     )
-
-
-def _summarize_codex_plan(
-    call_id: str,
-    explanation: str | None,
-    steps: list[PlanStepResponse],
-) -> tuple[str, str, str, str]:
-    title_source = _first_non_empty_line(explanation) or (
-        steps[0].step if steps else f"Plan update {call_id[-8:]}"
-    )
-    title = _truncate(title_source.strip(), max_length=80)
-    slug = f"codex-{_slugify(title)}-{call_id[-8:]}"
-    preview_parts = [explanation] if explanation else []
-    preview_parts.extend(f"{_checkbox_for_status(step.status)} {step.step}" for step in steps)
-    preview = _truncate(" ".join(part for part in preview_parts if part), max_length=200)
-
-    content_lines = [f"# {title}"]
-    if explanation:
-        content_lines.extend(["", explanation])
-    if steps:
-        content_lines.extend(["", "## Steps", ""])
-        for step in steps:
-            content_lines.append(f"{_checkbox_for_status(step.status)} {step.step}")
-    return slug, title, preview, "\n".join(content_lines)
-
-
-def _parse_codex_explanation(payload: CodexUpdatePlanArguments) -> str | None:
-    explanation = payload.get("explanation")
-    if isinstance(explanation, str) and explanation.strip():
-        return explanation.strip()
-    return None
-
-
-def _parse_codex_plan_steps(raw_plan: list[dict[str, object]] | list[CodexUpdatePlanStep] | None) -> list[PlanStepResponse]:
-    if raw_plan is None:
-        return []
-
-    steps: list[PlanStepResponse] = []
-    for item in raw_plan:
-        step = item.get("step")
-        if not isinstance(step, str) or not step.strip():
-            continue
-        status = item.get("status")
-        normalized_status = status.strip() if isinstance(status, str) and status.strip() else "pending"
-        steps.append(PlanStepResponse(step=step.strip(), status=normalized_status))
-    return steps
 
 
 def _codex_project_path(
@@ -545,20 +500,6 @@ def _codex_project_path(
 
 def _parse_codex_lines(content: str) -> list[CodexSessionLine]:
     return parse_codex_session_lines(content)
-
-
-def _summarize_plan_content(content: str, fallback_slug: str) -> dict[str, str]:
-    lines = [line for line in content.splitlines() if line.strip()]
-    title = next(
-        (
-            line.replace("# ", "", 1).strip()
-            for line in lines
-            if line.startswith("# ")
-        ),
-        fallback_slug,
-    )
-    preview = " ".join(line for line in lines if not line.startswith("#"))[:200]
-    return {"slug": fallback_slug, "title": title, "preview": preview}
 
 
 def _encode_plan_id(source: PlanSource) -> PlanId:
@@ -604,31 +545,3 @@ def _to_epoch_ms(value: object) -> float:
 
 def _cwd_to_project_path(cwd: str) -> str:
     return cwd.replace("/", "-") if cwd else "unknown"
-
-
-def _first_non_empty_line(value: str | None) -> str | None:
-    if value is None:
-        return None
-    for line in value.splitlines():
-        if line.strip():
-            return line.strip()
-    return None
-
-
-def _truncate(value: str, *, max_length: int) -> str:
-    if len(value) <= max_length:
-        return value
-    return f"{value[: max_length - 3].rstrip()}..."
-
-
-def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return slug or "plan"
-
-
-def _checkbox_for_status(status: str) -> str:
-    if status == "completed":
-        return "[x]"
-    if status == "in_progress":
-        return "[-]"
-    return "[ ]"

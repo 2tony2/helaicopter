@@ -66,7 +66,7 @@ from helaicopter_api.schema.orchestration import (
     OrchestrationRunResponse,
     OrchestrationTaskResponse,
 )
-from helaicopter_api.schema.plans import (
+from helaicopter_api.contracts.plans import (
     PlanDetailResponse,
     PlanStepResponse,
     PlanSummaryResponse,
