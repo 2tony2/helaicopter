@@ -171,6 +171,8 @@ If a legacy URL contains more than one entity param at once, redirect precedence
 
 This preserves the most granular deep link first and keeps redirect behavior testable.
 
+If a legacy URL contains an unknown `tab` value and no valid entity param, it redirects to `/messages` as a best-effort compatibility fallback.
+
 ### 5. Parent subagent tab routes and subagent thread routes are separate resources
 
 The product currently supports two legitimate ways to look at a subagent:
@@ -187,6 +189,7 @@ Usage rules:
 
 - the parent tab route is the canonical route for "show this child inside the parent conversation"
 - the subagent thread route is the canonical route for "open this subagent as its own conversation"
+- standalone subagent thread routes support the same primary tab set as root conversation routes; they do not collapse to messages-only behavior
 - legacy nested subagent URLs redirect to the parent tab route because that is what the old path represented
 - conversation lists and any standalone subagent conversation backlinks use the subagent thread route
 - DAG node links for child nodes use the subagent thread route because DAG nodes represent conversations, not parent-tab selections
@@ -219,7 +222,9 @@ This keeps the implementation incremental:
 - route resolution becomes canonical immediately
 - existing detail, DAG, evaluations, and subagent APIs do not need to be duplicated in the same slice
 - the resolver can support persisted and live-only conversations by using the same `first_message` + `provider` + `session_id` route-ref helper in both code paths
-- standalone subagent thread routes can keep using the existing parent-aware subagent endpoint when `parent_session_id` is present
+- standalone subagent thread routes can keep using parent-aware lookups when `parent_session_id` is present
+- any backend API used by non-message tabs on a live subagent thread must accept optional `parent_session_id` context so `/dag`, `/evaluations`, `/tasks`, and any other canonical tab remain functional on the child thread route
+- parent-scoped support applies only where the live Claude fallback needs it; persisted and codex-backed subagent routes continue to resolve directly by `project_path` and `session_id`
 
 ### 7. The Next app uses a catch-all conversation route
 
@@ -267,7 +272,7 @@ For subagents:
 
 - parent `subagents/<agentId>` routes keep the user inside the parent viewer
 - standalone subagent conversation links resolve and open the child conversation's own canonical ref
-- if the resolved subagent thread includes `parent_session_id`, the page uses the existing parent-aware subagent data path instead of assuming the root conversation endpoint is sufficient
+- if the resolved subagent thread includes `parent_session_id`, the page passes that context through all tab-specific loads that need it instead of assuming child `session_id` alone is sufficient
 
 ### Legacy navigation
 
@@ -284,8 +289,11 @@ For subagents:
 - add helpers to build and parse `conversation_ref`
 - backfill `route_slug` for existing records
 - expose `route_slug` and `conversation_ref` on conversation summary/detail schemas
+- expose `conversation_ref` on `ConversationSubagentResponse` when the child thread is resolvable
+- expose canonical conversation link data on non-conversation response types that link back to conversations, including plan responses used for plan backlinks
 - add a canonical-ref resolver endpoint
 - make the canonical-ref resolver support persisted and live-fallback conversations
+- extend live-fallback conversation APIs that power child-thread tabs to accept optional `parent_session_id` context where required
 - update DAG node `path` generation to use canonical conversation refs
 - update any generated conversation links in backend-owned responses, including orchestration links
 
