@@ -34,6 +34,7 @@ type EvaluationPromptWriteInput = {
 
 type DatabaseRefreshInput = {
   force: boolean;
+  fullRebuild?: boolean;
   trigger: string;
   staleAfterSeconds?: number;
 };

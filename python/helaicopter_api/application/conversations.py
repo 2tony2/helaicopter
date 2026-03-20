@@ -75,6 +75,7 @@ _CODEX_SESSION_ID_PATTERN = re.compile(
 _ACTIVE_WINDOW = timedelta(minutes=1)
 _MAX_RESULT_LENGTH = 20_000
 _CACHE_MISS = object()
+_LIVE_CONVERSATION_CACHE_TTL_SECONDS = 5.0
 
 
 def _cache_key(prefix: str, *parts: object) -> str:
@@ -131,7 +132,7 @@ def list_conversations(
         summaries_by_key.values(),
         key=lambda item: (-item.last_updated_at, item.project_path, item.session_id),
     )
-    services.cache.set(cache_key, result)
+    services.cache.set(cache_key, result, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return result
 
 
@@ -190,7 +191,7 @@ def get_conversation(
             parent_session_id=parent_session_id,
         )
 
-    services.cache.set(cache_key, conversation)
+    services.cache.set(cache_key, conversation, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return conversation
 
 
@@ -228,7 +229,7 @@ def resolve_conversation_ref(
         provider=parsed.provider,
         session_id=parsed.session_id,
     )
-    services.cache.set(cache_key, resolved)
+    services.cache.set(cache_key, resolved, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return resolved
 
 
@@ -315,7 +316,7 @@ def list_conversation_dags(
             )
         )
 
-    services.cache.set(cache_key, dag_summaries)
+    services.cache.set(cache_key, dag_summaries, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return dag_summaries
 
 
@@ -379,7 +380,7 @@ def get_conversation_dag(
         root_session_id=root_session_id,
         load_conversation=load_conversation,
     )
-    services.cache.set(cache_key, dag)
+    services.cache.set(cache_key, dag, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return dag
 
 
@@ -423,7 +424,7 @@ def list_projects(services: InstanceOf[BackendServices]) -> list[ProjectResponse
         projects.values(),
         key=lambda item: (-item.last_activity, item.display_name.lower()),
     )
-    services.cache.set(cache_key, result)
+    services.cache.set(cache_key, result, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return result
 
 
@@ -2264,7 +2265,11 @@ def _codex_session_artifacts(services: BackendServices) -> list[CodexSessionArti
     if isinstance(cached, list):
         return cached
     artifacts = services.codex_store.list_session_artifacts()
-    services.cache.set("codex_session_artifacts", artifacts)
+    services.cache.set(
+        "codex_session_artifacts",
+        artifacts,
+        ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+    )
     return artifacts
 
 
@@ -2273,7 +2278,11 @@ def _codex_threads_by_id(services: BackendServices) -> dict[str, CodexThreadReco
     if isinstance(cached, dict):
         return cached
     threads = {thread.id: thread for thread in services.codex_store.list_threads()}
-    services.cache.set("codex_threads_by_id", threads)
+    services.cache.set(
+        "codex_threads_by_id",
+        threads,
+        ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+    )
     return threads
 
 

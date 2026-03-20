@@ -215,6 +215,7 @@ class TestDatabaseEndpoints:
             "codex_session_artifacts",
             "codex_threads_by_id",
             "database_status",
+            "projects",
         ]
         assert services.sqlite_engine.dispose_calls == 1
 
@@ -239,6 +240,7 @@ class TestDatabaseEndpoints:
             "codex_session_artifacts",
             "codex_threads_by_id",
             "database_status",
+            "projects",
         ]
         assert services.sqlite_engine.dispose_calls == 1
 
@@ -278,6 +280,7 @@ class TestDatabaseEndpoints:
             "codex_session_artifacts",
             "codex_threads_by_id",
             "database_status",
+            "projects",
         ]
         assert services.sqlite_engine.dispose_calls == 1
 
@@ -303,6 +306,34 @@ class TestDatabaseEndpoints:
         assert services.cache.get("codex_session_artifacts") is None
         assert services.cache.get("database_status") is None
         assert services.cache.clear_calls == 0
+
+    def test_refresh_endpoint_accepts_full_rebuild_requests(self) -> None:
+        refresh_calls: list[dict[str, object]] = []
+
+        def run_refresh(**kwargs: object) -> dict[str, object]:
+            refresh_calls.append(kwargs)
+            return _status_payload(trigger="manual-full-rebuild")
+
+        with database_client(load_status=lambda: None, run_refresh=run_refresh) as (client, _services):
+            response = client.post(
+                "/databases/refresh",
+                json={
+                    "fullRebuild": True,
+                    "trigger": "manual-full-rebuild",
+                    "staleAfterSeconds": 0,
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["trigger"] == "manual-full-rebuild"
+        assert refresh_calls == [
+            {
+                "force": True,
+                "full_rebuild": True,
+                "trigger": "manual-full-rebuild",
+                "stale_after_seconds": 0,
+            }
+        ]
 
     def test_refresh_endpoint_reports_failed_status_payload(self) -> None:
         def run_refresh(**_kwargs: object) -> dict[str, object]:
@@ -340,6 +371,7 @@ class TestDatabaseEndpoints:
             "codex_session_artifacts",
             "codex_threads_by_id",
             "database_status",
+            "projects",
         ]
         assert services.sqlite_engine.dispose_calls == 1
 

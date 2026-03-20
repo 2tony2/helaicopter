@@ -53,14 +53,17 @@ const swrOptions = {
   revalidateOnReconnect: false,
 };
 
-const conversationSwrOptions = swrOptions;
+const liveConversationSwrOptions = {
+  ...swrOptions,
+  refreshInterval: 5_000,
+};
 
 const analyticsSwrOptions = {
   ...swrOptions,
   refreshInterval: 15_000,
 };
 
-const projectsSwrOptions = swrOptions;
+const projectsSwrOptions = liveConversationSwrOptions;
 
 export function useProjects() {
   return useSWR<ProjectInfo[]>(
@@ -75,7 +78,7 @@ export function useConversations(project?: string, days?: number) {
     endpoints.conversations({ project, days }),
     (url: string) =>
       requestJson(url, undefined, conversationSummaryListSchema, normalizeConversations),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -91,7 +94,7 @@ export function useConversation(
   return useSWR<ProcessedConversation>(
     url,
     (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationDetail),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -116,7 +119,7 @@ export function useConversationDag(
   return useSWR<ConversationDag>(
     url,
     (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationDag),
-    conversationSwrOptions
+    swrOptions
   );
 }
 
@@ -128,7 +131,7 @@ export function useConversationDagSummaries(
   return useSWR<ConversationDagSummary[]>(
     endpoints.conversationDags({ project, days, provider }),
     (url: string) => requestJson(url, undefined, normalizeConversationDagSummaries),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -136,7 +139,7 @@ export function useOvernightOatsRuns() {
   return useSWR<OvernightOatsRunRecord[]>(
     endpoints.orchestrationOats(),
     (url: string) => requestJson(url, undefined, normalizeOvernightOatsRuns),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -144,7 +147,7 @@ export function usePrefectDeployments() {
   return useSWR<PrefectDeploymentRecord[]>(
     endpoints.orchestrationPrefectDeployments(),
     (url: string) => requestJson(url, undefined, normalizePrefectDeployments),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -152,7 +155,7 @@ export function usePrefectFlowRuns() {
   return useSWR<PrefectFlowRunRecord[]>(
     endpoints.orchestrationPrefectFlowRuns(),
     (url: string) => requestJson(url, undefined, normalizePrefectFlowRuns),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -160,7 +163,7 @@ export function usePrefectWorkers() {
   return useSWR<PrefectWorkerRecord[]>(
     endpoints.orchestrationPrefectWorkers(),
     (url: string) => requestJson(url, undefined, normalizePrefectWorkers),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -174,7 +177,7 @@ export function usePrefectWorkPools(workers?: PrefectWorkerRecord[]) {
     key,
     ([url]: readonly [string, string]) =>
       requestJson(url, undefined, (value) => normalizePrefectWorkPools(value, workers ?? [])),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -191,7 +194,7 @@ export function useTasks(sessionId?: string, parentSessionId?: string) {
   return useSWR<unknown[]>(
     url,
     (readUrl: string) => requestJson(readUrl, undefined, normalizeTasks),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 
@@ -207,7 +210,7 @@ export function useSubagentConversation(
   return useSWR<ProcessedConversation>(
     url,
     (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationDetail),
-    conversationSwrOptions
+    liveConversationSwrOptions
   );
 }
 

@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from helaicopter_api.application import conversations as conversations_application
 from helaicopter_api.application.conversations import _compact_dict, _shape_conversation_task
 from helaicopter_api.bootstrap.services import build_services
 from helaicopter_api.ports.app_sqlite import HistoricalConversationTask
@@ -1092,6 +1094,71 @@ class TestConversationEndpoints:
             "thread_type": "main",
             "parent_session_id": None,
         }
+
+    def test_list_refreshes_live_conversations_after_cache_ttl_expires(self, tmp_path: Path) -> None:
+        settings = _seed_sources(tmp_path)
+        services = build_services(settings)
+        original_ttl = conversations_application._LIVE_CONVERSATION_CACHE_TTL_SECONDS
+        conversations_application._LIVE_CONVERSATION_CACHE_TTL_SECONDS = 0.01
+
+        try:
+            initial = conversations_application.list_conversations(services, days=7)
+            initial_session_ids = {conversation.session_id for conversation in initial}
+            assert "claude-session-2" not in initial_session_ids
+
+            claude_project_dir = settings.claude_dir / "projects" / "-Users-tony-Code-helaicopter"
+            claude_session = claude_project_dir / "claude-session-2.jsonl"
+            claude_session.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "uuid": "claude-user-new-1",
+                                "timestamp": "2026-03-20T12:00:00Z",
+                                "sessionId": "claude-session-2",
+                                "message": {
+                                    "role": "user",
+                                    "content": [{"type": "text", "text": "Fresh live session"}],
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "uuid": "claude-assistant-new-1",
+                                "timestamp": "2026-03-20T12:00:05Z",
+                                "sessionId": "claude-session-2",
+                                "message": {
+                                    "role": "assistant",
+                                    "model": "claude-sonnet-4-5",
+                                    "usage": {
+                                        "input_tokens": 10,
+                                        "output_tokens": 5,
+                                        "cache_creation_input_tokens": 0,
+                                        "cache_read_input_tokens": 0,
+                                        "speed": "standard",
+                                    },
+                                    "content": [{"type": "text", "text": "Now visible after TTL expiry."}],
+                                },
+                            }
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            os.utime(claude_session, None)
+
+            cached = conversations_application.list_conversations(services, days=7)
+            assert {conversation.session_id for conversation in cached} == initial_session_ids
+
+            time.sleep(0.02)
+
+            refreshed = conversations_application.list_conversations(services, days=7)
+            assert "claude-session-2" in {conversation.session_id for conversation in refreshed}
+        finally:
+            conversations_application._LIVE_CONVERSATION_CACHE_TTL_SECONDS = original_ttl
+            services.sqlite_engine.dispose()
 
     def test_conversation_by_ref_returns_404_for_unknown_well_formed_ref(
         self,

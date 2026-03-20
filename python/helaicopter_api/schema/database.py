@@ -120,5 +120,6 @@ class DatabaseRefreshRequest(BaseModel):
     model_config = camel_case_request_config(extra="forbid")
 
     force: bool = False
+    full_rebuild: bool = False
     trigger: str = "manual"
     stale_after_seconds: int = Field(default=21_600, ge=0)

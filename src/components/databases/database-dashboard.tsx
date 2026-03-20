@@ -176,12 +176,17 @@ export function DatabaseDashboard() {
   const { data, isLoading, mutate } = useDatabaseStatus();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  async function refresh(force: boolean) {
+  async function refresh(options: {
+    force: boolean;
+    fullRebuild?: boolean;
+    trigger: string;
+  }) {
     setIsRefreshing(true);
     try {
       const payload = await refreshDatabase({
-        force,
-        trigger: "manual",
+        force: options.force,
+        fullRebuild: options.fullRebuild,
+        trigger: options.trigger,
       });
       await mutate(payload, false);
     } finally {
@@ -218,13 +223,26 @@ export function DatabaseDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={() => refresh(false)} disabled={isRefreshing}>
+          <Button
+            variant="outline"
+            onClick={() => refresh({ force: false, trigger: "manual-overview-refresh" })}
+            disabled={isRefreshing}
+          >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             Refresh Overview
           </Button>
-          <Button onClick={() => refresh(true)} disabled={isRefreshing}>
+          <Button
+            onClick={() =>
+              refresh({
+                force: true,
+                fullRebuild: true,
+                trigger: "manual-full-rebuild",
+              })
+            }
+            disabled={isRefreshing}
+          >
             <Database className="h-4 w-4" />
-            Rebuild Snapshot
+            Full Rebuild And Reindex
           </Button>
         </div>
       </div>

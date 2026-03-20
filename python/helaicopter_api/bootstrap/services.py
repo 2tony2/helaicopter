@@ -8,6 +8,7 @@ attached to ``app.state.services`` during startup.
 from __future__ import annotations
 
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -45,13 +46,24 @@ class LocalCache:
     """Trivial in-process key/value store (dict wrapper)."""
 
     def __init__(self) -> None:
-        self._store: dict[str, Any] = {}
+        self._store: dict[str, tuple[Any, float | None]] = {}
+
+    def _is_expired(self, expires_at: float | None) -> bool:
+        return expires_at is not None and expires_at <= time.monotonic()
 
     def get(self, key: str, default: Any = None) -> Any:
-        return self._store.get(key, default)
+        entry = self._store.get(key)
+        if entry is None:
+            return default
+        value, expires_at = entry
+        if self._is_expired(expires_at):
+            self.delete(key)
+            return default
+        return value
 
-    def set(self, key: str, value: Any) -> None:
-        self._store[key] = value
+    def set(self, key: str, value: Any, *, ttl_seconds: float | None = None) -> None:
+        expires_at = None if ttl_seconds is None else time.monotonic() + ttl_seconds
+        self._store[key] = (value, expires_at)
 
     def delete(self, key: str) -> None:
         self._store.pop(key, None)
@@ -62,6 +74,9 @@ class LocalCache:
     def delete_many(self, keys: list[str]) -> None:
         for key in keys:
             self.delete(key)
+
+    def keys(self) -> list[str]:
+        return list(self._store.keys())
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +139,36 @@ def invalidate_backend_read_caches(services: BackendServices) -> None:
     The SQLite engine is also disposed so subsequent requests reopen fresh
     connections instead of reusing pooled handles created before a refresh.
     """
-    services.cache.clear()
+    exact_keys = [
+        "analytics",
+        "codex_session_artifacts",
+        "codex_threads_by_id",
+        "database_status",
+        "projects",
+    ]
+    prefixes = (
+        "conversation_summaries:",
+        "conversation_detail:",
+        "conversation_ref:",
+        "conversation_dags:",
+        "conversation_dag:",
+    )
+    cache_keys = []
+    if hasattr(services.cache, "keys"):
+        cache_keys = [key for key in services.cache.keys() if isinstance(key, str)]
+    elif hasattr(services.cache, "values"):
+        values = getattr(services.cache, "values")
+        if isinstance(values, dict):
+            cache_keys = [key for key in values if isinstance(key, str)]
+
+    keys_to_delete = exact_keys + [
+        key for key in cache_keys if any(key.startswith(prefix) for prefix in prefixes)
+    ]
+    if hasattr(services.cache, "delete_many"):
+        services.cache.delete_many(keys_to_delete)
+    else:
+        for key in keys_to_delete:
+            services.cache.delete(key)
     services.sqlite_engine.dispose()
 
 

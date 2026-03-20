@@ -951,11 +951,13 @@ def run_refresh(
     force: bool,
     trigger: str,
     stale_after_seconds: int,
+    full_rebuild: bool = False,
     settings: Settings | None = None,
 ) -> DatabaseStatusPayload:
     backend_settings = settings or load_settings()
     export_meta = read_export_meta(backend_settings)
-    skip = _should_skip(force, stale_after_seconds, export_meta, backend_settings)
+    effective_force = force or full_rebuild
+    skip = _should_skip(effective_force, stale_after_seconds, export_meta, backend_settings)
     if skip is not None:
         return skip
 
@@ -968,7 +970,7 @@ def run_refresh(
     current_incremental_state = {
         _conversation_refresh_key(envelope): _conversation_refresh_hash(envelope) for envelope in envelopes
     }
-    full_reconcile = force or not previous_incremental_state
+    full_reconcile = effective_force or not previous_incremental_state
     deleted_conversation_ids = set(previous_incremental_state) - set(current_incremental_state)
     changed_conversation_ids = {
         conversation_key

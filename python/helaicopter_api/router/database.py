@@ -79,6 +79,7 @@ async def database_refresh(
         return trigger_database_refresh(
             services,
             force=body.force,
+            full_rebuild=body.full_rebuild,
             trigger=body.trigger,
             stale_after_seconds=body.stale_after_seconds,
         )
