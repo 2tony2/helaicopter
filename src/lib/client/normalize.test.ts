@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+const {
   normalizeAnalytics,
   normalizeConversationEvaluations,
   normalizeConversationDetail,
@@ -11,15 +11,25 @@ import {
   normalizeProjects,
   normalizeSubscriptionSettings,
   normalizeTasks,
-} from "./normalize.ts";
-import {
+} = await import(new URL("./normalize.ts", import.meta.url).href);
+const {
+  databaseStatusSchema,
+} = await import(new URL("./schemas/database.ts", import.meta.url).href);
+const {
+  conversationEvaluationListSchema,
+  evaluationPromptListSchema,
+} = await import(new URL("./schemas/evaluations.ts", import.meta.url).href);
+const {
+  subscriptionSettingsSchema,
+} = await import(new URL("./schemas/subscriptions.ts", import.meta.url).href);
+const {
   conversation,
   conversationDags,
   getBaseUrl,
   projects,
   setBaseUrl,
   subagent,
-} from "./endpoints.ts";
+} = await import(new URL("./endpoints.ts", import.meta.url).href);
 
 async function importEndpointsWithApiBaseUrl(nextPublicApiBaseUrl?: string) {
   const previousValue = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -462,6 +472,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         availability: "ready",
         operational_status: "Warm in-process response cache",
         table_count: 0,
+        load: [],
         tables: [],
       },
       sqlite: {
@@ -471,6 +482,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         role: "metadata",
         availability: "ready",
         table_count: 4,
+        load: [],
         tables: [
           {
             name: "evaluation_prompts",
@@ -495,6 +507,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         role: "inspection",
         availability: "missing",
         table_count: 0,
+        load: [],
         tables: [],
       },
       prefect_postgres: {
@@ -505,6 +518,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         availability: "ready",
         operational_status: "Prefect API responding",
         table_count: 0,
+        load: [],
         tables: [],
       },
     },
@@ -539,6 +553,7 @@ test("normalizeDatabaseStatus still accepts legacy duckdb field names during tra
         role: "metadata",
         availability: "ready",
         tableCount: 0,
+        load: [],
         tables: [],
       },
       legacyDuckdb: {
@@ -548,12 +563,73 @@ test("normalizeDatabaseStatus still accepts legacy duckdb field names during tra
         role: "inspection",
         availability: "ready",
         tableCount: 0,
+        load: [],
         tables: [],
       },
     },
   });
 
   assert.equal(normalized.databases.duckdb.key, "duckdb");
+});
+
+test("evaluation prompt payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+  const parsed = evaluationPromptListSchema.parse([
+    {
+      prompt_id: "prompt-1",
+      name: "Failure Sweep",
+      description: "Inspect failures",
+      prompt_text: "Look for recoverable errors.",
+      is_default: false,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: "2026-03-18T10:01:00Z",
+    },
+    {
+      promptId: "prompt-2",
+      name: "Default Review",
+      description: null,
+      promptText: "Use the existing fallback.",
+      isDefault: true,
+      createdAt: "2026-03-18T10:02:00Z",
+      updatedAt: "2026-03-18T10:03:00Z",
+    },
+  ]);
+
+  assert.equal(parsed.length, 2);
+  assert.deepEqual(normalizeEvaluationPrompts(parsed), [
+    {
+      promptId: "prompt-1",
+      name: "Failure Sweep",
+      description: "Inspect failures",
+      promptText: "Look for recoverable errors.",
+      isDefault: false,
+      createdAt: "2026-03-18T10:00:00Z",
+      updatedAt: "2026-03-18T10:01:00Z",
+    },
+    {
+      promptId: "prompt-2",
+      name: "Default Review",
+      description: null,
+      promptText: "Use the existing fallback.",
+      isDefault: true,
+      createdAt: "2026-03-18T10:02:00Z",
+      updatedAt: "2026-03-18T10:03:00Z",
+    },
+  ]);
+
+  assert.throws(
+    () =>
+      evaluationPromptListSchema.parse([
+        {
+          prompt_id: "prompt-3",
+          name: "Broken",
+          prompt_text: "Would previously coerce to empty timestamps.",
+          is_default: false,
+          created_at: 123,
+          updated_at: "2026-03-18T10:03:00Z",
+        },
+      ]),
+    /created_at|createdAt/i
+  );
 });
 
 test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt and job records", () => {
@@ -622,6 +698,78 @@ test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt
       durationMs: null,
     },
   ]);
+});
+
+test("conversation evaluation payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+  const parsed = conversationEvaluationListSchema.parse([
+    {
+      evaluation_id: "evaluation-1",
+      conversation_id: "claude:session-1",
+      prompt_id: "prompt-1",
+      provider: "codex",
+      model: "gpt-5",
+      status: "running",
+      scope: "failed_tool_calls",
+      selection_instruction: "Focus on the failure cluster.",
+      prompt_name: "Failure Sweep",
+      prompt_text: "Look for recoverable errors.",
+      report_markdown: null,
+      raw_output: null,
+      error_message: null,
+      command: "codex exec --model gpt-5",
+      created_at: "2026-03-18T10:00:00Z",
+      finished_at: null,
+      duration_ms: null,
+    },
+    {
+      evaluationId: "evaluation-2",
+      conversationId: "claude:session-2",
+      promptId: null,
+      provider: "claude",
+      model: "sonnet",
+      status: "completed",
+      scope: "full",
+      selectionInstruction: null,
+      promptName: "Full Review",
+      promptText: "Review everything.",
+      reportMarkdown: "# Looks good",
+      rawOutput: "raw",
+      errorMessage: null,
+      command: "claude run",
+      createdAt: "2026-03-18T10:04:00Z",
+      finishedAt: "2026-03-18T10:05:00Z",
+      durationMs: 1000,
+    },
+  ]);
+
+  assert.equal(parsed.length, 2);
+  assert.equal(normalizeConversationEvaluations(parsed)[1].status, "completed");
+
+  assert.throws(
+    () =>
+      conversationEvaluationListSchema.parse([
+        {
+          evaluation_id: "evaluation-3",
+          conversation_id: "claude:session-3",
+          prompt_id: "prompt-1",
+          provider: "codex",
+          model: "gpt-5",
+          status: "queued",
+          scope: "full",
+          selection_instruction: null,
+          prompt_name: "Queued Review",
+          prompt_text: "Should fail.",
+          report_markdown: null,
+          raw_output: null,
+          error_message: null,
+          command: "codex exec --model gpt-5",
+          created_at: "2026-03-18T10:06:00Z",
+          finished_at: null,
+          duration_ms: null,
+        },
+      ]),
+    /status/i
+  );
 });
 
 test("normalizeOvernightOatsRuns removes the frontend-only required evaluation field", () => {
@@ -737,4 +885,177 @@ test("normalizeSubscriptionSettings maps provider records for analytics settings
       updatedAt: "2026-03-18T10:00:00Z",
     },
   });
+});
+
+test("subscription settings schema parses provider records and rejects silent fallbacks", () => {
+  const parsed = subscriptionSettingsSchema.parse({
+    claude: {
+      provider: "claude",
+      has_subscription: false,
+      monthly_cost: 123.45,
+      updated_at: "2026-03-18T10:00:00Z",
+    },
+    codex: {
+      provider: "codex",
+      hasSubscription: true,
+      monthlyCost: 200,
+      updatedAt: "2026-03-18T10:00:00Z",
+    },
+  });
+
+  assert.deepEqual(normalizeSubscriptionSettings(parsed), {
+    claude: {
+      provider: "claude",
+      hasSubscription: false,
+      monthlyCost: 123.45,
+      updatedAt: "2026-03-18T10:00:00Z",
+    },
+    codex: {
+      provider: "codex",
+      hasSubscription: true,
+      monthlyCost: 200,
+      updatedAt: "2026-03-18T10:00:00Z",
+    },
+  });
+
+  assert.throws(
+    () =>
+      subscriptionSettingsSchema.parse({
+        claude: {
+          provider: "claude",
+          has_subscription: false,
+          monthly_cost: "123.45",
+          updated_at: "2026-03-18T10:00:00Z",
+        },
+        codex: {
+          provider: "codex",
+          has_subscription: true,
+          monthly_cost: 200,
+          updated_at: "2026-03-18T10:00:00Z",
+        },
+      }),
+    /monthly_cost|monthlyCost/i
+  );
+});
+
+test("database status schema parses current backend shapes and rejects silent fallbacks", () => {
+  const parsed = databaseStatusSchema.parse({
+    status: "failed",
+    trigger: "manual",
+    started_at: "2026-03-18T10:00:00Z",
+    finished_at: "2026-03-18T10:00:05Z",
+    duration_ms: 5000,
+    error: "refresh exploded",
+    last_successful_refresh_at: "2026-03-18T09:00:00Z",
+    idempotency_key: "refresh-123",
+    scope_label: "Historical conversations",
+    window_days: 30,
+    window_start: "2026-02-17T00:00:00Z",
+    window_end: "2026-03-18T00:00:00Z",
+    source_conversation_count: 42,
+    refresh_interval_minutes: 360,
+    runtime: {
+      analytics_read_backend: "legacy",
+      conversation_summary_read_backend: "legacy",
+    },
+    databases: {
+      frontend_cache: {
+        key: "frontend_cache",
+        label: "Frontend Short-Term Cache",
+        engine: "In-process memory",
+        role: "cache",
+        availability: "ready",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+      sqlite: {
+        key: "sqlite",
+        label: "SQLite Metadata Store",
+        engine: "SQLite",
+        role: "metadata",
+        availability: "ready",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+      legacyDuckdb: {
+        key: "duckdb",
+        label: "DuckDB Inspection Snapshot",
+        engine: "DuckDB",
+        role: "inspection",
+        availability: "missing",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+      prefect_postgres: {
+        key: "prefect_postgres",
+        label: "Prefect Postgres",
+        engine: "Postgres",
+        role: "orchestration",
+        availability: "ready",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+    },
+  });
+
+  assert.equal(normalizeDatabaseStatus(parsed).databases.duckdb.key, "duckdb");
+
+  assert.throws(
+    () =>
+      databaseStatusSchema.parse({
+        status: "failed",
+        refresh_interval_minutes: 360,
+        runtime: {
+          analytics_read_backend: "legacy",
+          conversation_summary_read_backend: "legacy",
+        },
+        databases: {
+          frontend_cache: {
+            key: "frontend_cache",
+            label: "Frontend Short-Term Cache",
+            engine: "In-process memory",
+            role: "cache",
+            availability: "ready",
+            table_count: "zero",
+            load: [],
+            tables: [],
+          },
+          sqlite: {
+            key: "sqlite",
+            label: "SQLite Metadata Store",
+            engine: "SQLite",
+            role: "metadata",
+            availability: "ready",
+            table_count: 0,
+            load: [],
+            tables: [],
+          },
+          duckdb: {
+            key: "duckdb",
+            label: "DuckDB Inspection Snapshot",
+            engine: "DuckDB",
+            role: "inspection",
+            availability: "missing",
+            table_count: 0,
+            load: [],
+            tables: [],
+          },
+          prefect_postgres: {
+            key: "prefect_postgres",
+            label: "Prefect Postgres",
+            engine: "Postgres",
+            role: "orchestration",
+            availability: "ready",
+            table_count: 0,
+            load: [],
+            tables: [],
+          },
+        },
+      }),
+    /table_count|tableCount/i
+  );
 });

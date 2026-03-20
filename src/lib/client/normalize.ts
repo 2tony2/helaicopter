@@ -47,6 +47,12 @@ import type {
   SubscriptionSettings,
   TokenUsage,
 } from "@/lib/types";
+import type { DatabaseArtifactPayload, DatabaseStatusPayload } from "./schemas/database.ts";
+import type {
+  ConversationEvaluationPayload,
+  EvaluationPromptPayload,
+} from "./schemas/evaluations.ts";
+import type { SubscriptionSettingsPayload } from "./schemas/subscriptions.ts";
 
 /**
  * Compatibility shim for the FastAPI rollout: frontend callers now target the
@@ -54,6 +60,12 @@ import type {
  * payloads and the legacy camelCase Next.js shapes during the transition.
  */
 type JsonRecord = Record<string, unknown>;
+type PresentDatabaseArtifactPayload = Exclude<
+  DatabaseStatusPayload["databases"][keyof DatabaseStatusPayload["databases"]],
+  undefined
+>;
+type SnakeDatabaseArtifactPayload = Extract<PresentDatabaseArtifactPayload, { table_count: number }>;
+type CamelDatabaseArtifactPayload = Extract<PresentDatabaseArtifactPayload, { tableCount: number }>;
 
 function snakeToCamel(value: string): string {
   return value.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
@@ -844,199 +856,216 @@ function normalizeDatabaseLoadMetric(value: unknown): DatabaseLoadMetric {
   };
 }
 
-function normalizeDatabaseArtifact(value: unknown): DatabaseArtifactStatus {
-  const item = asRecord(value);
-  const key = stringOr(field(item, "key"));
-  const role = stringOr(field(item, "role"));
+function normalizeDatabaseArtifact(
+  value: DatabaseArtifactPayload | undefined
+): DatabaseArtifactStatus {
+  if (!value) {
+    return {
+      key: "" as DatabaseArtifactStatus["key"],
+      label: "",
+      engine: "",
+      role: "" as DatabaseArtifactStatus["role"],
+      availability: "" as DatabaseArtifactStatus["availability"],
+      tableCount: 0,
+      load: [],
+      tables: [],
+    };
+  }
+
+  const key = value.key;
+  const role = value.role;
+  let operationalStatus: string | null | undefined;
+  let tableCount: number;
+  let sizeBytes: number | null | undefined;
+  let sizeDisplay: string | null | undefined;
+  let inventorySummary: string | null | undefined;
+
+  if ("table_count" in value) {
+    const snakeCaseValue = value as SnakeDatabaseArtifactPayload;
+    operationalStatus = snakeCaseValue.operational_status;
+    tableCount = snakeCaseValue.table_count;
+    sizeBytes = snakeCaseValue.size_bytes;
+    sizeDisplay = snakeCaseValue.size_display;
+    inventorySummary = snakeCaseValue.inventory_summary;
+  } else {
+    const camelCaseValue = value as CamelDatabaseArtifactPayload;
+    operationalStatus = camelCaseValue.operationalStatus;
+    tableCount = camelCaseValue.tableCount;
+    sizeBytes = camelCaseValue.sizeBytes;
+    sizeDisplay = camelCaseValue.sizeDisplay;
+    inventorySummary = camelCaseValue.inventorySummary;
+  }
+
   return {
     key: key as DatabaseArtifactStatus["key"],
-    label: stringOr(field(item, "label")),
-    engine: stringOr(field(item, "engine")),
+    label: value.label,
+    engine: value.engine,
     role: role as DatabaseArtifactStatus["role"],
-    availability: stringOr(field(item, "availability")) as DatabaseArtifactStatus["availability"],
-    health:
-      field(item, "health") === null ? null : nullableString(field(item, "health")),
-    operationalStatus:
-      field(item, "operationalStatus", "operational_status") === null
-        ? null
-        : nullableString(field(item, "operationalStatus", "operational_status")),
-    note:
-      field(item, "note") === null ? null : nullableString(field(item, "note")),
-    error:
-      field(item, "error") === null ? null : nullableString(field(item, "error")),
-    path: field(item, "path") === null ? null : nullableString(field(item, "path")),
-    target: field(item, "target") === null ? null : nullableString(field(item, "target")),
-    tableCount: numberOr(field(item, "tableCount", "table_count")),
-    sizeBytes:
-      field(item, "sizeBytes", "size_bytes") === null
-        ? null
-        : nullableNumber(field(item, "sizeBytes", "size_bytes")),
-    sizeDisplay:
-      field(item, "sizeDisplay", "size_display") === null
-        ? null
-        : nullableString(field(item, "sizeDisplay", "size_display")),
-    inventorySummary:
-      field(item, "inventorySummary", "inventory_summary") === null
-        ? null
-        : nullableString(field(item, "inventorySummary", "inventory_summary")),
-    load: asArray(field(item, "load")).map(normalizeDatabaseLoadMetric),
-    tables: asArray(field(item, "tables")).map(normalizeDatabaseTable),
+    availability: value.availability as DatabaseArtifactStatus["availability"],
+    health: value.health ?? null,
+    operationalStatus: operationalStatus ?? null,
+    note: value.note ?? null,
+    error: value.error ?? null,
+    path: value.path ?? null,
+    target: value.target ?? null,
+    tableCount,
+    sizeBytes: sizeBytes ?? null,
+    sizeDisplay: sizeDisplay ?? null,
+    inventorySummary: inventorySummary ?? null,
+    load: value.load.map(normalizeDatabaseLoadMetric),
+    tables: value.tables.map(normalizeDatabaseTable),
   };
 }
 
-export function normalizeDatabaseStatus(value: unknown): DatabaseStatus {
-  const item = asRecord(value);
-  const runtime = asRecord(field(item, "runtime"));
-  const databases = asRecord(field(item, "databases"));
+export function normalizeDatabaseStatus(value: DatabaseStatusPayload): DatabaseStatus {
+  const startedAt = value.startedAt ?? value.started_at ?? null;
+  const finishedAt = value.finishedAt ?? value.finished_at ?? null;
+  const durationMs = value.durationMs ?? value.duration_ms ?? null;
+  const lastSuccessfulRefreshAt =
+    value.lastSuccessfulRefreshAt ?? value.last_successful_refresh_at ?? null;
+  const idempotencyKey = value.idempotencyKey ?? value.idempotency_key ?? null;
+  const scopeLabel = value.scopeLabel ?? value.scope_label ?? "";
+  const windowDays = value.windowDays ?? value.window_days ?? 0;
+  const windowStart = value.windowStart ?? value.window_start ?? null;
+  const windowEnd = value.windowEnd ?? value.window_end ?? null;
+  const sourceConversationCount =
+    value.sourceConversationCount ?? value.source_conversation_count ?? 0;
+  const refreshIntervalMinutes =
+    value.refreshIntervalMinutes ?? value.refresh_interval_minutes ?? 360;
+  const analyticsReadBackend =
+    "analytics_read_backend" in value.runtime
+      ? value.runtime.analytics_read_backend
+      : value.runtime.analyticsReadBackend;
+  const conversationSummaryReadBackend =
+    "conversation_summary_read_backend" in value.runtime
+      ? value.runtime.conversation_summary_read_backend
+      : value.runtime.conversationSummaryReadBackend;
+
   return {
-    status: stringOr(field(item, "status")) as DatabaseStatus["status"],
-    trigger: nullableString(field(item, "trigger")),
-    startedAt:
-      field(item, "startedAt", "started_at") === null
-        ? null
-        : nullableString(field(item, "startedAt", "started_at")),
-    finishedAt:
-      field(item, "finishedAt", "finished_at") === null
-        ? null
-        : nullableString(field(item, "finishedAt", "finished_at")),
-    durationMs:
-      field(item, "durationMs", "duration_ms") === null
-        ? null
-        : numberOr(field(item, "durationMs", "duration_ms")),
-    error: field(item, "error") === null ? null : nullableString(field(item, "error")),
-    lastSuccessfulRefreshAt:
-      field(item, "lastSuccessfulRefreshAt", "last_successful_refresh_at") === null
-        ? null
-        : nullableString(field(item, "lastSuccessfulRefreshAt", "last_successful_refresh_at")),
-    idempotencyKey:
-      field(item, "idempotencyKey", "idempotency_key") === null
-        ? null
-        : nullableString(field(item, "idempotencyKey", "idempotency_key")),
-    scopeLabel: stringOr(field(item, "scopeLabel", "scope_label")),
-    windowDays: numberOr(field(item, "windowDays", "window_days")),
-    windowStart:
-      field(item, "windowStart", "window_start") === null
-        ? null
-        : nullableString(field(item, "windowStart", "window_start")),
-    windowEnd:
-      field(item, "windowEnd", "window_end") === null
-        ? null
-        : nullableString(field(item, "windowEnd", "window_end")),
-    sourceConversationCount: numberOr(
-      field(item, "sourceConversationCount", "source_conversation_count")
-    ),
-    refreshIntervalMinutes: numberOr(
-      field(item, "refreshIntervalMinutes", "refresh_interval_minutes"),
-      360
-    ),
+    status: value.status,
+    trigger: value.trigger,
+    startedAt,
+    finishedAt,
+    durationMs,
+    error: value.error ?? null,
+    lastSuccessfulRefreshAt,
+    idempotencyKey,
+    scopeLabel,
+    windowDays,
+    windowStart,
+    windowEnd,
+    sourceConversationCount,
+    refreshIntervalMinutes,
     runtime: {
-      analyticsReadBackend: stringOr(
-        field(runtime, "analyticsReadBackend", "analytics_read_backend")
-      ) as DatabaseStatus["runtime"]["analyticsReadBackend"],
-      conversationSummaryReadBackend: stringOr(
-        field(
-          runtime,
-          "conversationSummaryReadBackend",
-          "conversation_summary_read_backend"
-        )
-      ) as DatabaseStatus["runtime"]["conversationSummaryReadBackend"],
+      analyticsReadBackend:
+        analyticsReadBackend as DatabaseStatus["runtime"]["analyticsReadBackend"],
+      conversationSummaryReadBackend:
+        conversationSummaryReadBackend as DatabaseStatus["runtime"]["conversationSummaryReadBackend"],
     },
     databases: {
       frontendCache: normalizeDatabaseArtifact(
-        field(databases, "frontendCache", "frontend_cache")
+        value.databases.frontend_cache ?? value.databases.frontendCache
       ),
-      sqlite: normalizeDatabaseArtifact(field(databases, "sqlite")),
-      duckdb: normalizeDatabaseArtifact(field(databases, "duckdb", "legacyDuckdb", "legacy_duckdb")),
+      sqlite: normalizeDatabaseArtifact(value.databases.sqlite),
+      duckdb: normalizeDatabaseArtifact(
+        value.databases.duckdb ?? value.databases.legacy_duckdb ?? value.databases.legacyDuckdb
+      ),
       prefectPostgres: normalizeDatabaseArtifact(
-        field(databases, "prefectPostgres", "prefect_postgres")
+        value.databases.prefect_postgres ?? value.databases.prefectPostgres
       ),
     },
   };
 }
 
-function normalizeEvaluationPrompt(value: unknown): EvaluationPrompt {
-  const item = asRecord(value);
+export function normalizeEvaluationPrompt(value: EvaluationPromptPayload): EvaluationPrompt {
+  const promptId = "promptId" in value ? value.promptId : value.prompt_id;
+  const promptText = "promptText" in value ? value.promptText : value.prompt_text;
+  const isDefault = "isDefault" in value ? value.isDefault : value.is_default;
+  const createdAt = "createdAt" in value ? value.createdAt : value.created_at;
+  const updatedAt = "updatedAt" in value ? value.updatedAt : value.updated_at;
+
   return {
-    promptId: stringOr(field(item, "promptId", "prompt_id")),
-    name: stringOr(field(item, "name")),
-    description:
-      field(item, "description") === null
-        ? null
-        : nullableString(field(item, "description")),
-    promptText: stringOr(field(item, "promptText", "prompt_text")),
-    isDefault: booleanOr(field(item, "isDefault", "is_default")),
-    createdAt: stringOr(field(item, "createdAt", "created_at")),
-    updatedAt: stringOr(field(item, "updatedAt", "updated_at")),
+    promptId,
+    name: value.name,
+    description: value.description ?? null,
+    promptText,
+    isDefault,
+    createdAt,
+    updatedAt,
   };
 }
 
-export function normalizeEvaluationPrompts(value: unknown): EvaluationPrompt[] {
-  return asArray(value).map(normalizeEvaluationPrompt);
+export function normalizeEvaluationPrompts(value: EvaluationPromptPayload[]): EvaluationPrompt[] {
+  return value.map(normalizeEvaluationPrompt);
 }
 
-function normalizeConversationEvaluation(value: unknown): ConversationEvaluation {
-  const item = asRecord(value);
+export function normalizeConversationEvaluation(
+  value: ConversationEvaluationPayload
+): ConversationEvaluation {
+  const evaluationId = "evaluationId" in value ? value.evaluationId : value.evaluation_id;
+  const conversationId = "conversationId" in value ? value.conversationId : value.conversation_id;
+  const promptId = "promptId" in value ? value.promptId : value.prompt_id;
+  const selectionInstruction =
+    "selectionInstruction" in value ? value.selectionInstruction : value.selection_instruction;
+  const promptName = "promptName" in value ? value.promptName : value.prompt_name;
+  const promptText = "promptText" in value ? value.promptText : value.prompt_text;
+  const reportMarkdown =
+    "reportMarkdown" in value ? value.reportMarkdown : value.report_markdown;
+  const rawOutput = "rawOutput" in value ? value.rawOutput : value.raw_output;
+  const errorMessage = "errorMessage" in value ? value.errorMessage : value.error_message;
+  const createdAt = "createdAt" in value ? value.createdAt : value.created_at;
+  const finishedAt = "finishedAt" in value ? value.finishedAt : value.finished_at;
+  const durationMs = "durationMs" in value ? value.durationMs : value.duration_ms;
+
   return {
-    evaluationId: stringOr(field(item, "evaluationId", "evaluation_id")),
-    conversationId: stringOr(field(item, "conversationId", "conversation_id")),
-    promptId:
-      field(item, "promptId", "prompt_id") === null
-        ? null
-        : nullableString(field(item, "promptId", "prompt_id")),
-    provider: stringOr(field(item, "provider")) as ConversationEvaluation["provider"],
-    model: stringOr(field(item, "model")),
-    status: stringOr(field(item, "status")) as ConversationEvaluation["status"],
-    scope: stringOr(field(item, "scope")) as ConversationEvaluation["scope"],
-    selectionInstruction:
-      field(item, "selectionInstruction", "selection_instruction") === null
-        ? null
-        : nullableString(field(item, "selectionInstruction", "selection_instruction")),
-    promptName: stringOr(field(item, "promptName", "prompt_name")),
-    promptText: stringOr(field(item, "promptText", "prompt_text")),
-    reportMarkdown:
-      field(item, "reportMarkdown", "report_markdown") === null
-        ? null
-        : nullableString(field(item, "reportMarkdown", "report_markdown")),
-    rawOutput:
-      field(item, "rawOutput", "raw_output") === null
-        ? null
-        : nullableString(field(item, "rawOutput", "raw_output")),
-    errorMessage:
-      field(item, "errorMessage", "error_message") === null
-        ? null
-        : nullableString(field(item, "errorMessage", "error_message")),
-    command: stringOr(field(item, "command")),
-    createdAt: stringOr(field(item, "createdAt", "created_at")),
-    finishedAt:
-      field(item, "finishedAt", "finished_at") === null
-        ? null
-        : nullableString(field(item, "finishedAt", "finished_at")),
-    durationMs:
-      field(item, "durationMs", "duration_ms") === null
-        ? null
-        : numberOr(field(item, "durationMs", "duration_ms")),
+    evaluationId,
+    conversationId,
+    promptId: promptId ?? null,
+    provider: value.provider,
+    model: value.model,
+    status: value.status,
+    scope: value.scope,
+    selectionInstruction: selectionInstruction ?? null,
+    promptName,
+    promptText,
+    reportMarkdown: reportMarkdown ?? null,
+    rawOutput: rawOutput ?? null,
+    errorMessage: errorMessage ?? null,
+    command: value.command,
+    createdAt,
+    finishedAt: finishedAt ?? null,
+    durationMs: durationMs ?? null,
   };
 }
 
-export function normalizeConversationEvaluations(value: unknown): ConversationEvaluation[] {
-  return asArray(value).map(normalizeConversationEvaluation);
+export function normalizeConversationEvaluations(
+  value: ConversationEvaluationPayload[]
+): ConversationEvaluation[] {
+  return value.map(normalizeConversationEvaluation);
 }
 
-function normalizeProviderSubscription(value: unknown): SubscriptionSettings["claude"] {
-  const item = asRecord(value);
+function normalizeProviderSubscription(
+  value: SubscriptionSettingsPayload["claude"]
+): SubscriptionSettings["claude"] {
+  const hasSubscription =
+    "hasSubscription" in value ? value.hasSubscription : value.has_subscription;
+  const monthlyCost = "monthlyCost" in value ? value.monthlyCost : value.monthly_cost;
+  const updatedAt = "updatedAt" in value ? value.updatedAt : value.updated_at;
+
   return {
-    provider: stringOr(field(item, "provider")) as SubscriptionSettings["claude"]["provider"],
-    hasSubscription: booleanOr(field(item, "hasSubscription", "has_subscription")),
-    monthlyCost: numberOr(field(item, "monthlyCost", "monthly_cost")),
-    updatedAt: stringOr(field(item, "updatedAt", "updated_at")),
+    provider: value.provider,
+    hasSubscription,
+    monthlyCost,
+    updatedAt,
   };
 }
 
-export function normalizeSubscriptionSettings(value: unknown): SubscriptionSettings {
-  const item = asRecord(value);
+export function normalizeSubscriptionSettings(
+  value: SubscriptionSettingsPayload
+): SubscriptionSettings {
   return {
-    claude: normalizeProviderSubscription(field(item, "claude")),
-    codex: normalizeProviderSubscription(field(item, "codex")),
+    claude: normalizeProviderSubscription(value.claude),
+    codex: normalizeProviderSubscription(value.codex),
   };
 }
 

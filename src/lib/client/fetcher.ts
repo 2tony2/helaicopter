@@ -4,7 +4,7 @@
 
 import type { ZodType } from "zod";
 
-type Normalizer<T> = (value: unknown) => T;
+type Normalizer<TInput, TOutput = TInput> = (value: TInput) => TOutput;
 type Schema<T> = ZodType<T>;
 const MAX_VALIDATION_ISSUES = 3;
 
@@ -70,7 +70,7 @@ function readErrorMessage(payload: unknown): string | null {
 export async function requestJson<T>(
   url: string,
   init?: RequestInit,
-  normalize?: Normalizer<T>
+  normalize?: Normalizer<unknown, T>
 ): Promise<T>;
 
 export async function requestJson<T>(
@@ -83,7 +83,7 @@ export async function requestJson<TSchema, TOutput>(
   url: string,
   init: RequestInit | undefined,
   schema: Schema<TSchema> | undefined,
-  normalize: Normalizer<TOutput>
+  normalize: Normalizer<TSchema, TOutput>
 ): Promise<TOutput>;
 
 export async function requestJson(
@@ -131,7 +131,7 @@ export const fetcher = (url: string) => requestJson(url);
 export function post<T = unknown>(
   url: string,
   body?: unknown,
-  normalize?: Normalizer<T>
+  normalize?: Normalizer<unknown, T>
 ): Promise<T>;
 
 export function post<T>(
@@ -144,7 +144,7 @@ export function post<TSchema, TOutput>(
   url: string,
   body: unknown,
   schema: Schema<TSchema> | undefined,
-  normalize: Normalizer<TOutput>
+  normalize: Normalizer<TSchema, TOutput>
 ): Promise<TOutput>;
 
 export function post(
@@ -175,7 +175,7 @@ export function post(
 export function patch<T = unknown>(
   url: string,
   body: unknown,
-  normalize?: Normalizer<T>
+  normalize?: Normalizer<unknown, T>
 ): Promise<T>;
 
 export function patch<T>(
@@ -188,7 +188,7 @@ export function patch<TSchema, TOutput>(
   url: string,
   body: unknown,
   schema: Schema<TSchema> | undefined,
-  normalize: Normalizer<TOutput>
+  normalize: Normalizer<TSchema, TOutput>
 ): Promise<TOutput>;
 
 export function patch(
@@ -216,14 +216,14 @@ export function patch(
   return requestJson(url, init);
 }
 
-export function del<T = unknown>(url: string, normalize?: Normalizer<T>): Promise<T>;
+export function del<T = unknown>(url: string, normalize?: Normalizer<unknown, T>): Promise<T>;
 
 export function del<T>(url: string, schema: Schema<T>): Promise<T>;
 
 export function del<TSchema, TOutput>(
   url: string,
   schema: Schema<TSchema> | undefined,
-  normalize: Normalizer<TOutput>
+  normalize: Normalizer<TSchema, TOutput>
 ): Promise<TOutput>;
 
 export function del(

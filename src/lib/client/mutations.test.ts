@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+const {
   createConversationEvaluation,
   createEvaluationPrompt,
   refreshDatabase,
   saveSubscriptionSettings,
-} from "./mutations";
-import { setBaseUrl } from "./endpoints";
+} = await import(new URL("./mutations.ts", import.meta.url).href);
+const { setBaseUrl } = await import(new URL("./endpoints.ts", import.meta.url).href);
 
 function installFetchStub(
   implementation: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -146,6 +146,30 @@ test("createEvaluationPrompt posts to the FastAPI endpoint and normalizes the re
   }
 });
 
+test("createEvaluationPrompt validates outgoing payloads before fetch", async () => {
+  setBaseUrl("https://api.example.test");
+  let fetchCalls = 0;
+  const restoreFetch = installFetchStub(async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not run");
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        createEvaluationPrompt({
+          name: "   ",
+          description: "Focus on failures",
+          promptText: "Review the weakest turns.",
+        }),
+      /name/i
+    );
+    assert.equal(fetchCalls, 0);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("saveSubscriptionSettings and createConversationEvaluation normalize FastAPI payloads", async () => {
   setBaseUrl("https://api.example.test");
   const responses = [
@@ -248,6 +272,67 @@ test("saveSubscriptionSettings and createConversationEvaluation normalize FastAP
         method: "POST",
       },
     ]);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("createConversationEvaluation validates outgoing payloads before fetch", async () => {
+  setBaseUrl("https://api.example.test");
+  let fetchCalls = 0;
+  const restoreFetch = installFetchStub(async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not run");
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        createConversationEvaluation("-Users-tony-Code-helaicopter", "session-1", {
+          provider: "codex",
+          model: "gpt-5",
+          promptId: "prompt-1",
+          promptName: "Reviewer Sweep",
+          promptText: "Review the weakest turns.",
+          scope: "invalid-scope" as never,
+          selectionInstruction: null,
+        }),
+      /scope/i
+    );
+    assert.equal(fetchCalls, 0);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("saveSubscriptionSettings validates outgoing payloads before fetch", async () => {
+  setBaseUrl("https://api.example.test");
+  let fetchCalls = 0;
+  const restoreFetch = installFetchStub(async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not run");
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        saveSubscriptionSettings({
+          claude: {
+            provider: "claude",
+            hasSubscription: false,
+            monthlyCost: Number.NaN,
+            updatedAt: "2026-03-18T10:00:00Z",
+          },
+          codex: {
+            provider: "codex",
+            hasSubscription: true,
+            monthlyCost: 200,
+            updatedAt: "2026-03-18T10:00:00Z",
+          },
+        }),
+      /monthlyCost|monthly_cost/i
+    );
+    assert.equal(fetchCalls, 0);
   } finally {
     restoreFetch();
   }
