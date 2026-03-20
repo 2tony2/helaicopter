@@ -122,7 +122,7 @@ Concrete implementations of the port interfaces:
 
 ---
 
-## Frontend components (`src/components/`)
+## Frontend components
 
 ### Analytics (`analytics/`)
 - `stats-card.tsx` — small KPI cards (conversations, tokens, cache rate, spend)
@@ -152,9 +152,11 @@ Concrete implementations of the port interfaces:
 - `database-auto-refresh.tsx` — periodic background refresh trigger
 - `olap-wasm-preview.tsx` — DuckDB WASM local query tool
 
-### Plans (`plans/`)
-- `plan-viewer.tsx` — full markdown rendering with `react-markdown`
-- `plan-panel.tsx` — plan summary with metadata
+### Plans
+- `src/features/plans/components/plan-viewer.tsx` — full markdown rendering with `react-markdown`
+- `src/features/plans/components/plan-panel.tsx` — plan summary with metadata
+
+(Legacy shims remain at `src/components/plans/` during the migration.)
 
 ### Layout (`layout/`)
 - `app-sidebar.tsx` — main navigation with route highlighting

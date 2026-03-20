@@ -66,7 +66,7 @@ This means the business logic never imports concrete file readers or database dr
 
 ```
 src/
-├── app/              # Next.js App Router pages (13 routes)
+├── app/              # Next.js App Router pages (12 routes)
 ├── components/       # React components by feature domain
 │   ├── analytics/    # Charts, KPI cards, cost breakdowns
 │   ├── conversation/ # Message cards, DAG views, evaluations
@@ -83,6 +83,13 @@ src/
     ├── pricing.ts    # Token cost calculation
     └── constants.ts  # Model pricing tables
 ```
+
+The codebase is migrating to an explicit layer structure — new code should use:
+- `src/features/*` — user-facing feature components and hooks
+- `src/views/*` — page-level composition components
+- `src/shared/*` — reusable primitives (`shared/ui/`, `shared/layout/`)
+
+Legacy `src/components/*` and `src/hooks/*` paths remain as compatibility shims during the migration.
 
 ## Key design decisions
 

@@ -44,7 +44,27 @@ def list_conversation_evaluations(
     session_id: str,
     parent_session_id: str | None = None,
 ) -> list[ConversationEvaluationResponse]:
-    """Return persisted evaluations for one conversation, newest first."""
+    """Return persisted evaluations for one conversation, newest first.
+
+    For Claude live conversations with a ``parent_session_id``, the conversation
+    is first fetched to ensure it can be found before the evaluation list is
+    returned.
+
+    Args:
+        services: Initialised backend services.
+        project_path: Encoded project path identifying the workspace.
+        session_id: Provider-specific session identifier for the conversation.
+        parent_session_id: Optional parent session ID needed for Claude
+            sub-agent conversation resolution.
+
+    Returns:
+        List of ``ConversationEvaluationResponse`` objects ordered newest-first.
+
+    Raises:
+        ConversationEvaluationConversationNotFoundError: If a parent-aware
+            Claude conversation lookup is required but the conversation cannot
+            be found.
+    """
     if _should_resolve_parent_aware_live_claude_evaluation_read(
         project_path=project_path,
         parent_session_id=parent_session_id,
@@ -71,7 +91,33 @@ def create_conversation_evaluation(
     body: ConversationEvaluationCreateRequest,
     parent_session_id: str | None = None,
 ) -> ConversationEvaluationResponse:
-    """Create a persisted evaluation job and submit it to the runner."""
+    """Create a persisted evaluation job and submit it to the runner.
+
+    Resolves the conversation and evaluation prompt, builds the prompt text,
+    persists a ``running`` evaluation record, and submits the job to the
+    configured evaluation job runner. If submission fails the record is
+    updated to ``failed`` before re-raising.
+
+    Args:
+        services: Initialised backend services including the evaluation job
+            runner and SQLite store.
+        project_path: Encoded project path identifying the workspace.
+        session_id: Provider-specific session identifier for the conversation.
+        body: Create request specifying the provider, model, scope, and optional
+            prompt selection details.
+        parent_session_id: Optional parent session ID for Claude sub-agent
+            conversations.
+
+    Returns:
+        The newly created ``ConversationEvaluationResponse`` with status
+        ``"running"``.
+
+    Raises:
+        RuntimeError: If the evaluation job runner is unavailable or job
+            submission fails.
+        ConversationEvaluationConversationNotFoundError: If the target
+            conversation cannot be found.
+    """
     if services.evaluation_job_runner is None:
         raise RuntimeError("Evaluation job runner is unavailable.")
 

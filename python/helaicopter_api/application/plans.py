@@ -93,7 +93,20 @@ def _historical_conversation_route_targets(
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_plans(services: InstanceOf[BackendServices]) -> list[PlanSummaryResponse]:
-    """Return file-backed Claude plans plus session-backed Claude/Codex plans."""
+    """Return file-backed Claude plans plus session-backed Claude/Codex plans.
+
+    Prefers SQLite-persisted historical plan summaries when available. Falls
+    back to scanning live Claude filesystem sessions and Codex SQLite artifacts.
+    Results are sorted newest-first and cached on ``services.cache``.
+
+    Args:
+        services: Initialised backend services providing the plan reader,
+            conversation reader, Codex store, and SQLite store.
+
+    Returns:
+        List of ``PlanSummaryResponse`` objects sorted by descending timestamp,
+        then alphabetically by title.
+    """
     cached = services.cache.get("plans", _CACHE_MISS)
     if isinstance(cached, list):
         return cached
@@ -123,7 +136,21 @@ def list_plans(services: InstanceOf[BackendServices]) -> list[PlanSummaryRespons
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_plan(services: InstanceOf[BackendServices], plan_id: str) -> PlanDetailResponse | None:
-    """Return one plan by encoded id or legacy Claude file slug."""
+    """Return one plan by encoded id or legacy Claude file slug.
+
+    Decodes the ``plan_id`` to determine its source kind (file, Claude session,
+    or Codex session), loads the matching artifact, and returns a full detail
+    response. Results are cached on ``services.cache``.
+
+    Args:
+        services: Initialised backend services providing the plan reader,
+            conversation reader, and Codex store.
+        plan_id: Base64url-encoded plan source descriptor, or a legacy Claude
+            plan file slug.
+
+    Returns:
+        A ``PlanDetailResponse`` when the plan is found, otherwise ``None``.
+    """
     cache_key = f"plan:{plan_id}"
     cached = services.cache.get(cache_key, _CACHE_MISS)
     if cached is None or isinstance(cached, PlanDetailResponse):

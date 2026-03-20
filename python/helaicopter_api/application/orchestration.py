@@ -95,7 +95,20 @@ class _ConversationPathLookup:
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationRunResponse]:
-    """Return persisted OATS orchestration runs from the authoritative facts tables."""
+    """Return persisted OATS orchestration runs from the authoritative facts tables.
+
+    Merges shaped run records, runtime state snapshots, and SQLite fact rows,
+    deduplicating by run ID and preferring the most recently updated
+    representation. Results are sorted newest-first.
+
+    Args:
+        services: Initialised backend services providing the OATS run store
+            and optional Prefect client.
+
+    Returns:
+        List of ``OrchestrationRunResponse`` objects sorted by last-updated
+        timestamp descending.
+    """
     runs_by_id: dict[str, _ShapedRun] = {}
 
     for stored in services.oats_run_store.list_run_records():
@@ -119,6 +132,19 @@ def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationR
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_oats_facts(services: InstanceOf[BackendServices]) -> OrchestrationFactsResponse:
+    """Return aggregated orchestration analytics facts for all OATS runs.
+
+    Builds canonical run and task-attempt fact tables from the in-memory
+    runtime state snapshots and terminal run records held by the OATS run
+    store.
+
+    Args:
+        services: Initialised backend services providing the OATS run store.
+
+    Returns:
+        An ``OrchestrationFactsResponse`` containing canonical rules, per-run
+        facts, and per-task-attempt facts derived from all available artifacts.
+    """
     facts = build_oats_orchestration_facts(
         [
             StoredRuntimeArtifact(path=item.path, state=item.state)

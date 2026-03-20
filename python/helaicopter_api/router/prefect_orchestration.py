@@ -35,6 +35,11 @@ prefect_orchestration_router = APIRouter(
 async def prefect_deployments_index(
     services: BackendServices = Depends(get_services),
 ) -> list[PrefectDeploymentResponse]:
+    """List primary Prefect deployments available for orchestration.
+
+    Returns:
+        A list of Prefect deployment records from the primary orchestration path.
+    """
     return list_prefect_deployments(services)
 
 
@@ -47,6 +52,11 @@ async def prefect_deployments_index(
 async def prefect_flow_runs_index(
     services: BackendServices = Depends(get_services),
 ) -> list[PrefectFlowRunResponse]:
+    """List primary Prefect flow runs for orchestration.
+
+    Returns:
+        A list of Prefect flow run records from the primary orchestration path.
+    """
     return list_prefect_flow_runs(services)
 
 
@@ -60,6 +70,14 @@ async def prefect_flow_run_detail(
     flow_run_id: str,
     services: BackendServices = Depends(get_services),
 ) -> PrefectFlowRunResponse:
+    """Return a single Prefect flow run by its ID.
+
+    Args:
+        flow_run_id: The unique identifier of the Prefect flow run to retrieve.
+
+    Returns:
+        Prefect flow run record with status and metadata.
+    """
     return get_prefect_flow_run(services, flow_run_id)
 
 
@@ -72,6 +90,11 @@ async def prefect_flow_run_detail(
 async def prefect_workers_index(
     services: BackendServices = Depends(get_services),
 ) -> list[PrefectWorkerResponse]:
+    """List Prefect workers serving the primary orchestration path.
+
+    Returns:
+        A list of Prefect worker records currently registered for orchestration.
+    """
     return list_prefect_workers(services)
 
 
@@ -84,4 +107,9 @@ async def prefect_workers_index(
 async def prefect_work_pools_index(
     services: BackendServices = Depends(get_services),
 ) -> list[PrefectWorkPoolResponse]:
+    """List Prefect work pools serving the primary orchestration path.
+
+    Returns:
+        A list of Prefect work pool records used by the orchestration infrastructure.
+    """
     return list_prefect_work_pools(services)

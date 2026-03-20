@@ -27,7 +27,13 @@ evaluation_prompts_router = APIRouter(prefix="/evaluation-prompts", tags=["evalu
 async def evaluation_prompts_index(
     services: BackendServices = Depends(get_services),
 ) -> list[EvaluationPromptResponse]:
-    """List saved evaluation prompts with the built-in default first."""
+    """List saved evaluation prompts with the built-in default first.
+
+    Returns:
+        Ordered list of evaluation prompt templates. The built-in default
+        prompt appears first, followed by user-managed prompts sorted by
+        creation time.
+    """
     return list_evaluation_prompts(services)
 
 
@@ -41,7 +47,20 @@ async def evaluation_prompts_create(
     body: EvaluationPromptCreateRequest,
     services: BackendServices = Depends(get_services),
 ) -> EvaluationPromptResponse:
-    """Create a new user-managed evaluation prompt."""
+    """Create a new user-managed evaluation prompt.
+
+    Args:
+        body: Prompt creation payload containing ``name``, ``prompt_text``
+            (both required and non-blank), and an optional ``description``.
+
+    Returns:
+        The newly created evaluation prompt with its assigned ``prompt_id``
+        and timestamps.
+
+    Raises:
+        HTTPException: 400 if the payload fails validation (e.g. blank fields).
+        HTTPException: 503 if the backing storage is unavailable.
+    """
     try:
         return create_evaluation_prompt(services, body)
     except RuntimeError as error:
@@ -55,7 +74,20 @@ async def evaluation_prompts_delete(
     prompt_id: str,
     services: BackendServices = Depends(get_services),
 ) -> Response:
-    """Delete one stored user-managed evaluation prompt."""
+    """Delete one stored user-managed evaluation prompt.
+
+    Args:
+        prompt_id: Unique identifier of the prompt to delete. Built-in default
+            prompts cannot be deleted.
+
+    Returns:
+        Empty 204 No Content response on success.
+
+    Raises:
+        HTTPException: 400 if the prompt ID refers to a protected built-in
+            prompt.
+        HTTPException: 404 if no prompt with the given ID exists.
+    """
     try:
         delete_evaluation_prompt(services, prompt_id)
     except EvaluationPromptNotFoundError as error:
@@ -76,7 +108,23 @@ async def evaluation_prompts_update(
     body: EvaluationPromptUpdateRequest,
     services: BackendServices = Depends(get_services),
 ) -> EvaluationPromptResponse:
-    """Update one stored evaluation prompt."""
+    """Update one stored evaluation prompt.
+
+    Args:
+        prompt_id: Unique identifier of the prompt to update.
+        body: Update payload containing the revised ``name``, ``prompt_text``,
+            and optional ``description``. All write fields are validated as
+            non-blank.
+
+    Returns:
+        The updated evaluation prompt reflecting the new field values and an
+        updated ``updated_at`` timestamp.
+
+    Raises:
+        HTTPException: 400 if the payload fails validation.
+        HTTPException: 404 if no prompt with the given ID exists.
+        HTTPException: 503 if the backing storage is unavailable.
+    """
     try:
         return update_evaluation_prompt(services, prompt_id, body)
     except EvaluationPromptNotFoundError as error:

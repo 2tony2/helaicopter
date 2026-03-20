@@ -16,5 +16,9 @@ projects_router = APIRouter(prefix="/projects", tags=["projects"])
 async def projects_index(
     services: BackendServices = Depends(get_services),
 ) -> list[ProjectResponse]:
-    """List projects aggregated from conversation summaries."""
+    """List projects aggregated from conversation summaries.
+
+    Returns:
+        A list of projects derived from stored conversation data.
+    """
     return list_projects(services)

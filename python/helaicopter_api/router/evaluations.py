@@ -31,7 +31,18 @@ async def conversation_evaluations_index(
     parent_session_id: str | None = Query(default=None),
     services: BackendServices = Depends(get_services),
 ) -> list[ConversationEvaluationResponse]:
-    """List persisted evaluation jobs for one conversation."""
+    """List persisted evaluation jobs for a specific conversation.
+
+    Args:
+        project_path: Path identifying the project that owns the conversation.
+        session_id: Unique identifier of the conversation session.
+        parent_session_id: Optional parent session ID to scope the lookup to a
+            sub-conversation. Defaults to None.
+
+    Returns:
+        A list of evaluation job records associated with the conversation,
+        ordered by creation time.
+    """
     try:
         return list_conversation_evaluations(
             services,
@@ -56,7 +67,19 @@ async def conversation_evaluations_create(
     parent_session_id: str | None = Query(default=None),
     services: BackendServices = Depends(get_services),
 ) -> ConversationEvaluationResponse:
-    """Create and submit a backend-owned evaluation job."""
+    """Create and enqueue a backend-owned evaluation job for a conversation.
+
+    Args:
+        project_path: Path identifying the project that owns the conversation.
+        session_id: Unique identifier of the conversation session to evaluate.
+        body: Evaluation job creation request containing the evaluation prompt
+            reference and any additional configuration.
+        parent_session_id: Optional parent session ID to scope the evaluation
+            to a sub-conversation. Defaults to None.
+
+    Returns:
+        The newly created evaluation job record in an accepted (pending) state.
+    """
     try:
         return create_conversation_evaluation(
             services,

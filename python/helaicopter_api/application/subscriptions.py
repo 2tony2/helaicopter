@@ -19,7 +19,15 @@ from helaicopter_api.schema.subscriptions import (
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def get_subscription_settings(services: InstanceOf[BackendServices]) -> SubscriptionSettingsResponse:
-    """Return the current subscription settings from the app-local store."""
+    """Return the current subscription settings from the app-local store.
+
+    Args:
+        services: Initialised backend services providing the SQLite settings
+            store.
+
+    Returns:
+        Current ``SubscriptionSettingsResponse`` for all configured providers.
+    """
     settings = services.app_sqlite_store.get_subscription_settings()
     return _to_response(settings)
 
@@ -29,7 +37,18 @@ def update_subscription_settings(
     services: InstanceOf[BackendServices],
     body: SubscriptionSettingsUpdateRequest,
 ) -> SubscriptionSettingsResponse:
-    """Persist subscription-setting updates in the app-local store."""
+    """Persist subscription-setting updates in the app-local store.
+
+    Args:
+        services: Initialised backend services providing the SQLite settings
+            store.
+        body: Update request containing optional per-provider subscription
+            details (``has_subscription``, ``monthly_cost``).
+
+    Returns:
+        Updated ``SubscriptionSettingsResponse`` reflecting the persisted
+        changes.
+    """
     settings = services.app_sqlite_store.update_subscription_settings(_to_store_updates(body))
     return _to_response(settings)
 
