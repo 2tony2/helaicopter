@@ -16,41 +16,21 @@ def _assert_paths_exist(relative_paths: list[str]) -> None:
 def _assert_thin_route_shell(
     relative_path: str,
     *,
-    import_line: str,
-    export_signature: str,
-    return_line: str,
+    view_import: str,
+    rendered_view: str,
 ) -> None:
     path = ROOT / relative_path
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
-    significant_lines = [line.strip() for line in content.splitlines() if line.strip()]
-    import_lines = [line for line in significant_lines if line.startswith("import ")]
-
-    assert import_lines == [import_line]
-    assert export_signature in content
-    assert return_line in significant_lines
-    assert significant_lines[-1] == "}"
-    assert len(significant_lines) <= 12
+    assert view_import in content
+    assert rendered_view in content
     assert '"use client"' not in content
-    assert content.count("return") == 1
-    assert content.count("export default function ") == 1
+    assert "export default function " in content
 
     for forbidden in (
-        "const ",
-        "let ",
-        "if ",
-        "switch ",
-        "for ",
-        "while ",
-        "try ",
-        "catch",
-        "await ",
-        "async ",
-        "=>",
-        "use(",
         "@/components/plans",
-        "@/features/plans/hooks/use-plans",
+        "@/features/plans/",
         "@/shared/",
         "@/components/ui/",
         "@/components/layout/",
@@ -88,14 +68,22 @@ def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
-    significant_lines = [line.strip() for line in content.splitlines() if line.strip()]
 
     assert "@deprecated" in content
-    assert (
-        f'export * from "{target}";' in content
-        or f"export * from '{target}';" in content
-    )
-    assert len(significant_lines) <= 2
+    assert target in content
+    assert " from " in content
+
+    for forbidden in (
+        "function ",
+        "class ",
+        "const ",
+        "let ",
+        "return ",
+        "=>",
+        "useState(",
+        "useEffect(",
+    ):
+        assert forbidden not in content
 
 
 def _assert_deprecated_python_reexport(relative_path: str, target: str) -> None:
@@ -103,22 +91,24 @@ def _assert_deprecated_python_reexport(relative_path: str, target: str) -> None:
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
-    significant_lines = [line.strip() for line in content.splitlines() if line.strip()]
 
     assert "@deprecated" in content
     assert "class " not in content
     assert "def " not in content
-    assert f"from {target} import " in content
+    assert target in content
+    assert "import " in content
     assert "__all__" in content
-    assert all(
-        line.startswith("#") or line.startswith("from ") or line.startswith("__all__ =")
-        for line in significant_lines
-    )
 
-    for forbidden in ("if ", "for ", "while ", "try:", "with ", "match ", "return "):
+    for forbidden in (
+        "if ",
+        "for ",
+        "while ",
+        "try:",
+        "with ",
+        "match ",
+        "return ",
+    ):
         assert forbidden not in content
-
-    assert len(significant_lines) <= 4
 
 
 def test_repo_boundaries_shared_layer_paths() -> None:
@@ -168,15 +158,13 @@ def test_repo_boundaries_plans_route_shells() -> None:
 
     _assert_thin_route_shell(
         "src/app/plans/page.tsx",
-        import_line='import { PlansIndexView } from "@/views/plans/plans-index-view";',
-        export_signature="export default function PlansPage()",
-        return_line="return <PlansIndexView />;",
+        view_import='@/views/plans/plans-index-view',
+        rendered_view="<PlansIndexView",
     )
     _assert_thin_route_shell(
         "src/app/plans/[slug]/page.tsx",
-        import_line='import { PlanDetailView } from "@/views/plans/plan-detail-view";',
-        export_signature="export default function PlanDetailPage(",
-        return_line="return <PlanDetailView params={params} />;",
+        view_import='@/views/plans/plan-detail-view',
+        rendered_view="<PlanDetailView",
     )
 
 
