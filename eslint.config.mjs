@@ -18,6 +18,66 @@ const eslintConfig = defineConfig([
     "dev/**",
     "public/database-schemas/**",
   ]),
+  {
+    files: ["src/views/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/app/*"],
+              message: "Views compose screens but must not import route-layer files from src/app.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/features/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/app/*"],
+              message: "Features must not depend on route-layer files from src/app.",
+            },
+            {
+              group: ["@/views/*"],
+              message: "Features must not depend on screen composition files from src/views.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/shared/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/app/*"],
+              message: "Shared code must not depend on route-layer files from src/app.",
+            },
+            {
+              group: ["@/views/*"],
+              message: "Shared code must not depend on screen composition files from src/views.",
+            },
+            {
+              group: ["@/features/*"],
+              message: "Shared code must not depend on feature-layer files from src/features.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
