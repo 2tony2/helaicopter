@@ -141,6 +141,9 @@ Legacy query translation rules:
 | Legacy state | Canonical target |
 | --- | --- |
 | no `tab`, no entity params | `/messages` |
+| `tab=messages` | `/messages` |
+| `tab=plans` | `/plans` |
+| `tab=subagents` | `/subagents` |
 | `tab=messages&message=<messageId>` | `/messages/<messageId>` |
 | `tab=plans&plan=<planId>` | `/plans/<planId>` |
 | `tab=subagents&subagent=<agentId>` | `/subagents/<agentId>` |
@@ -156,6 +159,7 @@ If legacy query state is mixed or stale, entity-bearing params win over a confli
 - `message` wins and redirects to `/messages/<messageId>`
 - `plan` wins and redirects to `/plans/<planId>`
 - `subagent` wins and redirects to `/subagents/<agentId>`
+- entity params without a matching `tab` still redirect to their entity route, for example `?plan=plan-7` -> `/plans/plan-7`
 
 ### 5. Parent subagent tab routes and subagent thread routes are separate resources
 
@@ -285,13 +289,13 @@ For subagents:
 
 - valid key with wrong slug: redirect to canonical slug
 - unknown `conversation_ref`: render 404
-- invalid canonical tab segment: redirect to `/messages`
+- invalid canonical tab segment: render 404
 - nested entity not found within a valid conversation: render 404
   - `/messages/<messageId>` -> 404
   - `/plans/<planId>` -> 404
   - `/subagents/<agentId>` -> 404
 
-The important rule is consistency: invalid canonical shapes should not silently fall back to arbitrary unrelated tabs.
+The important rule is consistency: invalid canonical shapes render 404 rather than silently falling back to an unrelated tab.
 
 ## Testing Strategy
 
