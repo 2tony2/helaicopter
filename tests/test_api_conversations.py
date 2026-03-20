@@ -1150,6 +1150,10 @@ class TestConversationDagEndpoints:
             "Review the backend rollout",
             "Inspect the DAG graph",
         ]
+        assert [node["path"] for node in claude_payload["nodes"]] == [
+            "/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1",
+            "/conversations/by-ref/inspect-the-dag-graph--claude-claude-agent-1",
+        ]
 
         codex_dag = conversations_client.get(
             "/conversations/codex:-Users-tony-Code-helaicopter/019cdbff-dbb7-71d0-baaf-c669c55af628/dag"
@@ -1168,9 +1172,10 @@ class TestConversationDagEndpoints:
             "total_tokens": 406,
         }
         assert codex_payload["nodes"][1]["subagent_type"] == "explorer"
-        assert codex_payload["nodes"][1]["path"].endswith(
-            "/019cdbff-dbb7-71d0-baaf-c669c55af628/subagents/019cdbff-dbb7-71d0-baaf-c669c55af629"
-        )
+        assert [node["path"] for node in codex_payload["nodes"]] == [
+            "/conversations/by-ref/implement-the-conversation-api--codex-019cdbff-dbb7-71d0-baaf-c669c55af628",
+            "/conversations/by-ref/inspect-the-dag-graph--codex-019cdbff-dbb7-71d0-baaf-c669c55af629",
+        ]
 
         missing = conversations_client.get(
             "/conversations/codex:-Users-tony-Code-helaicopter/missing-session/dag"
@@ -1203,7 +1208,87 @@ class TestConversationDagEndpoints:
             "total_messages": 2,
             "total_tokens": 60,
         }
-        assert response.json()["nodes"][0]["path"] == "/conversations/-Users-tony-Code-helaicopter/claude-agent-1"
+        assert (
+            response.json()["nodes"][0]["path"]
+            == "/conversations/by-ref/inspect-the-dag-graph--claude-claude-agent-1"
+        )
+
+    def test_dag_unresolved_child_threads_emit_null_paths(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        claude_session_path = (
+            settings.claude_projects_dir / "-Users-tony-Code-helaicopter" / "claude-session-1.jsonl"
+        )
+        with claude_session_path.open("a", encoding="utf-8") as handle:
+            handle.write("\n")
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "uuid": "claude-assistant-missing-child",
+                        "timestamp": "2026-03-18T09:00:25Z",
+                        "sessionId": "claude-session-1",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "tool-task-missing",
+                                    "name": "Task",
+                                    "input": {
+                                        "description": "Inspect missing child thread",
+                                        "subagent_type": "explorer",
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+            handle.write("\n")
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "claude-user-missing-child",
+                        "timestamp": "2026-03-18T09:00:26Z",
+                        "sessionId": "claude-session-1",
+                        "message": {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": "tool-task-missing",
+                                    "content": json.dumps(
+                                        {
+                                            "agentId": "claude-agent-missing",
+                                            "nickname": "Ghost",
+                                        }
+                                    ),
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                response = client.get("/conversations/-Users-tony-Code-helaicopter/claude-session-1/dag")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert response.status_code == 200
+        node_by_session_id = {node["session_id"]: node for node in response.json()["nodes"]}
+        assert node_by_session_id["claude-agent-missing"]["has_transcript"] is False
+        assert node_by_session_id["claude-agent-missing"]["path"] is None
 
 
 class TestProjectsHistoryAndTasks:

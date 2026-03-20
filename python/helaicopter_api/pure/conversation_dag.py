@@ -128,10 +128,11 @@ def _to_node(
         timestamp=conversation.last_updated_at if conversation is not None else 0,
         depth=depth,
         path=_conversation_node_path(
-            project_path=project_path,
-            parent_session_id=parent_session_id,
-            session_id=session_id,
-            is_root=is_root,
+            conversation_ref=(
+                conversation.conversation_ref
+                if conversation is not None
+                else subagent.conversation_ref if subagent is not None else None
+            ),
         ),
         is_root=is_root,
     )
@@ -139,16 +140,11 @@ def _to_node(
 
 def _conversation_node_path(
     *,
-    project_path: str,
-    parent_session_id: SessionId | None,
-    session_id: SessionId,
-    is_root: bool,
-) -> str:
-    encoded_project_path = quote(project_path, safe="")
-    if is_root:
-        return f"/conversations/{encoded_project_path}/{session_id}"
-    assert parent_session_id is not None
-    return f"/conversations/{encoded_project_path}/{parent_session_id}/subagents/{session_id}"
+    conversation_ref: str | None,
+) -> str | None:
+    if not conversation_ref:
+        return None
+    return f"/conversations/by-ref/{quote(conversation_ref, safe='')}"
 
 
 def _summarize_label(conversation: ConversationDetailResponse | None, fallback: str) -> str:

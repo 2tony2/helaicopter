@@ -13,6 +13,7 @@ from urllib.parse import quote
 from pydantic import ConfigDict, InstanceOf, validate_call
 
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.application.conversations import _resolve_conversation_identity
 from helaicopter_api.ports.orchestration import StoredOatsRunRecord, StoredOatsRuntimeState
 from helaicopter_api.schema.orchestration import (
     OrchestrationFactsResponse,
@@ -189,6 +190,7 @@ def _list_persisted_oats_runs(services: BackendServices) -> list[OrchestrationRu
             attempts_by_run.get(str(row["run_fact_id"]), []),
             prefect_by_run_id.get(str(row["run_id"])),
             prefect_artifacts_by_run_id.get(str(row["run_id"])),
+            services=services,
         )
         responses.append(response)
 
@@ -235,6 +237,8 @@ def _shape_persisted_run(
     attempts: list[sqlite3.Row],
     prefect_flow_run: object | None,
     prefect_artifacts: StoredLocalFlowRunArtifacts | None,
+    *,
+    services: BackendServices,
 ) -> OrchestrationRunResponse:
     repo_root = (
         prefect_artifacts.metadata.repo_root
@@ -247,6 +251,7 @@ def _shape_persisted_run(
         repo_root=repo_root,
         run_status=run_status,
         prefect_artifacts=prefect_artifacts,
+        services=services,
     )
     active_task_id = next((task.task_id for task in tasks if task.status == "running"), None)
     latest_heartbeat_at = max(
@@ -303,6 +308,7 @@ def _shape_persisted_tasks(
     repo_root: Path,
     run_status: RunRuntimeStatus,
     prefect_artifacts: StoredLocalFlowRunArtifacts | None,
+    services: BackendServices,
 ) -> list[OrchestrationTaskResponse]:
     latest_attempts: dict[str, sqlite3.Row] = {}
     for row in attempts:
@@ -326,6 +332,7 @@ def _shape_persisted_tasks(
                     row,
                     repo_root=repo_root,
                     prefect_attempt=prefect_attempts.get(task_id),
+                    services=services,
                 ),
             )
         )
@@ -337,6 +344,7 @@ def _shape_persisted_invocation(
     *,
     repo_root: Path,
     prefect_attempt: object | None = None,
+    services: BackendServices,
 ) -> OrchestrationInvocationResponse | None:
     agent_value = row["agent"]
     session_id = str(row["session_id"]) if row["session_id"] is not None else None
@@ -363,11 +371,7 @@ def _shape_persisted_invocation(
         return None
     agent = cast(ProviderName, str(agent_value))
     project_path = _normalize_repo_project_path(str(repo_root), agent) if session_id else None
-    conversation_path = (
-        f"/conversations/{quote(project_path, safe='')}/{session_id}"
-        if project_path and session_id
-        else None
-    )
+    conversation_path = _canonical_conversation_path(services, provider=agent, session_id=session_id)
     task_status = str(row["status"]).strip().lower()
     return OrchestrationInvocationResponse(
         agent=agent,
@@ -464,13 +468,17 @@ def _normalize_persisted_task_status(status: str, run_status: RunRuntimeStatus) 
     return "pending"
 
 
-def _shape_runtime_state(stored: StoredOatsRuntimeState) -> _ShapedRun:
+def _shape_runtime_state(
+    stored: StoredOatsRuntimeState,
+    *,
+    services: BackendServices | None = None,
+) -> _ShapedRun:
     state = stored.state
     repo_root = state.repo_root
     is_stale = _is_stale_runtime_state(state)
     heartbeat_at = _isoformat(state.heartbeat_at)
-    planner = _shape_invocation(state.planner, repo_root)
-    tasks = [_shape_runtime_task(task, repo_root, stale=is_stale) for task in state.tasks]
+    planner = _shape_invocation(state.planner, repo_root, services=services)
+    tasks = [_shape_runtime_task(task, repo_root, stale=is_stale, services=services) for task in state.tasks]
     last_updated_at = _coerce_datetime(state.updated_at)
     status = _reconcile_runtime_run_status(state, tasks, stale=is_stale)
     active_task_id = None if is_stale else state.active_task_id
@@ -508,11 +516,15 @@ def _shape_runtime_state(stored: StoredOatsRuntimeState) -> _ShapedRun:
     return _ShapedRun(response=response, last_updated_at=last_updated_at)
 
 
-def _shape_run_record(stored: StoredOatsRunRecord) -> _ShapedRun:
+def _shape_run_record(
+    stored: StoredOatsRunRecord,
+    *,
+    services: BackendServices | None = None,
+) -> _ShapedRun:
     record = stored.record
     repo_root = record.repo_root
-    planner = _shape_invocation(record.planner, repo_root)
-    tasks = [_shape_record_task(task, repo_root) for task in record.tasks]
+    planner = _shape_invocation(record.planner, repo_root, services=services)
+    tasks = [_shape_record_task(task, repo_root, services=services) for task in record.tasks]
     recorded_at = _coerce_datetime(record.recorded_at)
     status = _derive_run_status(record)
     response = OrchestrationRunResponse(
@@ -554,12 +566,14 @@ def _shape_runtime_task(
     repo_root: Path,
     *,
     stale: bool = False,
+    services: BackendServices | None = None,
 ) -> OrchestrationTaskResponse:
     invocation = _shape_invocation(
         task.invocation,
         repo_root,
         fallback_agent=task.agent,
         fallback_role=task.role,
+        services=services,
     )
     status: TaskRuntimeStatus = "pending" if stale and task.status == "running" else task.status
     return OrchestrationTaskResponse(
@@ -572,8 +586,13 @@ def _shape_runtime_task(
     )
 
 
-def _shape_record_task(task: TaskExecutionRecord, repo_root: Path) -> OrchestrationTaskResponse:
-    invocation = _shape_invocation(task.invocation, repo_root)
+def _shape_record_task(
+    task: TaskExecutionRecord,
+    repo_root: Path,
+    *,
+    services: BackendServices | None = None,
+) -> OrchestrationTaskResponse:
+    invocation = _shape_invocation(task.invocation, repo_root, services=services)
     return OrchestrationTaskResponse(
         task_id=task.task_id,
         title=task.title,
@@ -590,6 +609,7 @@ def _shape_invocation(
     *,
     fallback_agent: ProviderName | None = None,
     fallback_role: str | None = None,
+    services: BackendServices | None = None,
 ) -> OrchestrationInvocationResponse | None:
     if invocation is None:
         if fallback_agent is None or fallback_role is None:
@@ -625,11 +645,7 @@ def _shape_invocation(
         finished_at = _isoformat(invocation.finished_at)
 
     project_path = _normalize_repo_project_path(str(repo_root), agent) if session_id else None
-    conversation_path = (
-        f"/conversations/{quote(project_path, safe='')}/{session_id}"
-        if project_path and session_id
-        else None
-    )
+    conversation_path = _canonical_conversation_path(services, provider=agent, session_id=session_id)
     return OrchestrationInvocationResponse(
         agent=agent,
         role=role,
@@ -648,6 +664,23 @@ def _shape_invocation(
         project_path=project_path,
         conversation_path=conversation_path,
     )
+
+
+def _canonical_conversation_path(
+    services: BackendServices | None,
+    *,
+    provider: ProviderName,
+    session_id: str | None,
+) -> str | None:
+    if services is None or not session_id:
+        return None
+    try:
+        resolved = _resolve_conversation_identity(services, provider=provider, session_id=session_id)
+    except AttributeError:
+        return None
+    if resolved is None:
+        return None
+    return f"/conversations/by-ref/{quote(resolved.conversation_ref, safe='')}"
 
 
 def _normalize_repo_project_path(repo_root: str, agent: ProviderName) -> EncodedProjectKey:
