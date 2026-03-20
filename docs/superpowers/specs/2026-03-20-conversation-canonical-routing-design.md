@@ -49,8 +49,8 @@ Every conversation gets a canonical public ref:
 
 Examples:
 
-- `review-the-backend-rollout--claude-claude-session-1`
-- `compare-caching-strategies--codex-550e8400-e29b-41d4-a716-446655440000`
+- if `provider = claude` and `session_id = claude-session-1`, then `review-the-backend-rollout--claude-claude-session-1`
+- if `provider = codex` and `session_id = 550e8400-e29b-41d4-a716-446655440000`, then `compare-caching-strategies--codex-550e8400-e29b-41d4-a716-446655440000`
 
 This ref has two parts:
 
@@ -58,6 +58,15 @@ This ref has two parts:
 - `provider-session-id`: a stable unique key that keeps the route resolvable even when slugs collide or a user edits the slug manually
 
 The combined ref is the public route identity. The slug is for humans. The key is for durability.
+
+Parsing rule:
+
+- split the public ref on the last `--`
+- the left side is `route_slug`
+- the right side is `route_key`
+- `route_key` must start with one of the known provider prefixes, `claude-` or `codex-`
+- the provider is the prefix before the first `-` in `route_key`
+- everything after that provider prefix is the raw `session_id`, even if the `session_id` itself contains additional `-` characters
 
 ### 2. The slug is persisted, not recomputed forever
 
@@ -123,9 +132,30 @@ Redirect behavior:
 
 Examples:
 
-- `/conversations/-Users-tony-Code-helaicopter/session-1` -> `/conversations/review-the-backend-rollout--claude-session-1/messages`
-- `/conversations/-Users-tony-Code-helaicopter/session-1?tab=plans&plan=plan-7` -> `/conversations/review-the-backend-rollout--claude-session-1/plans/plan-7`
-- `/conversations/-Users-tony-Code-helaicopter/session-1/subagents/agent-1` -> `/conversations/review-the-backend-rollout--claude-session-1/subagents/agent-1`
+- `/conversations/-Users-tony-Code-helaicopter/claude-session-1` -> `/conversations/review-the-backend-rollout--claude-claude-session-1/messages`
+- `/conversations/-Users-tony-Code-helaicopter/claude-session-1?tab=plans&plan=plan-7` -> `/conversations/review-the-backend-rollout--claude-claude-session-1/plans/plan-7`
+- `/conversations/-Users-tony-Code-helaicopter/claude-session-1/subagents/agent-1` -> `/conversations/review-the-backend-rollout--claude-claude-session-1/subagents/agent-1`
+
+Legacy query translation rules:
+
+| Legacy state | Canonical target |
+| --- | --- |
+| no `tab`, no entity params | `/messages` |
+| `tab=messages&message=<messageId>` | `/messages/<messageId>` |
+| `tab=plans&plan=<planId>` | `/plans/<planId>` |
+| `tab=subagents&subagent=<agentId>` | `/subagents/<agentId>` |
+| `tab=evaluations` | `/evaluations` |
+| `tab=failed` | `/failed` |
+| `tab=context` | `/context` |
+| `tab=dag` | `/dag` |
+| `tab=tasks` | `/tasks` |
+| `tab=raw` | `/raw` |
+
+If legacy query state is mixed or stale, entity-bearing params win over a conflicting `tab` because those params represent the deeper link target:
+
+- `message` wins and redirects to `/messages/<messageId>`
+- `plan` wins and redirects to `/plans/<planId>`
+- `subagent` wins and redirects to `/subagents/<agentId>`
 
 ### 5. Parent subagent tab routes and subagent thread routes are separate resources
 
@@ -146,6 +176,7 @@ Usage rules:
 - legacy nested subagent URLs redirect to the parent tab route because that is what the old path represented
 - conversation lists and any standalone subagent conversation backlinks use the subagent thread route
 - DAG node links for child nodes use the subagent thread route because DAG nodes represent conversations, not parent-tab selections
+- when a live subagent thread still requires parent-scoped filesystem lookup, its resolver response must include `parent_session_id` so the frontend can keep using the current parent-aware subagent data path until canonical detail-by-ref loading exists
 
 ### 6. The backend owns route resolution
 
@@ -163,6 +194,7 @@ The backend also adds a resolver API for canonical refs. The resolver returns th
 - `project_path`
 - `session_id`
 - `thread_type`
+- `parent_session_id` when the resolved conversation is a live subagent thread that still depends on parent-scoped lookup
 
 The frontend can then resolve a canonical ref once and continue to use the existing data APIs that are keyed by `project_path` and `session_id`.
 
@@ -171,6 +203,7 @@ This keeps the implementation incremental:
 - route resolution becomes canonical immediately
 - existing detail, DAG, evaluations, and subagent APIs do not need to be duplicated in the same slice
 - the resolver can support persisted and live-only conversations by using the same `first_message` + `provider` + `session_id` route-ref helper in both code paths
+- standalone subagent thread routes can keep using the existing parent-aware subagent endpoint when `parent_session_id` is present
 
 ### 7. The Next app uses a catch-all conversation route
 
@@ -211,13 +244,14 @@ The old helper surface can be retained briefly as compatibility wrappers during 
 1. Conversation lists, DAG nodes, plan backlinks, and other surfaces receive `conversation_ref` from API responses.
 2. Links point directly to `/conversations/<conversationRef>/<tab>/...`.
 3. The catch-all route parses the canonical path and resolves `conversationRef` through the backend resolver.
-4. The page passes the resolved `project_path` and `session_id` into the existing client hooks.
+4. The page passes the resolved locator into the existing client hooks.
 5. The viewer uses canonical route builders for tab changes and nested selection changes.
 
 For subagents:
 
 - parent `subagents/<agentId>` routes keep the user inside the parent viewer
 - standalone subagent conversation links resolve and open the child conversation's own canonical ref
+- if the resolved subagent thread includes `parent_session_id`, the page uses the existing parent-aware subagent data path instead of assuming the root conversation endpoint is sufficient
 
 ### Legacy navigation
 
