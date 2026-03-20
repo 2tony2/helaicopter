@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const {
-  parseConversationEvaluationCreateInput,
-  parseEvaluationPromptWriteInput,
-} = await import(new URL("./evaluations.ts", import.meta.url).href);
+async function getSchemas() {
+  return import(new URL("./evaluations.ts", import.meta.url).href);
+}
 
-test("parseEvaluationPromptWriteInput trims name, description, and prompt text", () => {
+test("parseEvaluationPromptWriteInput trims name, description, and prompt text", async () => {
+  const { parseEvaluationPromptWriteInput } = await getSchemas();
   const payload = parseEvaluationPromptWriteInput({
     name: "  Reviewer Sweep  ",
     description: "  Focus on failing turns  ",
@@ -20,7 +20,8 @@ test("parseEvaluationPromptWriteInput trims name, description, and prompt text",
   });
 });
 
-test("parseEvaluationPromptWriteInput rejects blank required fields", () => {
+test("parseEvaluationPromptWriteInput rejects blank required fields", async () => {
+  const { parseEvaluationPromptWriteInput } = await getSchemas();
   assert.throws(
     () =>
       parseEvaluationPromptWriteInput({
@@ -42,7 +43,8 @@ test("parseEvaluationPromptWriteInput rejects blank required fields", () => {
   );
 });
 
-test("parseConversationEvaluationCreateInput requires a selection instruction for guided subsets", () => {
+test("parseConversationEvaluationCreateInput requires a selection instruction for guided subsets", async () => {
+  const { parseConversationEvaluationCreateInput } = await getSchemas();
   assert.throws(
     () =>
       parseConversationEvaluationCreateInput({
@@ -58,7 +60,8 @@ test("parseConversationEvaluationCreateInput requires a selection instruction fo
   );
 });
 
-test("parseConversationEvaluationCreateInput normalizes custom prompts and trims fields", () => {
+test("parseConversationEvaluationCreateInput normalizes custom prompts and trims fields", async () => {
+  const { parseConversationEvaluationCreateInput } = await getSchemas();
   const payload = parseConversationEvaluationCreateInput({
     provider: "codex",
     model: "gpt-5",
@@ -80,7 +83,8 @@ test("parseConversationEvaluationCreateInput normalizes custom prompts and trims
   });
 });
 
-test("parseConversationEvaluationCreateInput rejects blank custom prompt content", () => {
+test("parseConversationEvaluationCreateInput rejects blank custom prompt content", async () => {
+  const { parseConversationEvaluationCreateInput } = await getSchemas();
   assert.throws(
     () =>
       parseConversationEvaluationCreateInput({

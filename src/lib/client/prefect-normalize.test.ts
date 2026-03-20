@@ -1,23 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const {
-  orchestrationPrefectDeployment,
-  orchestrationPrefectDeployments,
-  orchestrationPrefectFlowRun,
-  orchestrationPrefectFlowRuns,
-  orchestrationPrefectWorkPools,
-  orchestrationPrefectWorkers,
-  setBaseUrl,
-} = await import(new URL("./endpoints.ts", import.meta.url).href);
-const {
-  normalizePrefectDeployments,
-  normalizePrefectFlowRuns,
-  normalizePrefectWorkPools,
-  normalizePrefectWorkers,
-} = await import(new URL("./normalize.ts", import.meta.url).href);
+async function getEndpoints() {
+  return import(new URL("./endpoints.ts", import.meta.url).href);
+}
 
-test("Prefect endpoint builders target backend orchestration routes", () => {
+async function getNormalize() {
+  return import(new URL("./normalize.ts", import.meta.url).href);
+}
+
+test("Prefect endpoint builders target backend orchestration routes", async () => {
+  const {
+    orchestrationPrefectDeployment,
+    orchestrationPrefectDeployments,
+    orchestrationPrefectFlowRun,
+    orchestrationPrefectFlowRuns,
+    orchestrationPrefectWorkPools,
+    orchestrationPrefectWorkers,
+    setBaseUrl,
+  } = await getEndpoints();
   setBaseUrl("https://api.example.test/");
 
   assert.equal(
@@ -46,7 +47,8 @@ test("Prefect endpoint builders target backend orchestration routes", () => {
   );
 });
 
-test("Prefect normalizers join deployments, flow runs, workers, and local Oats metadata", () => {
+test("Prefect normalizers join deployments, flow runs, workers, and local Oats metadata", async () => {
+  const { normalizePrefectDeployments, normalizePrefectFlowRuns, normalizePrefectWorkPools, normalizePrefectWorkers } = await getNormalize();
   const deployments = normalizePrefectDeployments([
     {
       deployment_id: "dep-123",
@@ -205,7 +207,8 @@ test("Prefect normalizers join deployments, flow runs, workers, and local Oats m
   });
 });
 
-test("Prefect normalizers prefer backend-owned status fields when present", () => {
+test("Prefect normalizers prefer backend-owned status fields when present", async () => {
+  const { normalizePrefectFlowRuns, normalizePrefectWorkers, normalizePrefectWorkPools } = await getNormalize();
   const flowRuns = normalizePrefectFlowRuns([
     {
       flowRunId: "flow-run-456",

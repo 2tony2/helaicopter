@@ -57,7 +57,8 @@ export const conversationDetailTabSchema = z.enum(conversationDetailTabs);
 export const orchestrationTabSchema = z.enum(orchestrationTabs);
 
 export function parseApiBaseUrl(value?: string | null): string {
-  const result = apiBaseUrlSchema.safeParse(value);
+  const pre = typeof value === "string" ? stripTrailingSlashes(value.trim()) : value;
+  const result = apiBaseUrlSchema.safeParse(pre);
   return result.success ? result.data : "";
 }
 
