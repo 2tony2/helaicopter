@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal, cast
 from pathlib import Path
+import json
 import shlex
+import subprocess
 import time
 
 import typer
@@ -32,18 +34,23 @@ from oats.runner import (
 from oats.models import (
     AgentInvocationResult,
     ExecutionPlan,
+    FinalPullRequestSnapshot,
     InvocationRuntimeRecord,
     RepoConfig,
     RunExecutionRecord,
     RunRuntimeState,
+    TaskPullRequestSnapshot,
     TaskExecutionRecord,
 )
 from oats.pr import (
     build_final_pr_plan,
     build_integration_branch_commands,
     build_pr_create_command,
+    build_final_pr_title,
     build_task_pr_plans,
     execute_pr_plan,
+    refresh_run,
+    resume_run as resume_stacked_pr_run,
 )
 from oats.runtime_state import (
     append_progress_event,
@@ -267,6 +274,9 @@ def _build_runtime_status_text(
         f"Run: [bold]{state.run_title}[/bold]",
         f"Run ID: {state.run_id}",
         f"Status: {state.status}",
+        f"Stack status: {state.stack_status}",
+        f"Feature branch: {state.feature_branch.name if state.feature_branch else state.integration_branch}",
+        f"Final PR: {state.final_pr.state}",
         f"Health: {health}",
         f"Active task: {task_id or '-'}",
         f"Heartbeat age: {heartbeat_age}",
@@ -349,6 +359,212 @@ def _prepare_retryable_tasks(state: RunRuntimeState) -> bool:
 
 def _find_runtime_task(state: RunRuntimeState, task_id: str):
     return next(item for item in state.tasks if item.task_id == task_id)
+
+
+class _GhCliClient:
+    def __init__(self, repo_root: Path) -> None:
+        self._repo_root = repo_root
+
+    def read_task_pr(self, task) -> TaskPullRequestSnapshot:
+        if task.task_pr.number is None:
+            return task.task_pr
+        payload = self._read_pr_json(task.task_pr.number)
+        return _task_snapshot_from_payload(payload)
+
+    def merge_task_pr(
+        self,
+        task,
+        snapshot: TaskPullRequestSnapshot,
+        *,
+        merge_method: str,
+    ) -> TaskPullRequestSnapshot:
+        if snapshot.number is None:
+            return snapshot
+        if merge_method != "merge_commit":
+            raise RuntimeError(f"Unsupported merge method: {merge_method}")
+        completed = self._run("pr", "merge", str(snapshot.number), "--merge")
+        if completed.returncode != 0:
+            stderr = (completed.stderr or "").lower()
+            if "conflict" in stderr or "not mergeable" in stderr:
+                from oats.pr import PullRequestMergeConflictError
+
+                raise PullRequestMergeConflictError(completed.stderr.strip() or completed.stdout.strip())
+            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip())
+        return self.read_task_pr(task)
+
+    def retarget_task_pr(self, task, *, base_branch: str) -> TaskPullRequestSnapshot:
+        if task.task_pr.number is None:
+            return task.task_pr.model_copy(update={"base_branch": base_branch}, deep=True)
+        completed = self._run("pr", "edit", str(task.task_pr.number), "--base", base_branch)
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip())
+        return self.read_task_pr(task)
+
+    def create_final_pr(self, state: RunRuntimeState) -> FinalPullRequestSnapshot:
+        completed = self._run(
+            "pr",
+            "create",
+            "--base",
+            state.final_pr_target,
+            "--head",
+            state.feature_branch.name if state.feature_branch else state.integration_branch,
+            "--title",
+            build_final_pr_title(state.run_title),
+            "--body",
+            f"Final Overnight Oats review PR for `{state.run_title}`.",
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip())
+        identifier = completed.stdout.strip().splitlines()[-1]
+        payload = self._read_pr_json(identifier)
+        return _final_snapshot_from_payload(payload)
+
+    def read_final_pr(self, state: RunRuntimeState) -> FinalPullRequestSnapshot:
+        identifier = (
+            str(state.final_pr.number)
+            if state.final_pr.number is not None
+            else state.final_pr.url
+            or (state.feature_branch.name if state.feature_branch else state.integration_branch)
+        )
+        completed = self._run(
+            "pr",
+            "view",
+            str(identifier),
+            "--json",
+            "number,url,state,baseRefName,headRefName,mergeable,reviewDecision,statusCheckRollup,mergedAt,updatedAt",
+        )
+        if completed.returncode != 0 and state.final_pr.state == "not_created":
+            return state.final_pr
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip())
+        payload = cast(dict[str, object], json.loads(completed.stdout))
+        return _final_snapshot_from_payload(payload)
+
+    def _read_pr_json(self, identifier: str | int) -> dict[str, object]:
+        completed = self._run(
+            "pr",
+            "view",
+            str(identifier),
+            "--json",
+            "number,url,state,baseRefName,headRefName,mergeable,reviewDecision,statusCheckRollup,mergedAt,updatedAt",
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip())
+        return cast(dict[str, object], json.loads(completed.stdout))
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["gh", *args],
+            cwd=self._repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
+def _task_snapshot_from_payload(payload: dict[str, object]) -> TaskPullRequestSnapshot:
+    state = _normalize_pr_state(payload.get("state"), payload.get("mergedAt"))
+    review_decision = str(payload.get("reviewDecision") or "").upper()
+    checks_state = _checks_summary_from_rollup(payload.get("statusCheckRollup"))
+    if state == "merged":
+        merge_gate_status = "merged"
+    elif review_decision == "CHANGES_REQUESTED":
+        merge_gate_status = "awaiting_review_clearance"
+    elif checks_state["state"] == "success":
+        merge_gate_status = "merge_ready"
+    elif checks_state["state"] == "pending":
+        merge_gate_status = "awaiting_checks"
+    else:
+        merge_gate_status = "not_ready"
+    return TaskPullRequestSnapshot(
+        number=cast(int | None, payload.get("number")),
+        url=cast(str | None, payload.get("url")),
+        state=cast(
+            Literal["not_created", "open", "merged", "closed", "blocked"],
+            state,
+        ),
+        merge_gate_status=cast(
+            Literal[
+                "not_ready",
+                "awaiting_checks",
+                "awaiting_review_clearance",
+                "merge_ready",
+                "merged",
+            ],
+            merge_gate_status,
+        ),
+        base_branch=cast(str | None, payload.get("baseRefName")),
+        head_branch=cast(str | None, payload.get("headRefName")),
+        mergeability=cast(str | None, payload.get("mergeable")),
+        checks_summary=checks_state,
+        review_summary={
+            "blocking_state": "changes_requested"
+            if review_decision == "CHANGES_REQUESTED"
+            else "clear"
+        },
+        snapshot_source="github_cli",
+        last_refreshed_at=datetime.now(timezone.utc),
+    )
+
+
+def _final_snapshot_from_payload(payload: dict[str, object]) -> FinalPullRequestSnapshot:
+    state = _normalize_pr_state(payload.get("state"), payload.get("mergedAt"))
+    return FinalPullRequestSnapshot(
+        number=cast(int | None, payload.get("number")),
+        url=cast(str | None, payload.get("url")),
+        state=cast(
+            Literal["not_created", "open", "ready_for_review", "merged", "closed"],
+            "merged" if state == "merged" else "open" if state == "open" else "closed",
+        ),
+        review_gate_status=cast(
+            Literal["not_created", "awaiting_human", "merged"],
+            "merged" if state == "merged" else "awaiting_human",
+        ),
+        base_branch=cast(str | None, payload.get("baseRefName")),
+        head_branch=cast(str | None, payload.get("headRefName")),
+        checks_summary=_checks_summary_from_rollup(payload.get("statusCheckRollup")),
+        snapshot_source="github_cli",
+        last_refreshed_at=datetime.now(timezone.utc),
+    )
+
+
+def _normalize_pr_state(raw_state: object, merged_at: object) -> str:
+    normalized = str(raw_state or "").upper()
+    if merged_at:
+        return "merged"
+    if normalized == "OPEN":
+        return "open"
+    if normalized == "MERGED":
+        return "merged"
+    if normalized == "CLOSED":
+        return "closed"
+    return "not_created"
+
+
+def _checks_summary_from_rollup(rollup: object) -> dict[str, object]:
+    if not isinstance(rollup, list) or not rollup:
+        return {"state": "unknown"}
+    normalized_states = []
+    for item in rollup:
+        if not isinstance(item, dict):
+            continue
+        normalized_states.append(
+            str(
+                item.get("conclusion")
+                or item.get("state")
+                or item.get("status")
+                or "unknown"
+            ).upper()
+        )
+    if any(state in {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED"} for state in normalized_states):
+        return {"state": "failure"}
+    if any(state in {"PENDING", "IN_PROGRESS", "EXPECTED", "QUEUED"} for state in normalized_states):
+        return {"state": "pending"}
+    if normalized_states and all(
+        state in {"SUCCESS", "NEUTRAL", "SKIPPED"} for state in normalized_states
+    ):
+        return {"state": "success"}
+    return {"state": "unknown"}
 
 
 def _refresh_task_readiness(state: RunRuntimeState) -> bool:
@@ -984,6 +1200,11 @@ def resume(
         "--retry-failed",
         help="Reset failed, timed-out, or interrupted tasks back to pending before resuming.",
     ),
+    refresh_pr_stack_only: bool = typer.Option(
+        False,
+        "--refresh-pr-stack-only",
+        help="Refresh stacked PR state and unblock merge-gated tasks without invoking planner/executor agents.",
+    ),
     skip_planner: bool = typer.Option(
         True,
         "--skip-planner/--run-planner",
@@ -1005,6 +1226,17 @@ def resume(
         if retry_failed:
             _prepare_retryable_tasks(runtime_state)
             write_runtime_state(runtime_state)
+        if refresh_pr_stack_only:
+            updated_state = resume_stacked_pr_run(
+                run_id=str(runtime_state.run_id),
+                repo_root=config_path.parent.parent,
+                github_client=_GhCliClient(config_path.parent.parent),
+            )
+            _print_runtime_status(
+                updated_state,
+                state_path=updated_state.runtime_dir / "state.json",
+            )
+            raise typer.Exit(code=0)
         if runtime_state.status == "completed":
             console.print(
                 f"[yellow]Run {runtime_state.run_id} is already completed.[/yellow]"
@@ -1035,6 +1267,50 @@ def resume(
         runtime_state=updated_state,
     )
     _print_execution_record(record, updated_state)
+
+
+@app.command(help="Refresh stacked PR state for a persisted local-runtime run without executing tasks.")
+def refresh(
+    run_id: str | None = typer.Argument(
+        None,
+        help="Run id to refresh. If omitted, the most recent runtime state is used.",
+    ),
+    state_file: Path | None = typer.Option(
+        None,
+        "--state-file",
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Explicit path to a .oats/runtime/<run-id>/state.json file.",
+    ),
+    repo: Path | None = typer.Option(
+        None,
+        "--repo",
+        file_okay=False,
+        dir_okay=True,
+        help="Repo root to use when resolving .oats/config.toml.",
+    ),
+) -> None:
+    try:
+        if state_file is not None:
+            runtime_state = resolve_runtime_state(Path.cwd(), state_path=state_file.resolve())
+            repo_root = runtime_state.repo_root
+            state_path = state_file.resolve()
+        else:
+            search_root = repo.resolve() if repo else Path.cwd()
+            config_path = find_repo_config(search_root)
+            repo_root = config_path.parent.parent
+            runtime_state = resolve_runtime_state(repo_root, run_id=run_id)
+            state_path = runtime_state.runtime_dir / "state.json"
+        refreshed = refresh_run(
+            state=runtime_state,
+            github_client=_GhCliClient(repo_root),
+        )
+    except (RepoConfigError, FileNotFoundError, RuntimeError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    _print_runtime_status(refreshed, state_path=state_path)
 
 
 @app.command(help="Legacy compatibility command for inspecting persisted local-runtime state.")

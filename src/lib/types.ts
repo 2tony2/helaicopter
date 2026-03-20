@@ -223,6 +223,14 @@ export type OrchestrationRunStatus =
   | "failed"
   | "timed_out";
 
+export type OrchestrationStackStatus =
+  | "building"
+  | "awaiting_task_merge"
+  | "resolving_conflict"
+  | "blocked"
+  | "ready_for_final_review"
+  | "completed";
+
 export type OrchestrationStatusTone =
   | "running"
   | "success"
@@ -235,9 +243,65 @@ export interface OrchestrationTaskRecord {
   taskId: string;
   title: string;
   dependsOn: string[];
+  parentBranch?: string | null;
   status: OrchestrationTaskStatus;
   attempts: number;
+  taskPr?: OrchestrationTaskPullRequest | null;
+  operationHistory: OrchestrationOperationHistoryEntry[];
   invocation: OrchestrationInvocation | null;
+}
+
+export interface OrchestrationFeatureBranch {
+  name: string;
+  baseBranch?: string | null;
+}
+
+export interface OrchestrationReviewSummary {
+  blockingState: "clear" | "changes_requested" | "commented" | "unknown";
+  approvals: number;
+  changesRequested: number;
+}
+
+export interface OrchestrationTaskPullRequest {
+  number?: number | null;
+  url?: string | null;
+  state: "not_created" | "open" | "merged" | "closed" | "blocked";
+  mergeGateStatus:
+    | "not_ready"
+    | "awaiting_checks"
+    | "awaiting_review_clearance"
+    | "merge_ready"
+    | "merged";
+  baseBranch?: string | null;
+  headBranch?: string | null;
+  mergeability?: string | null;
+  checksSummary: Record<string, unknown>;
+  reviewSummary?: OrchestrationReviewSummary | null;
+  snapshotSource?: string | null;
+  lastRefreshedAt?: string | null;
+  isStale: boolean;
+}
+
+export interface OrchestrationFinalPullRequest {
+  number?: number | null;
+  url?: string | null;
+  state: "not_created" | "open" | "ready_for_review" | "merged" | "closed";
+  reviewGateStatus: "not_created" | "awaiting_human" | "merged";
+  baseBranch?: string | null;
+  headBranch?: string | null;
+  checksSummary: Record<string, unknown>;
+  snapshotSource?: string | null;
+  lastRefreshedAt?: string | null;
+  isStale: boolean;
+}
+
+export interface OrchestrationOperationHistoryEntry {
+  kind: string;
+  status: "started" | "succeeded" | "failed";
+  sessionId?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  details: Record<string, unknown>;
 }
 
 export interface OrchestrationDagNode {
@@ -320,7 +384,11 @@ export interface OrchestrationRunEvaluation {
 
 export interface OvernightOatsRunRecord {
   source: "overnight-oats";
-  contractVersion: "oats-run-v1" | "oats-runtime-v1";
+  contractVersion:
+    | "oats-run-v1"
+    | "oats-run-v2"
+    | "oats-runtime-v1"
+    | "oats-runtime-v2";
   runId: string;
   runTitle: string;
   repoRoot: string;
@@ -331,11 +399,15 @@ export interface OvernightOatsRunRecord {
   taskPrTarget: string;
   finalPrTarget: string;
   status: OrchestrationRunStatus;
+  stackStatus?: OrchestrationStackStatus | null;
+  featureBranch?: OrchestrationFeatureBranch | null;
   activeTaskId?: string | null;
   heartbeatAt?: string | null;
   finishedAt?: string | null;
   planner: OrchestrationInvocation | null;
   tasks: OrchestrationTaskRecord[];
+  finalPr?: OrchestrationFinalPullRequest | null;
+  operationHistory: OrchestrationOperationHistoryEntry[];
   createdAt: string;
   lastUpdatedAt: string;
   isRunning: boolean;

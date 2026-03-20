@@ -692,6 +692,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OrchestrationFactsResponse'
+  /orchestration/oats/{run_id}/refresh:
+    post:
+      tags:
+      - orchestration
+      summary: Refresh stacked PR state for a persisted OATS run.
+      operationId: orchestration_oats_refresh_orchestration_oats__run_id__refresh_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationRunResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /orchestration/oats/{run_id}/resume:
+    post:
+      tags:
+      - orchestration
+      summary: Resume stacked PR state for a persisted OATS run.
+      operationId: orchestration_oats_resume_orchestration_oats__run_id__resume_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationRunResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /orchestration/prefect/deployments:
     get:
       tags:
@@ -3308,6 +3360,72 @@ components:
           default: []
       type: object
       title: OrchestrationFactsResponse
+    OrchestrationFeatureBranchResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        baseBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Basebranch
+      type: object
+      required:
+      - name
+      title: OrchestrationFeatureBranchResponse
+    OrchestrationFinalPullRequestResponse:
+      properties:
+        number:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Number
+        url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Url
+        state:
+          type: string
+          title: State
+        reviewGateStatus:
+          type: string
+          title: Reviewgatestatus
+        baseBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Basebranch
+        headBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Headbranch
+        checksSummary:
+          additionalProperties: true
+          type: object
+          title: Checkssummary
+          default: {}
+        snapshotSource:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshotsource
+        lastRefreshedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lastrefreshedat
+        isStale:
+          type: boolean
+          title: Isstale
+          default: false
+      type: object
+      required:
+      - state
+      - reviewGateStatus
+      title: OrchestrationFinalPullRequestResponse
     OrchestrationInvocationResponse:
       properties:
         agent:
@@ -3390,6 +3508,55 @@ components:
       - startedAt
       title: OrchestrationInvocationResponse
       description: Agent invocation snapshot.
+    OrchestrationOperationHistoryResponse:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        status:
+          type: string
+          title: Status
+        sessionId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sessionid
+        startedAt:
+          type: string
+          title: Startedat
+        finishedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Finishedat
+        details:
+          additionalProperties: true
+          type: object
+          title: Details
+          default: {}
+      type: object
+      required:
+      - kind
+      - status
+      - startedAt
+      title: OrchestrationOperationHistoryResponse
+    OrchestrationReviewSummaryResponse:
+      properties:
+        blockingState:
+          type: string
+          title: Blockingstate
+        approvals:
+          type: integer
+          title: Approvals
+          default: 0
+        changesRequested:
+          type: integer
+          title: Changesrequested
+          default: 0
+      type: object
+      required:
+      - blockingState
+      title: OrchestrationReviewSummaryResponse
     OrchestrationRunFactResponse:
       properties:
         runId:
@@ -3523,6 +3690,15 @@ components:
           - failed
           - timed_out
           title: Status
+        stackStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stackstatus
+        featureBranch:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationFeatureBranchResponse'
+          - type: 'null'
         activeTaskId:
           anyOf:
           - type: string
@@ -3547,6 +3723,16 @@ components:
             $ref: '#/components/schemas/OrchestrationTaskResponse'
           type: array
           title: Tasks
+          default: []
+        finalPr:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationFinalPullRequestResponse'
+          - type: 'null'
+        operationHistory:
+          items:
+            $ref: '#/components/schemas/OrchestrationOperationHistoryResponse'
+          type: array
+          title: Operationhistory
           default: []
         createdAt:
           type: string
@@ -3648,6 +3834,67 @@ components:
       - sourceKind
       - status
       title: OrchestrationTaskAttemptFactResponse
+    OrchestrationTaskPullRequestResponse:
+      properties:
+        number:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Number
+        url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Url
+        state:
+          type: string
+          title: State
+        mergeGateStatus:
+          type: string
+          title: Mergegatestatus
+        baseBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Basebranch
+        headBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Headbranch
+        mergeability:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mergeability
+        checksSummary:
+          additionalProperties: true
+          type: object
+          title: Checkssummary
+          default: {}
+        reviewSummary:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationReviewSummaryResponse'
+          - type: 'null'
+        snapshotSource:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshotsource
+        lastRefreshedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lastrefreshedat
+        isStale:
+          type: boolean
+          title: Isstale
+          default: false
+      type: object
+      required:
+      - state
+      - mergeGateStatus
+      title: OrchestrationTaskPullRequestResponse
     OrchestrationTaskResponse:
       properties:
         taskId:
@@ -3662,6 +3909,11 @@ components:
           type: array
           title: Dependson
           default: []
+        parentBranch:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parentbranch
         status:
           type: string
           enum:
@@ -3677,6 +3929,16 @@ components:
           type: integer
           title: Attempts
           default: 0
+        taskPr:
+          anyOf:
+          - $ref: '#/components/schemas/OrchestrationTaskPullRequestResponse'
+          - type: 'null'
+        operationHistory:
+          items:
+            $ref: '#/components/schemas/OrchestrationOperationHistoryResponse'
+          type: array
+          title: Operationhistory
+          default: []
         invocation:
           anyOf:
           - $ref: '#/components/schemas/OrchestrationInvocationResponse'

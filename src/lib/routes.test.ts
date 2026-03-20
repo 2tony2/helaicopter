@@ -11,11 +11,13 @@ import {
   buildConversationTabRoute,
   buildOrchestrationRoute,
   decideConversationRoute,
+  getConversationRouteState,
   getOrchestrationRouteState,
   normalizePrefectUiPath,
   parseConversationRouteSegments,
+  resolveConversationDetailTab,
   translateLegacyConversationRouteTarget,
-} from "./routes";
+} from "./routes.ts";
 
 const conversationRef = "review-the-backend-rollout--claude-claude-session-1";
 const wrongSlugConversationRef = "stale-route-slug--claude-claude-session-1";
@@ -378,6 +380,7 @@ test("orchestration routes preserve Prefect iframe state", () => {
   );
   assert.equal(normalizePrefectUiPath("flow-runs"), "/flow-runs");
   assert.equal(normalizePrefectUiPath(""), undefined);
+  assert.equal(normalizePrefectUiPath("https://prefect.example.test/flow-runs"), undefined);
   assert.equal(buildOrchestrationRoute(), "/orchestration");
 });
 
@@ -395,5 +398,51 @@ test("orchestration route state prefers current query params over stale initial 
     tab: "prefect-ui",
     flowRunId: "flow-run-2",
     prefectPath: "/flow-runs/flow-run/flow-run-2",
+  });
+});
+
+test("unsupported tab values fall back to stable defaults", () => {
+  assert.equal(resolveConversationDetailTab("unknown"), "messages");
+
+  assert.deepEqual(
+    getConversationRouteState(new URLSearchParams("tab=unknown"), {
+      tab: "subagents",
+      subagent: "agent-1",
+    }),
+    {
+      tab: "messages",
+      plan: undefined,
+      subagent: "agent-1",
+      message: undefined,
+    }
+  );
+
+  assert.deepEqual(
+    getOrchestrationRouteState(
+      new URLSearchParams("tab=unknown&prefectPath=https://prefect.example.test/flow-runs"),
+      {
+        tab: "prefect-ui",
+        flowRunId: "flow-run-1",
+        prefectPath: "/flow-runs",
+      }
+    ),
+    {
+      tab: "orchestration",
+      flowRunId: "flow-run-1",
+      prefectPath: undefined,
+    }
+  );
+});
+
+test("conversation route state accepts per-message deep links from query params", () => {
+  const state = getConversationRouteState(
+    new URLSearchParams("tab=messages&message=assistant-uuid-1"),
+  );
+
+  assert.deepEqual(state, {
+    tab: "messages",
+    plan: undefined,
+    subagent: undefined,
+    message: "assistant-uuid-1",
   });
 });

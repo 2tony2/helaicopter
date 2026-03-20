@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import threading
 
-from oats.models import AgentInvocationResult
+from oats.models import AgentInvocationResult, ReviewSummary
 from oats.runtime_state import (
     append_progress_event,
     apply_agent_result,
@@ -199,3 +199,27 @@ def test_record_invocation_heartbeat_appends_runtime_event(tmp_path: Path) -> No
     assert emitted is True
     assert event["event_type"] == "task_heartbeat"
     assert event["task_id"] == runtime_task.task_id
+
+
+def test_runtime_state_round_trip_persists_task_review_summary(tmp_path: Path) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=tmp_path,
+        config_path=tmp_path / ".oats" / "config.toml",
+    )
+    state = build_initial_runtime_state(
+        execution_plan,
+        mode="writable",
+        run_id="sample-run-review-summary",
+        executor_agent=config.agents.executor,
+    )
+    state.tasks[0].task_pr.review_summary = ReviewSummary(blocking_state="changes_requested")
+
+    state_path = write_runtime_state(state)
+    loaded = load_runtime_state(state_path)
+
+    assert loaded.tasks[0].task_pr.review_summary.blocking_state == "changes_requested"

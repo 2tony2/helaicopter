@@ -3574,6 +3574,125 @@
         "type": "object",
         "title": "OrchestrationFactsResponse"
       },
+      "OrchestrationFeatureBranchResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "baseBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basebranch"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "OrchestrationFeatureBranchResponse"
+      },
+      "OrchestrationFinalPullRequestResponse": {
+        "properties": {
+          "number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "reviewGateStatus": {
+            "type": "string",
+            "title": "Reviewgatestatus"
+          },
+          "baseBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basebranch"
+          },
+          "headBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headbranch"
+          },
+          "checksSummary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Checkssummary",
+            "default": {}
+          },
+          "snapshotSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotsource"
+          },
+          "lastRefreshedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrefreshedat"
+          },
+          "isStale": {
+            "type": "boolean",
+            "title": "Isstale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "reviewGateStatus"
+        ],
+        "title": "OrchestrationFinalPullRequestResponse"
+      },
       "OrchestrationInvocationResponse": {
         "properties": {
           "agent": {
@@ -3706,6 +3825,80 @@
         ],
         "title": "OrchestrationInvocationResponse",
         "description": "Agent invocation snapshot."
+      },
+      "OrchestrationOperationHistoryResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "startedAt": {
+            "type": "string",
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "status",
+          "startedAt"
+        ],
+        "title": "OrchestrationOperationHistoryResponse"
+      },
+      "OrchestrationReviewSummaryResponse": {
+        "properties": {
+          "blockingState": {
+            "type": "string",
+            "title": "Blockingstate"
+          },
+          "approvals": {
+            "type": "integer",
+            "title": "Approvals",
+            "default": 0
+          },
+          "changesRequested": {
+            "type": "integer",
+            "title": "Changesrequested",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "blockingState"
+        ],
+        "title": "OrchestrationReviewSummaryResponse"
       },
       "OrchestrationRunFactResponse": {
         "properties": {
@@ -3890,6 +4083,27 @@
             ],
             "title": "Status"
           },
+          "stackStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stackstatus"
+          },
+          "featureBranch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrchestrationFeatureBranchResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "activeTaskId": {
             "anyOf": [
               {
@@ -3939,6 +4153,24 @@
             },
             "type": "array",
             "title": "Tasks",
+            "default": []
+          },
+          "finalPr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrchestrationFinalPullRequestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operationHistory": {
+            "items": {
+              "$ref": "#/components/schemas/OrchestrationOperationHistoryResponse"
+            },
+            "type": "array",
+            "title": "Operationhistory",
             "default": []
           },
           "createdAt": {
@@ -4081,6 +4313,122 @@
         ],
         "title": "OrchestrationTaskAttemptFactResponse"
       },
+      "OrchestrationTaskPullRequestResponse": {
+        "properties": {
+          "number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "mergeGateStatus": {
+            "type": "string",
+            "title": "Mergegatestatus"
+          },
+          "baseBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basebranch"
+          },
+          "headBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headbranch"
+          },
+          "mergeability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mergeability"
+          },
+          "checksSummary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Checkssummary",
+            "default": {}
+          },
+          "reviewSummary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrchestrationReviewSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshotSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotsource"
+          },
+          "lastRefreshedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrefreshedat"
+          },
+          "isStale": {
+            "type": "boolean",
+            "title": "Isstale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "mergeGateStatus"
+        ],
+        "title": "OrchestrationTaskPullRequestResponse"
+      },
       "OrchestrationTaskResponse": {
         "properties": {
           "taskId": {
@@ -4099,6 +4447,17 @@
             "title": "Dependson",
             "default": []
           },
+          "parentBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentbranch"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -4116,6 +4475,24 @@
             "type": "integer",
             "title": "Attempts",
             "default": 0
+          },
+          "taskPr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrchestrationTaskPullRequestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operationHistory": {
+            "items": {
+              "$ref": "#/components/schemas/OrchestrationOperationHistoryResponse"
+            },
+            "type": "array",
+            "title": "Operationhistory",
+            "default": []
           },
           "invocation": {
             "anyOf": [

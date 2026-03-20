@@ -4,6 +4,7 @@ from pathlib import Path
 
 from oats.models import ExecutionPlan, PlannedTask, RepoConfig, RunSpec
 from oats.pr import build_final_pr_title, build_integration_branch_name, build_task_branch_name
+from oats.stacked_prs import derive_initial_task_status, derive_parent_branch
 from helaicopter_domain.vocab import ProviderName
 
 
@@ -27,6 +28,10 @@ def build_execution_plan(
         config.git.integration_branch_prefix,
         run_spec.title,
     )
+    task_branch_map = {
+        task.id: build_task_branch_name(config.git.task_branch_prefix, task.id)
+        for task in run_spec.tasks
+    }
 
     for task in run_spec.tasks:
         unknown_deps = sorted(dep for dep in task.depends_on if dep not in task_ids)
@@ -45,6 +50,11 @@ def build_execution_plan(
             agent=resolved_agent,
             reasoning_effort=task.reasoning_effort,
         )
+        parent_branch, branch_strategy = derive_parent_branch(
+            task,
+            feature_branch=integration_branch,
+            upstream_branch_map=task_branch_map,
+        )
         planned_tasks.append(
             PlannedTask(
                 id=task.id,
@@ -56,8 +66,11 @@ def build_execution_plan(
                 reasoning_effort=task.reasoning_effort,
                 acceptance_criteria=task.acceptance_criteria,
                 validation_commands=validation_commands,
-                branch_name=build_task_branch_name(config.git.task_branch_prefix, task.id),
-                pr_base=integration_branch,
+                branch_name=task_branch_map[task.id],
+                parent_branch=parent_branch,
+                pr_base=parent_branch,
+                branch_strategy=branch_strategy,
+                initial_task_status=derive_initial_task_status(task.depends_on),
             )
         )
 

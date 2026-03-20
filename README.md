@@ -255,6 +255,8 @@ src/
 
 Compatibility shim: [`src/lib/client/normalize.ts`](/Users/tony/Code/helaicopter/src/lib/client/normalize.ts) still accepts the legacy camelCase Next.js payload shape as well as the FastAPI snake_case schema so cached fixtures and in-flight responses continue to normalize during rollout cleanup.
 
+Frontend runtime validation: Zod now lives at the TypeScript client boundary under [`src/lib/client/schemas/`](/Users/tony/Code/helaicopter/src/lib/client/schemas). The intended pattern is parse raw backend JSON, route/query state, or form payloads with a schema first, then map the validated result into UI-facing types in [`src/lib/client/normalize.ts`](/Users/tony/Code/helaicopter/src/lib/client/normalize.ts) or component state helpers. FastAPI and Pydantic remain the backend contract authority; Zod does not replace Python-side validation.
+
 ## Legacy Runtime Structure
 
 The removed Next.js route handlers and their Node-side backend adapters previously lived in `src/`. They are superseded by the FastAPI backend under [`python/helaicopter_api/`](/Users/tony/Code/helaicopter/python/helaicopter_api), so `src/` now stays focused on frontend code.

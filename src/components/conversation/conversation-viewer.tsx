@@ -23,7 +23,7 @@ import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { DisplayToolCallBlock, ProcessedMessage, SubagentInfo, TokenUsage } from "@/lib/types";
 import { ContextTab } from "./context-tab";
-import { PlanPanel } from "@/components/plans/plan-panel";
+import { PlanPanel } from "@/features/plans/components/plan-panel";
 import { ToolCallBlock } from "./tool-call-block";
 import { EvaluationDialog } from "./evaluation-dialog";
 import { EvaluationsTab } from "./evaluations-tab";

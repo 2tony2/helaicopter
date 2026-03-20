@@ -2,16 +2,29 @@ import type {
   ConversationEvaluation,
   DatabaseStatus,
   EvaluationPrompt,
+  OvernightOatsRunRecord,
   SubscriptionSettings,
 } from "@/lib/types";
-import * as endpoints from "./endpoints";
-import { del, patch, post } from "./fetcher";
+import { databaseStatusSchema } from "./schemas/database.ts";
 import {
-  normalizeConversationEvaluations,
+  conversationEvaluationCreateSchema,
+  conversationEvaluationSchema,
+  evaluationPromptSchema,
+  evaluationPromptWriteSchema,
+} from "./schemas/evaluations.ts";
+import {
+  subscriptionSettingsSchema,
+  subscriptionSettingsWriteSchema,
+} from "./schemas/subscriptions.ts";
+import * as endpoints from "./endpoints.ts";
+import { del, patch, post } from "./fetcher.ts";
+import {
+  normalizeConversationEvaluation,
   normalizeDatabaseStatus,
-  normalizeEvaluationPrompts,
+  normalizeEvaluationPrompt,
+  normalizeOvernightOatsRun,
   normalizeSubscriptionSettings,
-} from "./normalize";
+} from "./normalize.ts";
 
 type EvaluationPromptWriteInput = {
   name: string;
@@ -57,6 +70,10 @@ function readErrorMessage(payload: unknown): string | null {
   return null;
 }
 
+function rejectInvalidInput(error: Error): Promise<never> {
+  return Promise.reject(error);
+}
+
 export async function refreshDatabase(input: DatabaseRefreshInput): Promise<DatabaseStatus> {
   const response = await fetch(endpoints.databaseRefresh(), {
     method: "POST",
@@ -67,8 +84,9 @@ export async function refreshDatabase(input: DatabaseRefreshInput): Promise<Data
   });
   const payload = await response.json().catch(() => null);
 
-  if (payload && typeof payload === "object" && "status" in payload) {
-    return normalizeDatabaseStatus(payload);
+  const parsedStatus = databaseStatusSchema.safeParse(payload);
+  if (parsedStatus.success) {
+    return normalizeDatabaseStatus(parsedStatus.data);
   }
 
   if (!response.ok) {
@@ -81,8 +99,16 @@ export async function refreshDatabase(input: DatabaseRefreshInput): Promise<Data
 export function createEvaluationPrompt(
   input: EvaluationPromptWriteInput
 ): Promise<EvaluationPrompt> {
-  return post(endpoints.evaluationPrompts(), input, (value) =>
-    normalizeEvaluationPrompts([value])[0]
+  const parsedInput = evaluationPromptWriteSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return rejectInvalidInput(parsedInput.error);
+  }
+
+  return post(
+    endpoints.evaluationPrompts(),
+    parsedInput.data,
+    evaluationPromptSchema,
+    normalizeEvaluationPrompt
   );
 }
 
@@ -90,8 +116,16 @@ export function updateEvaluationPrompt(
   promptId: string,
   input: EvaluationPromptWriteInput
 ): Promise<EvaluationPrompt> {
-  return patch(endpoints.evaluationPrompt(promptId), input, (value) =>
-    normalizeEvaluationPrompts([value])[0]
+  const parsedInput = evaluationPromptWriteSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return rejectInvalidInput(parsedInput.error);
+  }
+
+  return patch(
+    endpoints.evaluationPrompt(promptId),
+    parsedInput.data,
+    evaluationPromptSchema,
+    normalizeEvaluationPrompt
   );
 }
 
@@ -105,15 +139,39 @@ export function createConversationEvaluation(
   input: ConversationEvaluationCreateInput,
   opts?: ConversationRequestOptions
 ): Promise<ConversationEvaluation> {
+  const parsedInput = conversationEvaluationCreateSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return rejectInvalidInput(parsedInput.error);
+  }
+
   return post(
     endpoints.conversationEvaluations(projectPath, sessionId, opts),
-    input,
-    (value) => normalizeConversationEvaluations([value])[0]
+    parsedInput.data,
+    conversationEvaluationSchema,
+    normalizeConversationEvaluation
   );
 }
 
 export function saveSubscriptionSettings(
   input: SubscriptionSettings
 ): Promise<SubscriptionSettings> {
-  return patch(endpoints.subscriptionSettings(), input, normalizeSubscriptionSettings);
+  const parsedInput = subscriptionSettingsWriteSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return rejectInvalidInput(parsedInput.error);
+  }
+
+  return patch(
+    endpoints.subscriptionSettings(),
+    parsedInput.data,
+    subscriptionSettingsSchema,
+    normalizeSubscriptionSettings
+  );
+}
+
+export function refreshOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
+  return post(endpoints.orchestrationOatsRefresh(runId), undefined, normalizeOvernightOatsRun);
+}
+
+export function resumeOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
+  return post(endpoints.orchestrationOatsResume(runId), undefined, normalizeOvernightOatsRun);
 }

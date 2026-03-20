@@ -55,17 +55,36 @@ def test_prepare_task_worktree_is_safe_to_rerun_when_worktree_already_exists(
     assert _git(context.worktree_path, "status", "--short") == "?? rerun-marker.txt"
 
 
+def test_prepare_task_worktree_uses_parent_branch_as_upstream(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    payload = compile_run_definition(_sample_run_definition(tmp_path), _repo_config()).flow_payload
+    verify_task = payload.tasks[1]
+
+    context = prepare_task_worktree(payload, verify_task)
+
+    assert context.task_branch == "oats/task/verify"
+    assert _git(context.worktree_path, "rev-parse", "--abbrev-ref", "HEAD@{upstream}") == "oats/task/plan"
+
+
 def test_compiled_payload_attaches_repo_execution_context_for_each_task(tmp_path: Path) -> None:
     deployment = compile_run_definition(_sample_run_definition(tmp_path), _repo_config())
     plan_task, verify_task = deployment.flow_payload.tasks
 
     assert plan_task.repo_context is not None
     assert plan_task.repo_context.integration_branch == "oats/overnight/run-prefect-worktree-smoke"
+    assert plan_task.repo_context.parent_branch == "oats/overnight/run-prefect-worktree-smoke"
+    assert plan_task.repo_context.pr_base == "oats/overnight/run-prefect-worktree-smoke"
     assert plan_task.repo_context.task_branch == "oats/task/plan"
     assert plan_task.repo_context.worktree_path == Path(".oats-worktrees/run-prefect-worktree-smoke/plan")
+    assert plan_task.branch_strategy == "feature_base"
+    assert plan_task.initial_task_status == "pending"
     assert verify_task.repo_context is not None
+    assert verify_task.repo_context.parent_branch == "oats/task/plan"
+    assert verify_task.repo_context.pr_base == "oats/task/plan"
     assert verify_task.repo_context.task_branch == "oats/task/verify"
     assert verify_task.repo_context.worktree_path == Path(".oats-worktrees/run-prefect-worktree-smoke/verify")
+    assert verify_task.branch_strategy == "single_parent"
+    assert verify_task.initial_task_status == "pending"
 
 
 def test_remove_task_worktree_is_safe_when_repeated(tmp_path: Path) -> None:

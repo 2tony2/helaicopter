@@ -1,13 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+const {
   createConversationEvaluation,
   createEvaluationPrompt,
+  refreshOvernightOatsRun,
   refreshDatabase,
+  resumeOvernightOatsRun,
   saveSubscriptionSettings,
-} from "./mutations";
-import { setBaseUrl } from "./endpoints";
+} = await import(new URL("./mutations.ts", import.meta.url).href);
+const { setBaseUrl } = await import(new URL("./endpoints.ts", import.meta.url).href);
 
 function installFetchStub(
   implementation: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -141,6 +143,30 @@ test("createEvaluationPrompt posts to the FastAPI endpoint and normalizes the re
     });
     assert.equal(prompt.promptId, "prompt-1");
     assert.equal(prompt.promptText, "Review the weakest turns.");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("createEvaluationPrompt validates outgoing payloads before fetch", async () => {
+  setBaseUrl("https://api.example.test");
+  let fetchCalls = 0;
+  const restoreFetch = installFetchStub(async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not run");
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        createEvaluationPrompt({
+          name: "   ",
+          description: "Focus on failures",
+          promptText: "Review the weakest turns.",
+        }),
+      /name/i
+    );
+    assert.equal(fetchCalls, 0);
   } finally {
     restoreFetch();
   }
@@ -340,6 +366,229 @@ test("createConversationEvaluation includes parent_session_id only for parent-sc
           scope: "full",
           selectionInstruction: null,
         },
+      },
+    ]);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("createConversationEvaluation validates outgoing payloads before fetch", async () => {
+  setBaseUrl("https://api.example.test");
+  let fetchCalls = 0;
+  const restoreFetch = installFetchStub(async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not run");
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        createConversationEvaluation("-Users-tony-Code-helaicopter", "session-1", {
+          provider: "codex",
+          model: "gpt-5",
+          promptId: "prompt-1",
+          promptName: "Reviewer Sweep",
+          promptText: "Review the weakest turns.",
+          scope: "invalid-scope" as never,
+          selectionInstruction: null,
+        }),
+      /scope/i
+    );
+    assert.equal(fetchCalls, 0);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("saveSubscriptionSettings validates outgoing payloads before fetch", async () => {
+  setBaseUrl("https://api.example.test");
+  let fetchCalls = 0;
+  const restoreFetch = installFetchStub(async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not run");
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        saveSubscriptionSettings({
+          claude: {
+            provider: "claude",
+            hasSubscription: false,
+            monthlyCost: Number.NaN,
+            updatedAt: "2026-03-18T10:00:00Z",
+          },
+          codex: {
+            provider: "codex",
+            hasSubscription: true,
+            monthlyCost: 200,
+            updatedAt: "2026-03-18T10:00:00Z",
+          },
+        }),
+      /monthlyCost|monthly_cost/i
+    );
+    assert.equal(fetchCalls, 0);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("refreshOvernightOatsRun and resumeOvernightOatsRun post to the run action endpoints", async () => {
+  setBaseUrl("https://api.example.test");
+  const responses = [
+    new Response(
+      JSON.stringify({
+        source: "overnight-oats",
+        contract_version: "oats-runtime-v2",
+        run_id: "oats-run-1",
+        run_title: "Stacked PR rollout",
+        repo_root: "/Users/tony/Code/helaicopter",
+        config_path: "/Users/tony/Code/helaicopter/.oats/config.toml",
+        run_spec_path: "/Users/tony/Code/helaicopter/.oats/runs/run-1/spec.md",
+        mode: "full-program",
+        integration_branch: "oats/overnight/runtime-facts",
+        task_pr_target: "oats/overnight/runtime-facts",
+        final_pr_target: "main",
+        status: "running",
+        stack_status: "awaiting_task_merge",
+        feature_branch: {
+          name: "oats/overnight/runtime-facts",
+          base_branch: "main",
+        },
+        active_task_id: "task-ui",
+        heartbeat_at: "2026-03-20T09:15:00Z",
+        finished_at: null,
+        planner: null,
+        tasks: [],
+        final_pr: {
+          number: 42,
+          state: "open",
+          review_gate_status: "awaiting_human",
+          base_branch: "main",
+          head_branch: "oats/overnight/runtime-facts",
+          checks_summary: {
+            total: 5,
+            passing: 5,
+          },
+          is_stale: false,
+        },
+        operation_history: [],
+        created_at: "2026-03-20T08:45:00Z",
+        last_updated_at: "2026-03-20T09:15:00Z",
+        is_running: true,
+        recorded_at: "2026-03-20T09:15:00Z",
+        record_path: "/Users/tony/Code/helaicopter/.oats/runs/run-1.json",
+        dag: {
+          nodes: [],
+          edges: [],
+          stats: {
+            total_nodes: 0,
+            total_edges: 0,
+            max_depth: 0,
+            max_breadth: 0,
+            root_count: 0,
+            provider_breakdown: {},
+            timed_out_count: 0,
+            active_count: 0,
+            pending_count: 0,
+            failed_count: 0,
+            succeeded_count: 0,
+          },
+        },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    ),
+    new Response(
+      JSON.stringify({
+        source: "overnight-oats",
+        contract_version: "oats-runtime-v2",
+        run_id: "oats-run-1",
+        run_title: "Stacked PR rollout",
+        repo_root: "/Users/tony/Code/helaicopter",
+        config_path: "/Users/tony/Code/helaicopter/.oats/config.toml",
+        run_spec_path: "/Users/tony/Code/helaicopter/.oats/runs/run-1/spec.md",
+        mode: "full-program",
+        integration_branch: "oats/overnight/runtime-facts",
+        task_pr_target: "oats/overnight/runtime-facts",
+        final_pr_target: "main",
+        status: "running",
+        stack_status: "building",
+        feature_branch: {
+          name: "oats/overnight/runtime-facts",
+          base_branch: "main",
+        },
+        active_task_id: "task-ui",
+        heartbeat_at: "2026-03-20T09:16:00Z",
+        finished_at: null,
+        planner: null,
+        tasks: [],
+        final_pr: null,
+        operation_history: [],
+        created_at: "2026-03-20T08:45:00Z",
+        last_updated_at: "2026-03-20T09:16:00Z",
+        is_running: true,
+        recorded_at: "2026-03-20T09:16:00Z",
+        record_path: "/Users/tony/Code/helaicopter/.oats/runs/run-1.json",
+        dag: {
+          nodes: [],
+          edges: [],
+          stats: {
+            total_nodes: 0,
+            total_edges: 0,
+            max_depth: 0,
+            max_breadth: 0,
+            root_count: 0,
+            provider_breakdown: {},
+            timed_out_count: 0,
+            active_count: 0,
+            pending_count: 0,
+            failed_count: 0,
+            succeeded_count: 0,
+          },
+        },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    ),
+  ];
+  const seenRequests: Array<{ url: string; method: string | undefined; body: string | undefined }> = [];
+  const restoreFetch = installFetchStub(async (input, init) => {
+    seenRequests.push({
+      url: String(input),
+      method: init?.method,
+      body: typeof init?.body === "string" ? init.body : undefined,
+    });
+    const next = responses.shift();
+    if (!next) {
+      throw new Error("No response stub left.");
+    }
+    return next;
+  });
+
+  try {
+    const refreshed = await refreshOvernightOatsRun("oats-run-1");
+    const resumed = await resumeOvernightOatsRun("oats-run-1");
+
+    assert.equal(refreshed.stackStatus, "awaiting_task_merge");
+    assert.equal(refreshed.featureBranch?.name, "oats/overnight/runtime-facts");
+    assert.equal(refreshed.finalPr?.reviewGateStatus, "awaiting_human");
+    assert.equal(resumed.stackStatus, "building");
+    assert.deepEqual(seenRequests, [
+      {
+        url: "https://api.example.test/orchestration/oats/oats-run-1/refresh",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "https://api.example.test/orchestration/oats/oats-run-1/resume",
+        method: "POST",
+        body: undefined,
       },
     ]);
   } finally {

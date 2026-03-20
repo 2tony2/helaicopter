@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+const {
   orchestrationPrefectDeployment,
   orchestrationPrefectDeployments,
   orchestrationPrefectFlowRun,
@@ -9,13 +9,13 @@ import {
   orchestrationPrefectWorkPools,
   orchestrationPrefectWorkers,
   setBaseUrl,
-} from "./endpoints";
-import {
+} = await import(new URL("./endpoints.ts", import.meta.url).href);
+const {
   normalizePrefectDeployments,
   normalizePrefectFlowRuns,
   normalizePrefectWorkPools,
   normalizePrefectWorkers,
-} from "./normalize";
+} = await import(new URL("./normalize.ts", import.meta.url).href);
 
 test("Prefect endpoint builders target backend orchestration routes", () => {
   setBaseUrl("https://api.example.test/");

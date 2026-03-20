@@ -19,16 +19,23 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLayoutedElements } from "@/lib/conversation-dag-layout";
+import {
+  refreshOvernightOatsRun,
+  resumeOvernightOatsRun,
+} from "@/lib/client/mutations";
 import { useOvernightOatsRuns } from "@/hooks/use-conversations";
 import type {
   OrchestrationDagNode,
   OrchestrationStatusTone,
   OvernightOatsRunRecord,
 } from "@/lib/types";
+import { OatsPrStack } from "./oats-pr-stack";
+import { buildOatsViewModel } from "./oats-view-model";
 import {
   Activity,
   Bot,
@@ -41,6 +48,7 @@ import {
   PlaySquare,
   Route,
   CircleAlert,
+  ShieldAlert,
   TimerOff,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -61,13 +69,23 @@ interface OatsNodeData {
   exitCode?: number | null;
   depth: number;
   attempts?: number;
-  clickable: boolean;
-  onClick: () => void;
+  selectable: boolean;
+  isSelected: boolean;
+  threadHref?: string;
+  prState?: string;
+  mergeGateStatus?: string;
+  onSelect: () => void;
+  onOpenThread?: () => void;
 }
 
 const OATS_NODE_WIDTH = 280;
-const OATS_NODE_LAYOUT_HEIGHT = 212;
+const OATS_NODE_LAYOUT_HEIGHT = 236;
 const OATS_STALE_AFTER_MS = 300_000;
+
+function humanizeToken(value?: string | null) {
+  if (!value) return "unknown";
+  return value.replace(/_/g, " ");
+}
 
 function isStaleHeartbeat(timestamp?: string | null, active = false) {
   if (!active || !timestamp) return false;
@@ -93,6 +111,21 @@ function deriveOatsNodeLabel(node: OrchestrationDagNode, isStale: boolean): stri
   return node.status;
 }
 
+function replaceRunRecord(
+  current: OvernightOatsRunRecord[] | undefined,
+  nextRun: OvernightOatsRunRecord
+) {
+  const runs = current ?? [];
+  const nextRuns = runs.some((run) => run.runId === nextRun.runId)
+    ? runs.map((run) => (run.runId === nextRun.runId ? nextRun : run))
+    : [nextRun, ...runs];
+
+  return [...nextRuns].sort(
+    (a, b) =>
+      new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime()
+  );
+}
+
 const OatsNode = memo(function OatsNode({ data }: NodeProps) {
   const d = data as unknown as OatsNodeData;
   const isPlanner = d.role === "planner";
@@ -109,17 +142,19 @@ const OatsNode = memo(function OatsNode({ data }: NodeProps) {
   return (
     <div
       className={cn(
-        "nodrag flex w-[280px] min-h-[212px] flex-col overflow-hidden rounded-2xl border-2 bg-card text-card-foreground shadow-lg transition-all hover:shadow-xl hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+        "nodrag flex w-[280px] min-h-[236px] flex-col overflow-hidden rounded-2xl border-2 bg-card text-card-foreground shadow-lg transition-all hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+        d.selectable ? "cursor-pointer hover:scale-[1.02]" : "",
         isPlanner ? "bg-slate-50/70 dark:bg-slate-950/20" : "",
+        d.isSelected ? "border-primary ring-4 ring-primary/20" : "",
         statusToneClass
       )}
-      onClick={d.onClick}
-      role={d.clickable ? "button" : undefined}
-      tabIndex={0}
+      onClick={d.onSelect}
+      role={d.selectable ? "button" : undefined}
+      tabIndex={d.selectable ? 0 : -1}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          d.onClick();
+          d.onSelect();
         }
       }}
     >
@@ -170,15 +205,19 @@ const OatsNode = memo(function OatsNode({ data }: NodeProps) {
           <div
             className={cn(
               "rounded-lg border px-2.5 py-2",
-              d.clickable
+              d.threadHref
                 ? "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300"
                 : "border-border/50 bg-muted/50 text-muted-foreground"
             )}
+            onClick={(event) => {
+              event.stopPropagation();
+              d.onOpenThread?.();
+            }}
           >
             <div className="text-muted-foreground">Thread</div>
             <div className="mt-1 flex items-center gap-1 font-medium">
-              {d.clickable ? <ExternalLink className="h-3 w-3" /> : <Route className="h-3 w-3" />}
-              {d.clickable ? "open thread" : "no link"}
+              {d.threadHref ? <ExternalLink className="h-3 w-3" /> : <Route className="h-3 w-3" />}
+              {d.threadHref ? "open thread" : "no link"}
             </div>
           </div>
           <div className="rounded-lg border border-border/50 bg-muted/50 px-2.5 py-2 col-span-2">
@@ -186,6 +225,16 @@ const OatsNode = memo(function OatsNode({ data }: NodeProps) {
             <div className="mt-1 font-medium">{d.attempts ?? 0}</div>
           </div>
         </div>
+        {d.prState || d.mergeGateStatus ? (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-border/50 pt-3">
+            {d.prState ? (
+              <Badge variant="outline">PR {humanizeToken(d.prState)}</Badge>
+            ) : null}
+            {d.mergeGateStatus ? (
+              <Badge variant="outline">{humanizeToken(d.mergeGateStatus)}</Badge>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <Handle type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-background !bg-muted-foreground" />
     </div>
@@ -196,13 +245,23 @@ const nodeTypes = {
   oats: OatsNode,
 };
 
-function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
+function OatsGraph({
+  run,
+  selectedTaskId,
+  onSelectTask,
+}: {
+  run: OvernightOatsRunRecord;
+  selectedTaskId?: string | null;
+  onSelectTask: (taskId: string) => void;
+}) {
   const router = useRouter();
   const { fitView } = useReactFlow();
 
   const graph = useMemo(() => {
+    const tasksById = new Map(run.tasks.map((task) => [task.taskId, task]));
     const nodes: Node[] = run.dag.nodes.map((node: OrchestrationDagNode) => {
       const isStale = node.isStale ?? isStaleHeartbeat(node.lastHeartbeatAt, node.isActive);
+      const task = tasksById.get(node.id);
       return {
         id: node.id,
         type: "oats",
@@ -222,8 +281,17 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
           exitCode: node.exitCode,
           depth: node.depth,
           attempts: node.attempts,
-          clickable: Boolean(node.conversationPath),
-          onClick: () => {
+          selectable: node.kind === "task",
+          isSelected: node.kind === "task" && node.id === selectedTaskId,
+          threadHref: node.conversationPath ?? undefined,
+          prState: task?.taskPr?.state,
+          mergeGateStatus: task?.taskPr?.mergeGateStatus,
+          onSelect: () => {
+            if (node.kind === "task") {
+              onSelectTask(node.id);
+            }
+          },
+          onOpenThread: () => {
             if (node.conversationPath) {
               router.push(node.conversationPath);
             }
@@ -251,7 +319,7 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
       nodeWidth: OATS_NODE_WIDTH,
       nodeHeight: OATS_NODE_LAYOUT_HEIGHT,
     });
-  }, [router, run.dag.edges, run.dag.nodes]);
+  }, [onSelectTask, router, run.dag.edges, run.dag.nodes, run.tasks, selectedTaskId]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
@@ -259,8 +327,11 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
   useEffect(() => {
     setNodes(graph.nodes);
     setEdges(graph.edges);
+  }, [graph.edges, graph.nodes, setEdges, setNodes]);
+
+  useEffect(() => {
     requestAnimationFrame(() => fitView({ padding: 0.2, duration: 250 }));
-  }, [fitView, graph.edges, graph.nodes, setEdges, setNodes]);
+  }, [fitView, run.lastUpdatedAt, run.recordPath]);
 
   return (
     <div className="overflow-hidden rounded-2xl border bg-background">
@@ -331,9 +402,12 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
 }
 
 export function OvernightOatsPanel() {
-  const { data: runs, isLoading: oatsLoading } = useOvernightOatsRuns();
+  const { data: runs, isLoading: oatsLoading, mutate } = useOvernightOatsRuns();
   const [search, setSearch] = useState("");
   const [selectedRecordPath, setSelectedRecordPath] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"refresh" | "resume" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const filteredRuns = useMemo(() => {
     return (runs ?? []).filter((run) => {
@@ -361,6 +435,12 @@ export function OvernightOatsPanel() {
     return filteredRuns[0] ?? null;
   }, [filteredRuns, selectedRecordPath]);
 
+  const selectedRunViewModel = useMemo(
+    () =>
+      selectedRun ? buildOatsViewModel(selectedRun, selectedTaskId) : null,
+    [selectedRun, selectedTaskId]
+  );
+
   const aggregate = useMemo(() => {
     const providerBreakdown = filteredRuns.reduce<Record<string, number>>(
       (acc, run) => {
@@ -375,12 +455,51 @@ export function OvernightOatsPanel() {
     return {
       runs: filteredRuns.length,
       tasks: filteredRuns.reduce((sum, run) => sum + run.tasks.length, 0),
-      deepest: filteredRuns.reduce((max, run) => Math.max(max, run.dag.stats.maxDepth), 0),
+      taskPrs: filteredRuns.reduce(
+        (sum, run) => sum + buildOatsViewModel(run).taskPrSummary.total,
+        0
+      ),
+      mergedTaskPrs: filteredRuns.reduce(
+        (sum, run) => sum + buildOatsViewModel(run).taskPrSummary.merged,
+        0
+      ),
+      readyForFinalReview: filteredRuns.filter(
+        (run) => run.stackStatus === "ready_for_final_review"
+      ).length,
       timedOut: filteredRuns.reduce((sum, run) => sum + run.dag.stats.timedOutCount, 0),
       active: filteredRuns.reduce((sum, run) => sum + run.dag.stats.activeCount, 0),
+      blockedOrConflicted: filteredRuns.filter(
+        (run) =>
+          run.stackStatus === "blocked" || run.stackStatus === "resolving_conflict"
+      ).length,
       providerBreakdown,
     };
   }, [filteredRuns]);
+
+  useEffect(() => {
+    setActionError(null);
+  }, [selectedRun?.runId]);
+
+  async function triggerRunAction(action: "refresh" | "resume") {
+    if (!selectedRun || pendingAction) {
+      return;
+    }
+
+    setPendingAction(action);
+    setActionError(null);
+    try {
+      const nextRun =
+        action === "refresh"
+          ? await refreshOvernightOatsRun(selectedRun.runId)
+          : await resumeOvernightOatsRun(selectedRun.runId);
+      await mutate(replaceRunRecord(runs, nextRun), { revalidate: false });
+      setSelectedRecordPath(nextRun.recordPath);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Run action failed.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -411,22 +530,28 @@ export function OvernightOatsPanel() {
         <Card className="border-violet-500/20 bg-violet-500/5">
           <CardContent className="p-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Tasks
+              Tasks / PRs
             </div>
             <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
               <PlaySquare className="h-5 w-5 text-violet-500" />
               {aggregate.tasks}
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              {aggregate.taskPrs} task PRs, {aggregate.mergedTaskPrs} merged
             </div>
           </CardContent>
         </Card>
         <Card className="border-emerald-500/20 bg-emerald-500/5">
           <CardContent className="p-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Deepest run
+              Final Review Ready
             </div>
             <div className="mt-2 flex items-center gap-2 text-2xl font-semibold">
-              <Network className="h-5 w-5 text-emerald-500" />
-              {aggregate.deepest}
+              <ShieldAlert className="h-5 w-5 text-emerald-500" />
+              {aggregate.readyForFinalReview}
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              {aggregate.blockedOrConflicted} blocked or resolving conflict
             </div>
           </CardContent>
         </Card>
@@ -453,6 +578,12 @@ export function OvernightOatsPanel() {
                   {aggregate.active} active
                 </Badge>
               )}
+              {aggregate.blockedOrConflicted > 0 && (
+                <Badge variant="outline" className="gap-1 border-rose-300 text-rose-700 dark:border-rose-800 dark:text-rose-300">
+                  <CircleAlert className="h-3.5 w-3.5" />
+                  {aggregate.blockedOrConflicted} blocked
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -472,6 +603,8 @@ export function OvernightOatsPanel() {
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <div className="space-y-3">
             {filteredRuns.map((run) => {
+              const runViewModel = buildOatsViewModel(run);
+              const stackLabel = humanizeToken(run.stackStatus ?? "building");
               const isSelected = selectedRun?.recordPath === run.recordPath;
               return (
                 <Card
@@ -479,15 +612,19 @@ export function OvernightOatsPanel() {
                   className={`cursor-pointer transition-colors ${
                     isSelected ? "border-primary" : "hover:bg-accent/40"
                   }`}
-                  onClick={() => setSelectedRecordPath(run.recordPath)}
+                  onClick={() => {
+                    setSelectedRecordPath(run.recordPath);
+                    setSelectedTaskId(null);
+                  }}
                 >
                   <CardContent className="p-4">
                     <div className="space-y-2">
                       <div className="line-clamp-2 text-sm font-medium">
                         {run.runTitle}
                       </div>
+                      <div className="text-xs text-muted-foreground">{run.repoRoot}</div>
                       <div className="text-xs text-muted-foreground">
-                        {run.repoRoot}
+                        feature {run.featureBranch?.name ?? run.integrationBranch}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap text-xs">
                         <Badge variant="secondary">Oats run</Badge>
@@ -495,15 +632,23 @@ export function OvernightOatsPanel() {
                           <PlaySquare className="h-3 w-3" />
                           {run.tasks.length} tasks
                         </Badge>
-                        <Badge variant="outline" className="gap-1">
-                          <Network className="h-3 w-3" />
-                          depth {run.dag.stats.maxDepth}
-                        </Badge>
-                        <Badge variant="outline" className="gap-1">
-                          <GitBranch className="h-3 w-3" />
-                          breadth {run.dag.stats.maxBreadth}
-                        </Badge>
                         <Badge variant="outline">{run.status}</Badge>
+                        <Badge variant="outline">{stackLabel}</Badge>
+                        {runViewModel.taskPrSummary.total > 0 ? (
+                          <Badge variant="outline">
+                            {runViewModel.taskPrSummary.merged}/{runViewModel.taskPrSummary.total} merged
+                          </Badge>
+                        ) : null}
+                        {run.stackStatus === "ready_for_final_review" ? (
+                          <Badge variant="outline" className="border-amber-400/50 text-amber-700 dark:text-amber-300">
+                            awaiting final review
+                          </Badge>
+                        ) : null}
+                        {run.stackStatus === "blocked" || run.stackStatus === "resolving_conflict" ? (
+                          <Badge variant="outline" className="border-rose-400/50 text-rose-700 dark:text-rose-300">
+                            {run.stackStatus === "resolving_conflict" ? "conflict" : "blocked"}
+                          </Badge>
+                        ) : null}
                         {run.isRunning && (
                           <Badge variant="outline" className="gap-2 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
                             <span className="relative flex h-2.5 w-2.5">
@@ -546,10 +691,21 @@ export function OvernightOatsPanel() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="secondary">Oats run</Badge>
                         {selectedRun.mode ? <Badge variant="outline">{selectedRun.mode}</Badge> : null}
-                        {selectedRun.integrationBranch ? (
-                          <Badge variant="secondary">{selectedRun.integrationBranch}</Badge>
+                        {selectedRun.featureBranch?.name ?? selectedRun.integrationBranch ? (
+                          <Badge variant="secondary">
+                            {selectedRun.featureBranch?.name ?? selectedRun.integrationBranch}
+                          </Badge>
                         ) : null}
                         <Badge variant="outline">{selectedRun.status}</Badge>
+                        {selectedRun.stackStatus ? (
+                          <Badge variant="outline">{humanizeToken(selectedRun.stackStatus)}</Badge>
+                        ) : null}
+                        {selectedRunViewModel && selectedRunViewModel.taskPrSummary.total > 0 ? (
+                          <Badge variant="outline">
+                            {selectedRunViewModel.taskPrSummary.merged}/
+                            {selectedRunViewModel.taskPrSummary.total} task PRs merged
+                          </Badge>
+                        ) : null}
                         {selectedRun.runSpecPath ? (
                           <Badge variant="outline">
                             spec: {selectedRun.runSpecPath.split("/").pop()}
@@ -566,23 +722,59 @@ export function OvernightOatsPanel() {
                         )}
                       </div>
                     </div>
-                    <div className="text-sm text-muted-foreground text-right">
-                      <div>Created {new Date(selectedRun.createdAt).toLocaleString()}</div>
-                      <div>Updated {new Date(selectedRun.lastUpdatedAt).toLocaleString()}</div>
-                      {selectedRun.heartbeatAt && (
-                        <div>Heartbeat {new Date(selectedRun.heartbeatAt).toLocaleString()}</div>
-                      )}
-                      <div className="mt-1 flex items-center justify-end gap-2">
-                        <Bot className="h-4 w-4" />
-                        {selectedRun.dag.stats.totalNodes} nodes
+                    <div className="space-y-3 text-sm text-muted-foreground text-right">
+                      <div>
+                        <div>Created {new Date(selectedRun.createdAt).toLocaleString()}</div>
+                        <div>Updated {new Date(selectedRun.lastUpdatedAt).toLocaleString()}</div>
+                        {selectedRun.heartbeatAt && (
+                          <div>Heartbeat {new Date(selectedRun.heartbeatAt).toLocaleString()}</div>
+                        )}
+                        <div className="mt-1 flex items-center justify-end gap-2">
+                          <Bot className="h-4 w-4" />
+                          {selectedRun.dag.stats.totalNodes} nodes
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={pendingAction !== null}
+                          onClick={() => void triggerRunAction("refresh")}
+                        >
+                          {pendingAction === "refresh" ? "Refreshing..." : "Refresh PR stack"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={pendingAction !== null}
+                          onClick={() => void triggerRunAction("resume")}
+                        >
+                          {pendingAction === "resume" ? "Resuming..." : "Resume run"}
+                        </Button>
                       </div>
                     </div>
                   </div>
+                  {actionError ? (
+                    <div className="mt-4 rounded-xl border border-rose-400/40 bg-rose-500/5 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
+                      {actionError}
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
 
+              {selectedRunViewModel ? (
+                <OatsPrStack
+                  run={selectedRun}
+                  viewModel={selectedRunViewModel}
+                  onSelectTask={setSelectedTaskId}
+                />
+              ) : null}
+
               <ReactFlowProvider>
-                <OatsGraph run={selectedRun} />
+                <OatsGraph
+                  run={selectedRun}
+                  selectedTaskId={selectedRunViewModel?.selectedTaskId}
+                  onSelectTask={setSelectedTaskId}
+                />
               </ReactFlowProvider>
 
               <Card>

@@ -40,6 +40,13 @@ import {
   normalizeSubscriptionSettings,
   normalizeTasks,
 } from "@/lib/client/normalize";
+import { databaseStatusSchema } from "@/lib/client/schemas/database";
+import { conversationSummaryListSchema } from "@/lib/client/schemas/conversations";
+import {
+  conversationEvaluationListSchema,
+  evaluationPromptListSchema,
+} from "@/lib/client/schemas/evaluations";
+import { subscriptionSettingsSchema } from "@/lib/client/schemas/subscriptions";
 
 const swrOptions = {
   revalidateOnFocus: false,
@@ -72,7 +79,8 @@ export function useProjects() {
 export function useConversations(project?: string, days?: number) {
   return useSWR<ConversationSummary[]>(
     endpoints.conversations({ project, days }),
-    (url: string) => requestJson(url, undefined, normalizeConversations),
+    (url: string) =>
+      requestJson(url, undefined, conversationSummaryListSchema, normalizeConversations),
     conversationSwrOptions
   );
 }
@@ -212,7 +220,8 @@ export function useSubagentConversation(
 export function useDatabaseStatus() {
   return useSWR<DatabaseStatus>(
     endpoints.databaseStatus(),
-    (url: string) => requestJson(url, undefined, normalizeDatabaseStatus),
+    (url: string) =>
+      requestJson(url, undefined, databaseStatusSchema, normalizeDatabaseStatus),
     {
       ...swrOptions,
       refreshInterval: 30_000,
@@ -223,7 +232,8 @@ export function useDatabaseStatus() {
 export function useEvaluationPrompts() {
   return useSWR<EvaluationPrompt[]>(
     endpoints.evaluationPrompts(),
-    (url: string) => requestJson(url, undefined, normalizeEvaluationPrompts),
+    (url: string) =>
+      requestJson(url, undefined, evaluationPromptListSchema, normalizeEvaluationPrompts),
     swrOptions
   );
 }
@@ -239,11 +249,17 @@ export function useConversationEvaluations(
       : null;
   return useSWR<ConversationEvaluation[]>(
     url,
-    (readUrl: string) => requestJson(readUrl, undefined, normalizeConversationEvaluations),
+    (readUrl: string) =>
+      requestJson(
+        readUrl,
+        undefined,
+        conversationEvaluationListSchema,
+        normalizeConversationEvaluations
+      ),
     {
-    ...swrOptions,
-    refreshInterval: (evaluations) =>
-      evaluations?.some((evaluation) => evaluation.status === "running") ? 3_000 : 0,
+      ...swrOptions,
+      refreshInterval: (evaluations) =>
+        evaluations?.some((evaluation) => evaluation.status === "running") ? 3_000 : 0,
     }
   );
 }
@@ -251,7 +267,8 @@ export function useConversationEvaluations(
 export function useSubscriptionSettings() {
   return useSWR<SubscriptionSettings>(
     endpoints.subscriptionSettings(),
-    (url: string) => requestJson(url, undefined, normalizeSubscriptionSettings),
+    (url: string) =>
+      requestJson(url, undefined, subscriptionSettingsSchema, normalizeSubscriptionSettings),
     swrOptions
   );
 }

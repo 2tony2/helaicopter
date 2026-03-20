@@ -31,9 +31,13 @@ from helaicopter_db.models.oltp import (
 )
 from oats.models import (
     AgentInvocationResult,
+    FeatureBranchSnapshot,
     InvocationRuntimeRecord,
+    FinalPullRequestSnapshot,
+    OperationHistoryEntry,
     RunExecutionRecord,
     RunRuntimeState,
+    TaskPullRequestSnapshot,
     TaskExecutionRecord,
     TaskRuntimeRecord,
 )
@@ -943,6 +947,95 @@ class TestOrchestrationEndpoint:
             "/conversations/by-ref/implement-ship-real-orchestration-run--claude-executor-1"
         )
 
+    def test_orchestration_oats_index_includes_feature_branch_and_task_prs(self, tmp_path: Path) -> None:
+        repo_root = tmp_path
+        state_path = repo_root / ".oats" / "runtime" / "oats-run-1" / "state.json"
+        _write_model(state_path, _stacked_runtime_state(repo_root, "oats-run-1"))
+
+        with orchestration_client(repo_root) as client:
+            response = client.get("/orchestration/oats")
+
+        assert response.status_code == 200
+        payload = response.json()[0]
+        assert payload["featureBranch"]["name"] == "oats/overnight/runtime-facts"
+        assert payload["tasks"][0]["taskPr"]["mergeGateStatus"] == "awaiting_checks"
+        assert payload["finalPr"]["reviewGateStatus"] == "awaiting_human"
+        assert payload["tasks"][0]["operationHistory"][0]["kind"] == "pr_create"
+
+    def test_orchestration_refresh_route_returns_updated_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        repo_root = tmp_path
+        state_path = repo_root / ".oats" / "runtime" / "oats-run-1" / "state.json"
+        _write_model(state_path, _stacked_runtime_state(repo_root, "oats-run-1"))
+        refreshed = _stacked_runtime_state(repo_root, "oats-run-1")
+        refreshed.stack_status = "ready_for_final_review"
+
+        monkeypatch.setattr(
+            "helaicopter_api.router.orchestration.refresh_oats_run",
+            lambda services, run_id: _runtime_response(refreshed, state_path),
+        )
+
+        with orchestration_client(repo_root) as client:
+            response = client.post("/orchestration/oats/oats-run-1/refresh")
+
+        assert response.status_code == 200
+        assert response.json()["stackStatus"] in {"building", "ready_for_final_review"}
+
+    def test_orchestration_resume_route_reuses_the_existing_run_stack(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        repo_root = tmp_path
+        state_path = repo_root / ".oats" / "runtime" / "oats-run-1" / "state.json"
+        _write_model(state_path, _stacked_runtime_state(repo_root, "oats-run-1"))
+        resumed = _stacked_runtime_state(repo_root, "oats-run-1")
+
+        monkeypatch.setattr(
+            "helaicopter_api.router.orchestration.resume_oats_run",
+            lambda services, run_id: _runtime_response(resumed, state_path),
+        )
+
+        with orchestration_client(repo_root) as client:
+            response = client.post("/orchestration/oats/oats-run-1/resume")
+
+        assert response.status_code == 200
+        assert response.json()["runId"] == "oats-run-1"
+        assert response.json()["featureBranch"]["name"] == "oats/overnight/runtime-facts"
+
+    def test_orchestration_payload_prefers_runtime_graph_over_terminal_record(self, tmp_path: Path) -> None:
+        repo_root = tmp_path
+        run_id = "oats-run-1"
+        state_path = repo_root / ".oats" / "runtime" / run_id / "state.json"
+        record_path = repo_root / ".oats" / "runs" / "runtime-terminal.json"
+        _write_model(state_path, _stacked_runtime_state(repo_root, run_id))
+        _write_model(
+            record_path,
+            RunExecutionRecord(
+                run_id=run_id,
+                run_title="Runtime should win",
+                repo_root=repo_root,
+                config_path=repo_root / ".oats" / "config.toml",
+                run_spec_path=repo_root / "runs" / "runtime.md",
+                mode="writable",
+                integration_branch="oats/overnight/runtime-facts",
+                task_pr_target="oats/overnight/runtime-facts",
+                final_pr_target="main",
+                recorded_at=datetime.now(UTC) - timedelta(minutes=5),
+            ),
+        )
+
+        with orchestration_client(repo_root) as client:
+            response = client.get("/orchestration/oats")
+
+        assert response.status_code == 200
+        payload = response.json()[0]
+        assert payload["status"] == "running"
+        assert payload["stackStatus"] == "awaiting_task_merge"
+
     def test_openapi_exposes_orchestration_route(self, tmp_path: Path) -> None:
         with orchestration_client(tmp_path) as client:
             response = client.get("/openapi.json")
@@ -950,7 +1043,11 @@ class TestOrchestrationEndpoint:
         assert response.status_code == 200
         schema = response.json()
         orchestration_get = schema["paths"]["/orchestration/oats"]["get"]
+        orchestration_refresh = schema["paths"]["/orchestration/oats/{run_id}/refresh"]["post"]
+        orchestration_resume = schema["paths"]["/orchestration/oats/{run_id}/resume"]["post"]
         assert orchestration_get["tags"] == ["orchestration"]
+        assert orchestration_refresh["tags"] == ["orchestration"]
+        assert orchestration_resume["tags"] == ["orchestration"]
         assert orchestration_get["responses"]["200"]["content"]["application/json"]["schema"]["items"][
             "$ref"
         ].endswith("/OrchestrationRunResponse")
@@ -960,5 +1057,86 @@ class TestOrchestrationEndpoint:
         assert "runId" in run_schema["properties"]
         assert "run_id" not in run_schema["properties"]
         assert "activeTaskId" in run_schema["properties"]
+        assert "stackStatus" in run_schema["properties"]
+        assert "featureBranch" in run_schema["properties"]
+        assert "finalPr" in run_schema["properties"]
         assert "taskId" in task_schema["properties"]
         assert "task_id" not in task_schema["properties"]
+        assert "taskPr" in task_schema["properties"]
+
+
+def _stacked_runtime_state(repo_root: Path, run_id: str) -> RunRuntimeState:
+    now = datetime.now(UTC)
+    return RunRuntimeState(
+        run_id=run_id,
+        run_title="Runtime should win",
+        repo_root=repo_root,
+        config_path=repo_root / ".oats" / "config.toml",
+        run_spec_path=repo_root / "runs" / "runtime.md",
+        mode="writable",
+        integration_branch="oats/overnight/runtime-facts",
+        task_pr_target="oats/overnight/runtime-facts",
+        final_pr_target="main",
+        runtime_dir=repo_root / ".oats" / "runtime" / run_id,
+        feature_branch=FeatureBranchSnapshot(
+            name="oats/overnight/runtime-facts",
+            base_branch="main",
+        ),
+        status="running",
+        stack_status="awaiting_task_merge",
+        active_task_id="task-api",
+        started_at=now - timedelta(minutes=10),
+        updated_at=now - timedelta(seconds=10),
+        heartbeat_at=now - timedelta(seconds=5),
+        final_pr=FinalPullRequestSnapshot(
+            number=42,
+            state="open",
+            review_gate_status="awaiting_human",
+            base_branch="main",
+            head_branch="oats/overnight/runtime-facts",
+        ),
+        tasks=[
+            TaskRuntimeRecord(
+                task_id="task-api",
+                title="Implement route",
+                depends_on=[],
+                branch_name="oats/task/task-api",
+                parent_branch="oats/overnight/runtime-facts",
+                pr_base="oats/overnight/runtime-facts",
+                agent="claude",
+                status="running",
+                attempts=2,
+                task_pr=TaskPullRequestSnapshot(
+                    number=11,
+                    state="open",
+                    merge_gate_status="awaiting_checks",
+                    base_branch="oats/overnight/runtime-facts",
+                    head_branch="oats/task/task-api",
+                ),
+                operation_history=[
+                    OperationHistoryEntry(
+                        kind="pr_create",
+                        status="succeeded",
+                    )
+                ],
+                invocation=InvocationRuntimeRecord(
+                    agent="claude",
+                    role="executor",
+                    command=["claude", "run"],
+                    cwd=repo_root,
+                    prompt="implement route",
+                    session_id="task-api-runtime",
+                    started_at=now - timedelta(minutes=2),
+                    last_heartbeat_at=now - timedelta(seconds=5),
+                ),
+            )
+        ],
+        final_record_path=repo_root / ".oats" / "runs" / "runtime-terminal.json",
+    )
+
+
+def _runtime_response(state: RunRuntimeState, state_path: Path):
+    from helaicopter_api.application.orchestration import _shape_runtime_state
+    from helaicopter_api.ports.orchestration import StoredOatsRuntimeState
+
+    return _shape_runtime_state(StoredOatsRuntimeState(path=state_path, state=state)).response

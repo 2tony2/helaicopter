@@ -12,6 +12,7 @@ from oats.pr import build_integration_branch_name, build_task_branch_name, slugi
 class PreparedTaskWorktree(BaseModel):
     repo_root: Path
     integration_branch: str
+    parent_branch: str
     task_branch: str
     worktree_path: Path
 
@@ -21,14 +22,25 @@ def build_task_repo_context(
     run_title: str,
     task_id: str,
     worktree_dir: str,
+    integration_branch: str | None = None,
+    task_branch: str | None = None,
+    parent_branch: str | None = None,
+    pr_base: str | None = None,
     task_branch_prefix: str = "oats/task/",
     integration_branch_prefix: str = "oats/overnight/",
 ) -> PrefectTaskRepoContext:
     run_slug = slugify_branch_component(run_title, fallback="run")
     task_slug = slugify_branch_component(task_id, fallback="task")
+    resolved_integration_branch = integration_branch or build_integration_branch_name(
+        integration_branch_prefix,
+        run_title,
+    )
+    resolved_task_branch = task_branch or build_task_branch_name(task_branch_prefix, task_id)
     return PrefectTaskRepoContext(
-        integration_branch=build_integration_branch_name(integration_branch_prefix, run_title),
-        task_branch=build_task_branch_name(task_branch_prefix, task_id),
+        integration_branch=resolved_integration_branch,
+        parent_branch=parent_branch or resolved_integration_branch,
+        pr_base=pr_base or parent_branch or resolved_integration_branch,
+        task_branch=resolved_task_branch,
         worktree_path=Path(worktree_dir) / run_slug / task_slug,
     )
 
@@ -57,10 +69,12 @@ def prepare_task_worktree(
     task_node.repo_context = repo_context
 
     worktree_path = payload.repo_root / repo_context.worktree_path
+    parent_branch = repo_context.parent_branch or repo_context.integration_branch
     if not _is_git_repository(payload.repo_root):
         return PreparedTaskWorktree(
             repo_root=payload.repo_root,
             integration_branch=repo_context.integration_branch,
+            parent_branch=parent_branch,
             task_branch=repo_context.task_branch,
             worktree_path=worktree_path,
         )
@@ -69,6 +83,11 @@ def prepare_task_worktree(
         repo_root=payload.repo_root,
         branch_name=repo_context.integration_branch,
         start_point=payload.repo_base_branch,
+    )
+    _ensure_local_branch(
+        repo_root=payload.repo_root,
+        branch_name=parent_branch,
+        start_point=repo_context.integration_branch,
     )
 
     if worktree_path.exists():
@@ -89,17 +108,18 @@ def prepare_task_worktree(
                 "-b",
                 repo_context.task_branch,
                 str(worktree_path),
-                repo_context.integration_branch,
+                parent_branch,
             )
 
     _set_branch_upstream(
         worktree_path=worktree_path,
         task_branch=repo_context.task_branch,
-        upstream_branch=repo_context.integration_branch,
+        upstream_branch=parent_branch,
     )
     return PreparedTaskWorktree(
         repo_root=payload.repo_root,
         integration_branch=repo_context.integration_branch,
+        parent_branch=parent_branch,
         task_branch=repo_context.task_branch,
         worktree_path=worktree_path,
     )

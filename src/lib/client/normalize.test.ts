@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+const {
   normalizeAnalytics,
   normalizeConversationDag,
   normalizeConversationEvaluations,
@@ -15,18 +15,70 @@ import {
   normalizeProjects,
   normalizeSubscriptionSettings,
   normalizeTasks,
-} from "./normalize";
-import {
+} = await import(new URL("./normalize.ts", import.meta.url).href);
+const {
+  conversationSummaryListSchema,
+} = await import(new URL("./schemas/conversations.ts", import.meta.url).href);
+const {
+  databaseStatusSchema,
+} = await import(new URL("./schemas/database.ts", import.meta.url).href);
+const {
+  conversationEvaluationListSchema,
+  evaluationPromptListSchema,
+} = await import(new URL("./schemas/evaluations.ts", import.meta.url).href);
+const {
+  subscriptionSettingsSchema,
+} = await import(new URL("./schemas/subscriptions.ts", import.meta.url).href);
+const {
   conversation,
   conversationByRef,
   conversationDag,
   conversationEvaluations,
   conversationDags,
+  getBaseUrl,
   projects,
   setBaseUrl,
   subagent,
   tasks,
-} from "./endpoints";
+} = await import(new URL("./endpoints.ts", import.meta.url).href);
+
+async function importEndpointsWithApiBaseUrl(nextPublicApiBaseUrl?: string) {
+  const previousValue = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  if (nextPublicApiBaseUrl === undefined) {
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  } else {
+    process.env.NEXT_PUBLIC_API_BASE_URL = nextPublicApiBaseUrl;
+  }
+
+  try {
+    const moduleUrl = new URL(
+      `./endpoints.ts?baseUrl=${encodeURIComponent(nextPublicApiBaseUrl ?? "unset")}&ts=${Date.now()}`,
+      import.meta.url
+    );
+    return await import(moduleUrl.href);
+  } finally {
+    if (previousValue === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = previousValue;
+    }
+  }
+}
+
+test("invalid NEXT_PUBLIC_API_BASE_URL falls back to an empty configured base URL", async () => {
+  const endpoints = await importEndpointsWithApiBaseUrl(" not-a-url ");
+
+  assert.equal(endpoints.getBaseUrl(), "");
+  assert.equal(endpoints.projects(), "/projects");
+});
+
+test("absolute NEXT_PUBLIC_API_BASE_URL values are trimmed and normalized", async () => {
+  const endpoints = await importEndpointsWithApiBaseUrl(" https://api.example.test/// ");
+
+  assert.equal(endpoints.getBaseUrl(), "https://api.example.test");
+  assert.equal(endpoints.projects(), "https://api.example.test/projects");
+});
 
 test("endpoint builders target FastAPI routes without the Next /api prefix", () => {
   setBaseUrl("https://api.example.test/");
@@ -158,6 +210,13 @@ test("normalizeConversations preserves canonical conversation refs from summary 
   );
 });
 
+test("setBaseUrl continues to normalize absolute URLs for explicit overrides", () => {
+  setBaseUrl(" https://api.example.test/// ");
+
+  assert.equal(getBaseUrl(), "https://api.example.test");
+  assert.equal(projects(), "https://api.example.test/projects");
+});
+
 test("normalizeProjects maps FastAPI project payloads to frontend camelCase types", () => {
   const normalized = normalizeProjects([
     {
@@ -200,6 +259,103 @@ test("normalizeProjects also accepts existing Next.js camelCase payloads", () =>
       lastActivity: 1763000000000,
     },
   ]);
+});
+
+test("conversation summary payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+  const parsed = conversationSummaryListSchema.parse([
+    {
+      session_id: "session-123",
+      project_path: "-Users-tony-Code-helaicopter",
+      project_name: "helaicopter",
+      thread_type: "main",
+      first_message: "Ship the patch",
+      timestamp: 1763000002000,
+      created_at: 1763000000000,
+      last_updated_at: 1763000001000,
+      is_running: false,
+      message_count: 14,
+      model: "gpt-5",
+      total_input_tokens: 120,
+      total_output_tokens: 240,
+      total_cache_creation_tokens: 30,
+      total_cache_read_tokens: 40,
+      tool_use_count: 4,
+      failed_tool_call_count: 1,
+      tool_breakdown: { Bash: 3, Read: 1 },
+      subagent_count: 2,
+      subagent_type_breakdown: { reviewer: 1, implementer: 1 },
+      task_count: 3,
+      git_branch: "feature/zod",
+      reasoning_effort: "medium",
+      speed: "fast",
+      total_reasoning_tokens: 90,
+    },
+    {
+      sessionId: "session-456",
+      projectPath: "codex:-Users-tony-Code-helaicopter",
+      projectName: "Codex/helaicopter",
+      threadType: "subagent",
+      firstMessage: "Investigate the failing tests",
+      timestamp: 1763000003000,
+      createdAt: 1763000002000,
+      lastUpdatedAt: 1763000002500,
+      isRunning: true,
+      messageCount: 5,
+      model: null,
+      totalInputTokens: 10,
+      totalOutputTokens: 20,
+      totalCacheCreationTokens: 0,
+      totalCacheReadTokens: 0,
+      toolUseCount: 1,
+      failedToolCallCount: 0,
+      toolBreakdown: {},
+      subagentCount: 0,
+      subagentTypeBreakdown: {},
+      taskCount: 0,
+      gitBranch: null,
+      reasoningEffort: null,
+      speed: null,
+      totalReasoningTokens: null,
+    },
+  ]);
+
+  assert.equal(parsed.length, 2);
+  assert.equal(normalizeConversations(parsed)[0].toolBreakdown.Bash, 3);
+  assert.equal(normalizeConversations(parsed)[1].threadType, "subagent");
+
+  assert.throws(
+    () =>
+      conversationSummaryListSchema.parse([
+        {
+          session_id: "session-789",
+          project_path: "-Users-tony-Code-helaicopter",
+          project_name: "helaicopter",
+          thread_type: "queued",
+          first_message: "Broken payload",
+          timestamp: "1763000004000",
+          created_at: 1763000000000,
+          last_updated_at: 1763000001000,
+          is_running: false,
+          message_count: 14,
+          model: "gpt-5",
+          total_input_tokens: 120,
+          total_output_tokens: 240,
+          total_cache_creation_tokens: 30,
+          total_cache_read_tokens: 40,
+          tool_use_count: 4,
+          failed_tool_call_count: 1,
+          tool_breakdown: { Bash: 3 },
+          subagent_count: 2,
+          subagent_type_breakdown: { reviewer: 1 },
+          task_count: 3,
+          git_branch: "feature/zod",
+          reasoning_effort: "medium",
+          speed: "fast",
+          total_reasoning_tokens: 90,
+        },
+      ]),
+    /thread_type|threadType|timestamp/i
+  );
 });
 
 test("normalizeConversationDetail preserves token usage semantics expected by the viewer", () => {
@@ -323,11 +479,12 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
     cache_creation_input_tokens: 3,
     cache_read_input_tokens: 4,
   });
-  assert.equal(normalized.messages[0].blocks[0]?.type, "tool_call");
-  if (normalized.messages[0].blocks[0]?.type !== "tool_call") {
-    throw new Error("Expected first block to be a tool call.");
+  const firstBlock = normalized.messages[0].blocks[0];
+  assert.equal(firstBlock.type, "tool_call");
+  if (firstBlock.type !== "tool_call") {
+    throw new Error("Expected the first block to be a tool call.");
   }
-  assert.equal(normalized.messages[0].blocks[0].toolUseId, "tool-1");
+  assert.equal(firstBlock.toolUseId, "tool-1");
   assert.equal(normalized.plans[0].sessionId, "session-123");
   assert.equal(normalized.plans[0].routeSlug, "review-the-backend-rollout");
   assert.equal(
@@ -598,6 +755,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         availability: "ready",
         operational_status: "Warm in-process response cache",
         table_count: 0,
+        load: [],
         tables: [],
       },
       sqlite: {
@@ -607,6 +765,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         role: "metadata",
         availability: "ready",
         table_count: 4,
+        load: [],
         tables: [
           {
             name: "evaluation_prompts",
@@ -631,6 +790,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         role: "inspection",
         availability: "missing",
         table_count: 0,
+        load: [],
         tables: [],
       },
       prefect_postgres: {
@@ -641,6 +801,7 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         availability: "ready",
         operational_status: "Prefect API responding",
         table_count: 0,
+        load: [],
         tables: [],
       },
     },
@@ -675,6 +836,7 @@ test("normalizeDatabaseStatus still accepts legacy duckdb field names during tra
         role: "metadata",
         availability: "ready",
         tableCount: 0,
+        load: [],
         tables: [],
       },
       legacyDuckdb: {
@@ -684,12 +846,73 @@ test("normalizeDatabaseStatus still accepts legacy duckdb field names during tra
         role: "inspection",
         availability: "ready",
         tableCount: 0,
+        load: [],
         tables: [],
       },
     },
   });
 
   assert.equal(normalized.databases.duckdb.key, "duckdb");
+});
+
+test("evaluation prompt payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+  const parsed = evaluationPromptListSchema.parse([
+    {
+      prompt_id: "prompt-1",
+      name: "Failure Sweep",
+      description: "Inspect failures",
+      prompt_text: "Look for recoverable errors.",
+      is_default: false,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: "2026-03-18T10:01:00Z",
+    },
+    {
+      promptId: "prompt-2",
+      name: "Default Review",
+      description: null,
+      promptText: "Use the existing fallback.",
+      isDefault: true,
+      createdAt: "2026-03-18T10:02:00Z",
+      updatedAt: "2026-03-18T10:03:00Z",
+    },
+  ]);
+
+  assert.equal(parsed.length, 2);
+  assert.deepEqual(normalizeEvaluationPrompts(parsed), [
+    {
+      promptId: "prompt-1",
+      name: "Failure Sweep",
+      description: "Inspect failures",
+      promptText: "Look for recoverable errors.",
+      isDefault: false,
+      createdAt: "2026-03-18T10:00:00Z",
+      updatedAt: "2026-03-18T10:01:00Z",
+    },
+    {
+      promptId: "prompt-2",
+      name: "Default Review",
+      description: null,
+      promptText: "Use the existing fallback.",
+      isDefault: true,
+      createdAt: "2026-03-18T10:02:00Z",
+      updatedAt: "2026-03-18T10:03:00Z",
+    },
+  ]);
+
+  assert.throws(
+    () =>
+      evaluationPromptListSchema.parse([
+        {
+          prompt_id: "prompt-3",
+          name: "Broken",
+          prompt_text: "Would previously coerce to empty timestamps.",
+          is_default: false,
+          created_at: 123,
+          updated_at: "2026-03-18T10:03:00Z",
+        },
+      ]),
+    /created_at|createdAt/i
+  );
 });
 
 test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt and job records", () => {
@@ -758,6 +981,78 @@ test("normalizeEvaluationPrompts and normalizeConversationEvaluations map prompt
       durationMs: null,
     },
   ]);
+});
+
+test("conversation evaluation payload schemas parse accepted API shapes and reject silent fallbacks", () => {
+  const parsed = conversationEvaluationListSchema.parse([
+    {
+      evaluation_id: "evaluation-1",
+      conversation_id: "claude:session-1",
+      prompt_id: "prompt-1",
+      provider: "codex",
+      model: "gpt-5",
+      status: "running",
+      scope: "failed_tool_calls",
+      selection_instruction: "Focus on the failure cluster.",
+      prompt_name: "Failure Sweep",
+      prompt_text: "Look for recoverable errors.",
+      report_markdown: null,
+      raw_output: null,
+      error_message: null,
+      command: "codex exec --model gpt-5",
+      created_at: "2026-03-18T10:00:00Z",
+      finished_at: null,
+      duration_ms: null,
+    },
+    {
+      evaluationId: "evaluation-2",
+      conversationId: "claude:session-2",
+      promptId: null,
+      provider: "claude",
+      model: "sonnet",
+      status: "completed",
+      scope: "full",
+      selectionInstruction: null,
+      promptName: "Full Review",
+      promptText: "Review everything.",
+      reportMarkdown: "# Looks good",
+      rawOutput: "raw",
+      errorMessage: null,
+      command: "claude run",
+      createdAt: "2026-03-18T10:04:00Z",
+      finishedAt: "2026-03-18T10:05:00Z",
+      durationMs: 1000,
+    },
+  ]);
+
+  assert.equal(parsed.length, 2);
+  assert.equal(normalizeConversationEvaluations(parsed)[1].status, "completed");
+
+  assert.throws(
+    () =>
+      conversationEvaluationListSchema.parse([
+        {
+          evaluation_id: "evaluation-3",
+          conversation_id: "claude:session-3",
+          prompt_id: "prompt-1",
+          provider: "codex",
+          model: "gpt-5",
+          status: "queued",
+          scope: "full",
+          selection_instruction: null,
+          prompt_name: "Queued Review",
+          prompt_text: "Should fail.",
+          report_markdown: null,
+          raw_output: null,
+          error_message: null,
+          command: "codex exec --model gpt-5",
+          created_at: "2026-03-18T10:06:00Z",
+          finished_at: null,
+          duration_ms: null,
+        },
+      ]),
+    /status/i
+  );
 });
 
 test("normalizeOvernightOatsRuns removes the frontend-only required evaluation field", () => {
@@ -843,6 +1138,180 @@ test("normalizeOvernightOatsRuns removes the frontend-only required evaluation f
   assert.equal(runs[0].dag.nodes[0].exitCode, undefined);
 });
 
+test("normalizeOvernightOatsRuns preserves stacked PR orchestration state", () => {
+  const runs = normalizeOvernightOatsRuns([
+    {
+      source: "overnight-oats",
+      contract_version: "oats-runtime-v2",
+      run_id: "run-2",
+      run_title: "Stacked PR rollout",
+      repo_root: "/Users/tony/Code/helaicopter",
+      config_path: "/Users/tony/Code/helaicopter/.oats/config.toml",
+      run_spec_path: "/Users/tony/Code/helaicopter/.oats/runs/run-2/spec.md",
+      mode: "full-program",
+      integration_branch: "oats/overnight/runtime-facts",
+      task_pr_target: "oats/overnight/runtime-facts",
+      final_pr_target: "main",
+      status: "running",
+      stack_status: "awaiting_task_merge",
+      feature_branch: {
+        name: "oats/overnight/runtime-facts",
+        base_branch: "main",
+      },
+      final_pr: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+        state: "open",
+        review_gate_status: "awaiting_human",
+        base_branch: "main",
+        head_branch: "oats/overnight/runtime-facts",
+        checks_summary: {
+          total: 5,
+          passing: 5,
+        },
+        snapshot_source: "github",
+        last_refreshed_at: "2026-03-20T09:15:00Z",
+        is_stale: false,
+      },
+      operation_history: [
+        {
+          kind: "refresh",
+          status: "succeeded",
+          session_id: "refresh-session",
+          started_at: "2026-03-20T09:10:00Z",
+          finished_at: "2026-03-20T09:10:30Z",
+          details: {
+            merged_prs: 1,
+          },
+        },
+      ],
+      active_task_id: "task-tests",
+      heartbeat_at: "2026-03-20T09:15:00Z",
+      finished_at: null,
+      planner: null,
+      tasks: [
+        {
+          task_id: "task-api",
+          title: "Implement route",
+          depends_on: [],
+          parent_branch: "oats/overnight/runtime-facts",
+          status: "succeeded",
+          attempts: 1,
+          task_pr: {
+            number: 11,
+            url: "https://github.com/example/repo/pull/11",
+            state: "merged",
+            merge_gate_status: "merged",
+            base_branch: "oats/overnight/runtime-facts",
+            head_branch: "oats/task/task-api",
+            mergeability: "mergeable",
+            checks_summary: {
+              total: 4,
+              passing: 4,
+            },
+            review_summary: {
+              blocking_state: "clear",
+              approvals: 1,
+              changes_requested: 0,
+            },
+            snapshot_source: "github",
+            last_refreshed_at: "2026-03-20T09:15:00Z",
+            is_stale: false,
+          },
+          operation_history: [
+            {
+              kind: "pr_merge",
+              status: "succeeded",
+              session_id: "merge-session",
+              started_at: "2026-03-20T09:00:00Z",
+              finished_at: "2026-03-20T09:01:00Z",
+              details: {
+                merge_commit_sha: "abc123",
+              },
+            },
+          ],
+          invocation: null,
+        },
+        {
+          task_id: "task-tests",
+          title: "Patch UI",
+          depends_on: ["task-api"],
+          parent_branch: "oats/task/task-api",
+          status: "blocked",
+          attempts: 2,
+          task_pr: {
+            number: 12,
+            state: "open",
+            merge_gate_status: "awaiting_checks",
+            base_branch: "oats/task/task-api",
+            head_branch: "oats/task/task-tests",
+            mergeability: "unknown",
+            checks_summary: {
+              total: 2,
+              passing: 1,
+              failing: 1,
+            },
+            review_summary: {
+              blocking_state: "commented",
+              approvals: 0,
+              changes_requested: 0,
+            },
+            snapshot_source: "github",
+            last_refreshed_at: "2026-03-20T09:15:00Z",
+            is_stale: true,
+          },
+          operation_history: [
+            {
+              kind: "conflict_resolution",
+              status: "started",
+              session_id: "resolver-session",
+              started_at: "2026-03-20T09:12:00Z",
+              finished_at: null,
+              details: {
+                attempt: 1,
+              },
+            },
+          ],
+          invocation: null,
+        },
+      ],
+      created_at: "2026-03-20T08:45:00Z",
+      last_updated_at: "2026-03-20T09:15:00Z",
+      is_running: true,
+      recorded_at: "2026-03-20T09:15:00Z",
+      record_path: "/Users/tony/Code/helaicopter/.oats/runs/run-2.json",
+      dag: {
+        nodes: [],
+        edges: [],
+        stats: {
+          total_nodes: 0,
+          total_edges: 0,
+          max_depth: 0,
+          max_breadth: 0,
+          root_count: 0,
+          provider_breakdown: {},
+          timed_out_count: 0,
+          active_count: 0,
+          pending_count: 0,
+          failed_count: 0,
+          succeeded_count: 0,
+        },
+      },
+    },
+  ]);
+
+  assert.equal(runs[0].contractVersion, "oats-runtime-v2");
+  assert.equal(runs[0].stackStatus, "awaiting_task_merge");
+  assert.equal(runs[0].featureBranch?.name, "oats/overnight/runtime-facts");
+  assert.equal(runs[0].finalPr?.reviewGateStatus, "awaiting_human");
+  assert.equal(runs[0].operationHistory[0].sessionId, "refresh-session");
+  assert.equal(runs[0].tasks[0].parentBranch, "oats/overnight/runtime-facts");
+  assert.equal(runs[0].tasks[0].taskPr?.mergeGateStatus, "merged");
+  assert.equal(runs[0].tasks[0].taskPr?.reviewSummary?.approvals, 1);
+  assert.equal(runs[0].tasks[1].taskPr?.isStale, true);
+  assert.equal(runs[0].tasks[1].operationHistory[0].kind, "conflict_resolution");
+});
+
 test("normalizeSubscriptionSettings maps provider records for analytics settings", () => {
   const normalized = normalizeSubscriptionSettings({
     claude: {
@@ -873,4 +1342,177 @@ test("normalizeSubscriptionSettings maps provider records for analytics settings
       updatedAt: "2026-03-18T10:00:00Z",
     },
   });
+});
+
+test("subscription settings schema parses provider records and rejects silent fallbacks", () => {
+  const parsed = subscriptionSettingsSchema.parse({
+    claude: {
+      provider: "claude",
+      has_subscription: false,
+      monthly_cost: 123.45,
+      updated_at: "2026-03-18T10:00:00Z",
+    },
+    codex: {
+      provider: "codex",
+      hasSubscription: true,
+      monthlyCost: 200,
+      updatedAt: "2026-03-18T10:00:00Z",
+    },
+  });
+
+  assert.deepEqual(normalizeSubscriptionSettings(parsed), {
+    claude: {
+      provider: "claude",
+      hasSubscription: false,
+      monthlyCost: 123.45,
+      updatedAt: "2026-03-18T10:00:00Z",
+    },
+    codex: {
+      provider: "codex",
+      hasSubscription: true,
+      monthlyCost: 200,
+      updatedAt: "2026-03-18T10:00:00Z",
+    },
+  });
+
+  assert.throws(
+    () =>
+      subscriptionSettingsSchema.parse({
+        claude: {
+          provider: "claude",
+          has_subscription: false,
+          monthly_cost: "123.45",
+          updated_at: "2026-03-18T10:00:00Z",
+        },
+        codex: {
+          provider: "codex",
+          has_subscription: true,
+          monthly_cost: 200,
+          updated_at: "2026-03-18T10:00:00Z",
+        },
+      }),
+    /monthly_cost|monthlyCost/i
+  );
+});
+
+test("database status schema parses current backend shapes and rejects silent fallbacks", () => {
+  const parsed = databaseStatusSchema.parse({
+    status: "failed",
+    trigger: "manual",
+    started_at: "2026-03-18T10:00:00Z",
+    finished_at: "2026-03-18T10:00:05Z",
+    duration_ms: 5000,
+    error: "refresh exploded",
+    last_successful_refresh_at: "2026-03-18T09:00:00Z",
+    idempotency_key: "refresh-123",
+    scope_label: "Historical conversations",
+    window_days: 30,
+    window_start: "2026-02-17T00:00:00Z",
+    window_end: "2026-03-18T00:00:00Z",
+    source_conversation_count: 42,
+    refresh_interval_minutes: 360,
+    runtime: {
+      analytics_read_backend: "legacy",
+      conversation_summary_read_backend: "legacy",
+    },
+    databases: {
+      frontend_cache: {
+        key: "frontend_cache",
+        label: "Frontend Short-Term Cache",
+        engine: "In-process memory",
+        role: "cache",
+        availability: "ready",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+      sqlite: {
+        key: "sqlite",
+        label: "SQLite Metadata Store",
+        engine: "SQLite",
+        role: "metadata",
+        availability: "ready",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+      legacyDuckdb: {
+        key: "duckdb",
+        label: "DuckDB Inspection Snapshot",
+        engine: "DuckDB",
+        role: "inspection",
+        availability: "missing",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+      prefect_postgres: {
+        key: "prefect_postgres",
+        label: "Prefect Postgres",
+        engine: "Postgres",
+        role: "orchestration",
+        availability: "ready",
+        table_count: 0,
+        load: [],
+        tables: [],
+      },
+    },
+  });
+
+  assert.equal(normalizeDatabaseStatus(parsed).databases.duckdb.key, "duckdb");
+
+  assert.throws(
+    () =>
+      databaseStatusSchema.parse({
+        status: "failed",
+        refresh_interval_minutes: 360,
+        runtime: {
+          analytics_read_backend: "legacy",
+          conversation_summary_read_backend: "legacy",
+        },
+        databases: {
+          frontend_cache: {
+            key: "frontend_cache",
+            label: "Frontend Short-Term Cache",
+            engine: "In-process memory",
+            role: "cache",
+            availability: "ready",
+            table_count: "zero",
+            load: [],
+            tables: [],
+          },
+          sqlite: {
+            key: "sqlite",
+            label: "SQLite Metadata Store",
+            engine: "SQLite",
+            role: "metadata",
+            availability: "ready",
+            table_count: 0,
+            load: [],
+            tables: [],
+          },
+          duckdb: {
+            key: "duckdb",
+            label: "DuckDB Inspection Snapshot",
+            engine: "DuckDB",
+            role: "inspection",
+            availability: "missing",
+            table_count: 0,
+            load: [],
+            tables: [],
+          },
+          prefect_postgres: {
+            key: "prefect_postgres",
+            label: "Prefect Postgres",
+            engine: "Postgres",
+            role: "orchestration",
+            availability: "ready",
+            table_count: 0,
+            load: [],
+            tables: [],
+          },
+        },
+      }),
+    /table_count|tableCount/i
+  );
 });

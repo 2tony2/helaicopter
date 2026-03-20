@@ -5,18 +5,21 @@
  * so the frontend can point at FastAPI without touching call-sites.
  */
 
+import { parseApiBaseUrl } from "./schemas/runtime.ts";
+
 // ---------------------------------------------------------------------------
 // Base
 // ---------------------------------------------------------------------------
 
-const configuredBaseUrl =
-  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL ?? "" : "";
+const configuredBaseUrl = parseApiBaseUrl(
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined
+);
 
 /** Override to point the frontend at a different origin (e.g. FastAPI). */
-let _baseUrl = configuredBaseUrl.replace(/\/+$/, "");
+let _baseUrl = configuredBaseUrl;
 
 export function setBaseUrl(url: string) {
-  _baseUrl = url.replace(/\/+$/, "");
+  _baseUrl = parseApiBaseUrl(url);
 }
 
 export function getBaseUrl() {
@@ -189,6 +192,14 @@ export function evaluationPrompt(promptId: string) {
 
 export function orchestrationOats() {
   return api("/orchestration/oats");
+}
+
+export function orchestrationOatsRefresh(runId: string) {
+  return api(`/orchestration/oats/${enc(runId)}/refresh`);
+}
+
+export function orchestrationOatsResume(runId: string) {
+  return api(`/orchestration/oats/${enc(runId)}/resume`);
 }
 
 export function orchestrationPrefectDeployments() {

@@ -37,9 +37,60 @@ class OrchestrationTaskResponse(CamelCaseHttpResponseModel):
     task_id: TaskId
     title: str
     depends_on: list[str] = []
+    parent_branch: str | None = None
     status: TaskRuntimeStatus
     attempts: int = 0
+    task_pr: "OrchestrationTaskPullRequestResponse | None" = None
+    operation_history: list["OrchestrationOperationHistoryResponse"] = []
     invocation: OrchestrationInvocationResponse | None = None
+
+
+class OrchestrationFeatureBranchResponse(CamelCaseHttpResponseModel):
+    name: str
+    base_branch: str | None = None
+
+
+class OrchestrationReviewSummaryResponse(CamelCaseHttpResponseModel):
+    blocking_state: str
+    approvals: int = 0
+    changes_requested: int = 0
+
+
+class OrchestrationTaskPullRequestResponse(CamelCaseHttpResponseModel):
+    number: int | None = None
+    url: str | None = None
+    state: str
+    merge_gate_status: str
+    base_branch: str | None = None
+    head_branch: str | None = None
+    mergeability: str | None = None
+    checks_summary: dict[str, object] = {}
+    review_summary: OrchestrationReviewSummaryResponse | None = None
+    snapshot_source: str | None = None
+    last_refreshed_at: str | None = None
+    is_stale: bool = False
+
+
+class OrchestrationFinalPullRequestResponse(CamelCaseHttpResponseModel):
+    number: int | None = None
+    url: str | None = None
+    state: str
+    review_gate_status: str
+    base_branch: str | None = None
+    head_branch: str | None = None
+    checks_summary: dict[str, object] = {}
+    snapshot_source: str | None = None
+    last_refreshed_at: str | None = None
+    is_stale: bool = False
+
+
+class OrchestrationOperationHistoryResponse(CamelCaseHttpResponseModel):
+    kind: str
+    status: str
+    session_id: SessionId | None = None
+    started_at: str
+    finished_at: str | None = None
+    details: dict[str, object] = {}
 
 
 class OrchestrationDagNodeResponse(CamelCaseHttpResponseModel):
@@ -103,11 +154,15 @@ class OrchestrationRunResponse(CamelCaseHttpResponseModel):
     task_pr_target: str
     final_pr_target: str
     status: RunRuntimeStatus
+    stack_status: str | None = None
+    feature_branch: OrchestrationFeatureBranchResponse | None = None
     active_task_id: TaskId | None = None
     heartbeat_at: str | None = None
     finished_at: str | None = None
     planner: OrchestrationInvocationResponse | None = None
     tasks: list[OrchestrationTaskResponse] = []
+    final_pr: OrchestrationFinalPullRequestResponse | None = None
+    operation_history: list[OrchestrationOperationHistoryResponse] = []
     created_at: str
     last_updated_at: str
     is_running: bool = False
