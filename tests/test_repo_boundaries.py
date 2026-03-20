@@ -40,7 +40,6 @@ def _assert_thin_route_shell(
         "while (",
         "try:",
         "try {",
-        "@/components/plans",
         "@/features/plans/",
         "@/shared/",
         "@/components/",
@@ -49,9 +48,66 @@ def _assert_thin_route_shell(
 
     default_export_count = content.count("export default function ")
     assert default_export_count == 1
+    assert content.count("function ") - default_export_count == 0
 
-    extra_function_defs = content.count("function ") - default_export_count
-    assert extra_function_defs == 0
+
+def _eslint_override_objects(content: str) -> list[str]:
+    objects: list[str] = []
+    depth = 0
+    start: int | None = None
+    in_string: str | None = None
+    escape = False
+
+    for index, char in enumerate(content):
+        if in_string is not None:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == in_string:
+                in_string = None
+            continue
+
+        if char in ("'", '"', "`"):
+            in_string = char
+            continue
+
+        if char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+            continue
+
+        if char == "}":
+            if depth == 0:
+                continue
+            depth -= 1
+            if depth == 0 and start is not None:
+                objects.append(content[start : index + 1])
+                start = None
+
+    return objects
+
+
+def _ts_real_statements(content: str) -> list[str]:
+    lines = []
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("//") or line.startswith("/*") or line.startswith("*") or line.startswith("*/"):
+            continue
+        lines.append(line)
+
+    joined = " ".join(lines)
+    statements = [statement.strip() for statement in joined.split(";") if statement.strip()]
+    return statements
+
+
+def _python_real_statements(content: str) -> list[str]:
+    return [
+        line.strip()
+        for line in content.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
 
 
 def _assert_eslint_layer_guardrail(
@@ -60,18 +116,20 @@ def _assert_eslint_layer_guardrail(
     files_glob: str,
     restricted_patterns: tuple[str, ...],
 ) -> None:
-    start = content.find(files_glob)
-    assert start != -1
+    matching_blocks = [
+        block
+        for block in _eslint_override_objects(content)
+        if files_glob in block and "no-restricted-imports" in block
+    ]
+    assert matching_blocks != []
 
-    next_files = content.find("files:", start + len(files_glob))
-    block = content[start : next_files if next_files != -1 else len(content)]
+    for block in matching_blocks:
+        if "rules" not in block or "patterns" not in block:
+            continue
+        if all(pattern in block for pattern in restricted_patterns):
+            return
 
-    assert "rules" in block
-    assert "no-restricted-imports" in block
-    assert "patterns" in block
-
-    for pattern in restricted_patterns:
-        assert pattern in block
+    assert False
 
 
 def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
@@ -79,12 +137,15 @@ def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
+    statements = _ts_real_statements(content)
 
     assert "@deprecated" in content
-    assert target in content
-    has_export_all = f'export * from "{target}"' in content or f"export * from '{target}'" in content
+    assert len(statements) == 1
+
+    statement = statements[0]
+    has_export_all = f'export * from "{target}"' in statement or f"export * from '{target}'" in statement
     has_named_reexport = (
-        (f'from "{target}"' in content or f"from '{target}'" in content) and "export {" in content
+        (f'from "{target}"' in statement or f"from '{target}'" in statement) and "export {" in statement
     )
     assert has_export_all or has_named_reexport
 
@@ -111,18 +172,16 @@ def _assert_deprecated_python_reexport(relative_path: str, target: str) -> None:
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
-    significant_lines = [line.strip() for line in content.splitlines() if line.strip()]
+    statements = _python_real_statements(content)
 
     assert "@deprecated" in content
-    assert "class " not in content
-    assert "def " not in content
-    assert f"from {target} import " in content
-    assert "__all__" in content
-    assert not any(
-        "=" in line and not line.startswith("__all__ =") for line in significant_lines
-    )
+    assert len(statements) == 2
+    assert statements[0].startswith(f"from {target} import ")
+    assert statements[1].startswith("__all__ =")
 
     for forbidden in (
+        "class ",
+        "def ",
         "if ",
         "for ",
         "while ",
