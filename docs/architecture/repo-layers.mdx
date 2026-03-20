@@ -31,6 +31,8 @@ Practical rules for phase 1:
 
 Phase 1 keeps the existing shared/frontend re-export shims temporary so imports can migrate safely. Legacy files under folders such as `src/components/*` and `src/hooks/*` can continue to re-export from the new layer locations for now, but those shims are transitional and should be removed as call sites are updated.
 
+- New or touched code should import from the new layer paths, not from the temporary compatibility shims.
+
 ## Backend Layers
 
 The backend layers follow the same dependency-direction principle:

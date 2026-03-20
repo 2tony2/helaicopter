@@ -26,8 +26,20 @@ const eslintConfig = defineConfig([
         {
           patterns: [
             {
-              group: ["@/app/*"],
+              group: [
+                "@/app/*",
+                "@/app/**",
+                "../app/**",
+                "../../app/**",
+                "../../../app/**",
+                "../../../../app/**",
+              ],
               message: "Views compose screens but must not import route-layer files from src/app.",
+            },
+            {
+              group: ["@/components/*", "@/components/**", "@/hooks/*", "@/hooks/**"],
+              message:
+                "Views should import from src/features/* or src/shared/* layer paths, not temporary compatibility shims.",
             },
           ],
         },
@@ -42,12 +54,31 @@ const eslintConfig = defineConfig([
         {
           patterns: [
             {
-              group: ["@/app/*"],
+              group: [
+                "@/app/*",
+                "@/app/**",
+                "../app/**",
+                "../../app/**",
+                "../../../app/**",
+                "../../../../app/**",
+              ],
               message: "Features must not depend on route-layer files from src/app.",
             },
             {
-              group: ["@/views/*"],
+              group: [
+                "@/views/*",
+                "@/views/**",
+                "../views/**",
+                "../../views/**",
+                "../../../views/**",
+                "../../../../views/**",
+              ],
               message: "Features must not depend on screen composition files from src/views.",
+            },
+            {
+              group: ["@/components/*", "@/components/**", "@/hooks/*", "@/hooks/**"],
+              message:
+                "Features should import from src/features/* or src/shared/* layer paths, not temporary compatibility shims.",
             },
           ],
         },
@@ -62,16 +93,42 @@ const eslintConfig = defineConfig([
         {
           patterns: [
             {
-              group: ["@/app/*"],
+              group: [
+                "@/app/*",
+                "@/app/**",
+                "../app/**",
+                "../../app/**",
+                "../../../app/**",
+                "../../../../app/**",
+              ],
               message: "Shared code must not depend on route-layer files from src/app.",
             },
             {
-              group: ["@/views/*"],
+              group: [
+                "@/views/*",
+                "@/views/**",
+                "../views/**",
+                "../../views/**",
+                "../../../views/**",
+                "../../../../views/**",
+              ],
               message: "Shared code must not depend on screen composition files from src/views.",
             },
             {
-              group: ["@/features/*"],
+              group: [
+                "@/features/*",
+                "@/features/**",
+                "../features/**",
+                "../../features/**",
+                "../../../features/**",
+                "../../../../features/**",
+              ],
               message: "Shared code must not depend on feature-layer files from src/features.",
+            },
+            {
+              group: ["@/components/*", "@/components/**", "@/hooks/*", "@/hooks/**"],
+              message:
+                "Shared code should import from src/shared/* layer paths, not temporary compatibility shims.",
             },
           ],
         },

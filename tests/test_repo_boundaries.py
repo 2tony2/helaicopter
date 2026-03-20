@@ -342,22 +342,65 @@ def test_repo_boundaries_architecture_note_and_lint() -> None:
         "adapters",
     ):
         assert required_term in content
+    assert (
+        "new or touched code should import from the new layer paths, not from the temporary compatibility shims."
+        in content
+    )
 
     lint_config = _read("eslint.config.mjs")
     _assert_eslint_layer_guardrail(
         lint_config,
         layer_prefix="src/views/",
-        restricted_patterns=("@/app/*",),
+        restricted_patterns=(
+            "@/app/*",
+            "@/app/**",
+            "@/components/*",
+            "@/components/**",
+            "@/hooks/*",
+            "@/hooks/**",
+            "../app/**",
+            "../../app/**",
+        ),
     )
     _assert_eslint_layer_guardrail(
         lint_config,
         layer_prefix="src/features/",
-        restricted_patterns=("@/app/*", "@/views/*"),
+        restricted_patterns=(
+            "@/app/*",
+            "@/app/**",
+            "@/views/*",
+            "@/views/**",
+            "@/components/*",
+            "@/components/**",
+            "@/hooks/*",
+            "@/hooks/**",
+            "../app/**",
+            "../../app/**",
+            "../views/**",
+            "../../views/**",
+        ),
     )
     _assert_eslint_layer_guardrail(
         lint_config,
         layer_prefix="src/shared/",
-        restricted_patterns=("@/app/*", "@/views/*", "@/features/*"),
+        restricted_patterns=(
+            "@/app/*",
+            "@/app/**",
+            "@/views/*",
+            "@/views/**",
+            "@/features/*",
+            "@/features/**",
+            "@/components/*",
+            "@/components/**",
+            "@/hooks/*",
+            "@/hooks/**",
+            "../app/**",
+            "../../app/**",
+            "../views/**",
+            "../../views/**",
+            "../features/**",
+            "../../features/**",
+        ),
     )
 
 
