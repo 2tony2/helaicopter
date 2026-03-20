@@ -42,69 +42,69 @@ def provider_for_project_path(project_path: EncodedProjectKey) -> ProviderName:
 
 
 def conversation_id(provider: ProviderName, session_id: SessionId) -> ConversationId:
-    return f"{provider}:{session_id}"
+    return ConversationId(f"{provider}:{session_id}")
 
 
 def conversation_message_id(conversation_id: ConversationId, ordinal: int) -> ConversationMessageId:
-    return f"{conversation_id}:message:{ordinal}"
+    return ConversationMessageId(f"{conversation_id}:message:{ordinal}")
 
 
 def conversation_message_block_id(
     message_id: ConversationMessageId,
     block_index: int,
 ) -> ConversationMessageBlockId:
-    return f"{message_id}:block:{block_index}"
+    return ConversationMessageBlockId(f"{message_id}:block:{block_index}")
 
 
 def conversation_plan_row_id(
     conversation_id: ConversationId,
     ordinal: int,
 ) -> ConversationPlanRowId:
-    return f"{conversation_id}:plan:{ordinal}"
+    return ConversationPlanRowId(f"{conversation_id}:plan:{ordinal}")
 
 
 def conversation_subagent_row_id(
     conversation_id: ConversationId,
     ordinal: int,
 ) -> ConversationSubagentRowId:
-    return f"{conversation_id}:subagent:{ordinal}"
+    return ConversationSubagentRowId(f"{conversation_id}:subagent:{ordinal}")
 
 
 def conversation_task_row_id(
     conversation_id: ConversationId,
     ordinal: int,
 ) -> ConversationTaskRowId:
-    return f"{conversation_id}:task:{ordinal}"
+    return ConversationTaskRowId(f"{conversation_id}:task:{ordinal}")
 
 
 def conversation_context_bucket_id(
     conversation_id: ConversationId,
     ordinal: int,
 ) -> ConversationContextBucketId:
-    return f"{conversation_id}:bucket:{ordinal}"
+    return ConversationContextBucketId(f"{conversation_id}:bucket:{ordinal}")
 
 
 def conversation_context_step_id(
     conversation_id: ConversationId,
     ordinal: int,
 ) -> ConversationContextStepId:
-    return f"{conversation_id}:step:{ordinal}"
+    return ConversationContextStepId(f"{conversation_id}:step:{ordinal}")
 
 
 def tool_dim_id(provider: ProviderName, tool_name: str) -> ToolId:
-    return f"{provider}:{tool_name}"
+    return ToolId(f"{provider}:{tool_name}")
 
 
 def model_dim_id(provider: ProviderName, model_name: str) -> ModelId:
-    return f"{provider}:{model_name}"
+    return ModelId(f"{provider}:{model_name}")
 
 
 def project_dim_id(provider: ProviderName, project_path: EncodedProjectKey) -> ProjectId:
-    return f"{provider}:{project_path}"
+    return ProjectId(f"{provider}:{project_path}")
 
 
 def subagent_dim_id(provider: ProviderName, subagent_type: str) -> SubagentTypeId:
-    return f"{provider}:{subagent_type}"
+    return SubagentTypeId(f"{provider}:{subagent_type}")
 
 
 def to_json(value: Any) -> str:

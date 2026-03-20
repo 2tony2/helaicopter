@@ -75,7 +75,7 @@ def test_execute_compiled_task_attempt_persists_live_progress_checkpoint(
     assert checkpoint["last_progress_event_at"] is not None
 
 
-def test_execute_compiled_task_attempt_uses_dangerous_bypass_for_writable_runs(
+def test_execute_compiled_task_attempt_uses_repo_dangerous_bypass_setting(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -83,32 +83,35 @@ def test_execute_compiled_task_attempt_uses_dangerous_bypass_for_writable_runs(
     task_node = payload.tasks[0]
     artifact_store = LocalArtifactCheckpointStore(
         payload=payload,
-        flow_run_id="flow-run-permissions",
-        flow_run_name="Permissions",
+        flow_run_id="flow-run-bypass",
+        flow_run_name="Bypass",
     )
     artifact_store.initialize()
     monkeypatch.setattr(
         "oats.prefect.tasks.load_repo_config",
-        lambda _path: SimpleNamespace(agent={"codex": SimpleNamespace(command="codex", args=["exec"])}),
+        lambda _path: SimpleNamespace(
+            agent={"codex": SimpleNamespace(command="codex", args=["exec"])},
+            execution=SimpleNamespace(dangerous_bypass=True),
+        ),
     )
     monkeypatch.setattr(
         "oats.prefect.tasks.prepare_task_worktree",
         lambda _payload, _task_node: SimpleNamespace(worktree_path=tmp_path / "worktree"),
     )
 
-    captured: dict[str, object] = {}
+    recorded: dict[str, object] = {}
 
     def fake_invoke_agent(**kwargs):
-        captured.update(kwargs)
+        recorded.update(kwargs)
         return AgentInvocationResult(
             agent="codex",
             role="executor",
             command=["codex", "exec"],
             cwd=kwargs["cwd"],
             prompt=kwargs["prompt"],
-            session_id="thread-456",
+            session_id="thread-123",
             session_id_field="thread_id",
-            output_text="Running with full permissions.",
+            output_text="Using full permissions.",
             raw_stdout="",
             raw_stderr="",
             exit_code=0,
@@ -124,8 +127,8 @@ def test_execute_compiled_task_attempt_uses_dangerous_bypass_for_writable_runs(
         attempt=1,
     )
 
-    assert captured["read_only"] is False
-    assert captured["dangerous_bypass"] is True
+    assert recorded["read_only"] is False
+    assert recorded["dangerous_bypass"] is True
 
 
 def _payload(tmp_path: Path) -> PrefectFlowPayload:

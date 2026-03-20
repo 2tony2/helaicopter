@@ -11,6 +11,7 @@ from helaicopter_api.ports.claude_fs import (
     SessionInfo,
 )
 from helaicopter_api.adapters.claude_fs.raw import ClaudeArtifactStore, RawArtifact
+from helaicopter_domain.ids import SessionId
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,9 @@ class FileConversationReader:
     def list_projects(self) -> list[ProjectDir]:
         results: list[ProjectDir] = []
         for entry in self._artifact_store.list_project_dirs():
-            session_ids = [path.stem for path in self._artifact_store.list_session_files(entry.name)]
+            session_ids = [
+                SessionId(path.stem) for path in self._artifact_store.list_session_files(entry.name)
+            ]
             if session_ids:
                 results.append(
                     ProjectDir(
@@ -43,7 +46,7 @@ class FileConversationReader:
             stat = p.stat()
             infos.append(
                 SessionInfo(
-                    session_id=p.stem,
+                    session_id=SessionId(p.stem),
                     project_dir=project_dir,
                     path=str(p),
                     size_bytes=stat.st_size,

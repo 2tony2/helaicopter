@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from pydantic import ConfigDict, InstanceOf, validate_call
 
 from helaicopter_api.server.config import Settings
@@ -41,7 +43,7 @@ def read_database_status(services: InstanceOf[BackendServices]) -> DatabaseStatu
     """Return the current database status, bootstrapping on first read."""
     settings = _service_settings_or_none(services)
     payload = parse_status_payload(_load_status_with_optional_settings(settings))
-    if _status_payload_is_complete(payload):
+    if payload is not None and _status_payload_is_complete(payload):
         return _coerce_status_payload(payload, settings)
 
     try:
@@ -116,11 +118,14 @@ def _coerce_status_payload(
     payload: DatabaseStatusPayload,
     settings: Settings | None = None,
 ) -> DatabaseStatusResponse:
-    normalized: DatabaseStatusPayload = dict(payload)
+    normalized = payload.copy()
     normalized.setdefault("refreshIntervalMinutes", 360)
     normalized.setdefault("runtime", _fallback_runtime_surface())
     normalized.setdefault("databases", _fallback_databases_surface(settings))
-    normalized["databases"] = annotate_database_artifacts(normalized.get("databases"))
+    normalized["databases"] = cast(
+        DatabaseArtifactsPayload,
+        annotate_database_artifacts(normalized.get("databases")),
+    )
     return DatabaseStatusResponse.model_validate(normalized)
 
 
@@ -259,15 +264,15 @@ def _run_refresh_with_optional_settings(
     trigger: str,
     stale_after_seconds: int,
     settings: Settings | None,
-) -> dict[str, object]:
-    kwargs: dict[str, object] = {
-        "force": force,
-        "trigger": trigger,
-        "stale_after_seconds": stale_after_seconds,
-    }
-    if settings is not None:
-        kwargs["settings"] = settings
-    return run_refresh(**kwargs)
+) -> DatabaseStatusPayload:
+    if settings is None:
+        return run_refresh(force=force, trigger=trigger, stale_after_seconds=stale_after_seconds)
+    return run_refresh(
+        force=force,
+        trigger=trigger,
+        stale_after_seconds=stale_after_seconds,
+        settings=settings,
+    )
 
 
 def _load_status_with_optional_settings(settings: Settings | None) -> object | None:

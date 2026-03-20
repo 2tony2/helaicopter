@@ -29,8 +29,9 @@ from helaicopter_api.ports.app_sqlite import (
     SubscriptionSettingsUpdate,
     SupportedProvider,
 )
+from helaicopter_domain.ids import PromptId
 
-DEFAULT_EVALUATION_PROMPT_ID = "default-conversation-review"
+DEFAULT_EVALUATION_PROMPT_ID = PromptId("default-conversation-review")
 DEFAULT_EVALUATION_PROMPT_NAME = "Default Conversation Review"
 DEFAULT_EVALUATION_PROMPT_DESCRIPTION = (
     "Default review prompt for diagnosing instruction quality and conversation flow."
@@ -1256,7 +1257,11 @@ def _parse_json_list(raw: str | None) -> list[dict[str, object]]:
     parsed = _parse_json_value(raw)
     if not isinstance(parsed, list):
         return []
-    return [entry for entry in parsed if isinstance(entry, dict)]
+    return [
+        {str(key): value for key, value in entry.items()}
+        for entry in parsed
+        if isinstance(entry, dict)
+    ]
 
 
 def _parse_plan_steps(raw: str | None) -> list[HistoricalConversationPlanStep]:

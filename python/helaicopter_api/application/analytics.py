@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 
 from pydantic import ConfigDict, InstanceOf, validate_call
 
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.pure.analytics import build_analytics, filter_analytics_conversations
 from helaicopter_api.schema.analytics import AnalyticsDataResponse
+from helaicopter_domain.vocab import ProviderName
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -33,11 +35,11 @@ def get_analytics(
     return AnalyticsDataResponse.model_validate(analytics.to_dict())
 
 
-def _normalize_provider(provider: str | None) -> str | None:
+def _normalize_provider(provider: str | None) -> ProviderName | None:
     if provider is None or provider == "all":
         return None
     if provider in {"claude", "codex"}:
-        return provider
+        return cast(ProviderName, provider)
     raise ValueError(f"Unsupported analytics provider: {provider}")
 
 

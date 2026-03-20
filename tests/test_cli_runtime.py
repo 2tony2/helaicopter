@@ -54,6 +54,48 @@ def test_execute_run_skips_planner_when_requested(monkeypatch) -> None:
     assert record.tasks
 
 
+def test_execute_run_uses_repo_dangerous_bypass_for_writable_tasks(monkeypatch) -> None:
+    config_path = find_repo_config(Path("examples"))
+    config = load_repo_config(config_path)
+    run = parse_run_spec(Path("examples/sample_run.md"))
+    execution_plan = build_execution_plan(
+        config=config,
+        run_spec=run,
+        repo_root=config_path.parent.parent,
+        config_path=config_path,
+    )
+
+    dangerous_bypass_values: list[bool] = []
+
+    def fake_invoke_agent(**kwargs):
+        if kwargs["role"] == "executor":
+            dangerous_bypass_values.append(kwargs["dangerous_bypass"])
+        return AgentInvocationResult(
+            agent=kwargs["agent_name"],
+            role=kwargs["role"],
+            command=[kwargs["agent_name"]],
+            cwd=kwargs["cwd"],
+            prompt=kwargs["prompt"],
+            exit_code=0,
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        )
+
+    monkeypatch.setattr("oats.cli.invoke_agent", fake_invoke_agent)
+
+    _execute_run(
+        config=config,
+        execution_plan=execution_plan,
+        read_only=False,
+        timeout_seconds=1,
+        dangerous_bypass=False,
+        skip_planner=True,
+    )
+
+    assert dangerous_bypass_values
+    assert all(value is True for value in dangerous_bypass_values)
+
+
 def test_execute_run_retries_transient_task_failure(monkeypatch) -> None:
     config_path = find_repo_config(Path("examples"))
     config = load_repo_config(config_path)

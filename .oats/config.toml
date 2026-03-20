@@ -45,6 +45,9 @@ revalidate_after_resolution = true
 allow_inferred_dependencies = true
 prefer_explicit_dependencies = true
 
+[execution]
+dangerous_bypass = true
+
 [logging]
 session_dir = "~/.overnightoats/sessions"
 persist_format = "sqlite"

@@ -8,6 +8,7 @@ import time
 
 import typer
 from helaicopter_domain.ids import TaskId
+from helaicopter_domain.vocab import RunRuntimeStatus
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -191,7 +192,7 @@ def _print_execution_record(record: RunExecutionRecord, runtime_state: RunRuntim
     console.print(table)
 
 
-def _resolve_terminal_status(state: RunRuntimeState) -> str:
+def _resolve_terminal_status(state: RunRuntimeState) -> RunRuntimeStatus:
     task_statuses = {task.status for task in state.tasks}
     if state.status in {"failed", "timed_out"}:
         return state.status
@@ -426,6 +427,9 @@ def _execute_run(
     runtime_state: RunRuntimeState | None = None,
 ) -> tuple[RunExecutionRecord, RunRuntimeState]:
     mode: Literal["read-only", "writable"] = "read-only" if read_only else "writable"
+    effective_dangerous_bypass = dangerous_bypass or (
+        not read_only and config.execution.dangerous_bypass
+    )
     state = runtime_state or build_initial_runtime_state(
         execution_plan,
         mode=mode,
@@ -474,7 +478,7 @@ def _execute_run(
             prompt=planner_prompt,
             read_only=read_only,
             timeout_seconds=timeout_seconds,
-            dangerous_bypass=dangerous_bypass,
+            dangerous_bypass=effective_dangerous_bypass,
             raise_on_nonzero=False,
             on_heartbeat=lambda: _handle_runtime_heartbeat(
                 state,
@@ -560,7 +564,7 @@ def _execute_run(
                     prompt=task_prompt,
                     read_only=read_only,
                     timeout_seconds=timeout_seconds,
-                    dangerous_bypass=dangerous_bypass,
+                    dangerous_bypass=effective_dangerous_bypass,
                     model=task.model,
                     reasoning_effort=task.reasoning_effort,
                     raise_on_nonzero=False,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from urllib.parse import quote
 
 from pydantic import ConfigDict, InstanceOf, validate_call
@@ -20,15 +21,19 @@ from helaicopter_api.schema.orchestration import (
     OrchestrationRunResponse,
     OrchestrationTaskResponse,
 )
+from helaicopter_domain.ids import RunId
+from helaicopter_domain.paths import EncodedProjectKey
+from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
 from oats.models import (
     AgentInvocationResult,
     InvocationRuntimeRecord,
+    RunRuntimeState,
     RunExecutionRecord,
     TaskExecutionRecord,
     TaskRuntimeRecord,
 )
 
-ACTIVE_RUN_STATUSES = {"pending", "planning", "running"}
+ACTIVE_RUN_STATUSES: set[RunRuntimeStatus] = {"pending", "planning", "running"}
 STALE_RUNTIME_AFTER_SECONDS = 300
 
 
@@ -131,7 +136,7 @@ def _shape_run_record(stored: StoredOatsRunRecord) -> _ShapedRun:
     response = OrchestrationRunResponse(
         source="overnight-oats",
         contract_version="oats-run-v1",
-        run_id=record.run_id or stored.path.stem,
+        run_id=record.run_id or RunId(stored.path.stem),
         run_title=record.run_title,
         repo_root=str(repo_root),
         config_path=str(record.config_path),
@@ -174,7 +179,7 @@ def _shape_runtime_task(
         fallback_agent=task.agent,
         fallback_role=task.role,
     )
-    status = "pending" if stale and task.status == "running" else task.status
+    status: TaskRuntimeStatus = "pending" if stale and task.status == "running" else task.status
     return OrchestrationTaskResponse(
         task_id=task.task_id,
         title=task.title,
@@ -201,14 +206,14 @@ def _shape_invocation(
     invocation: AgentInvocationResult | InvocationRuntimeRecord | None,
     repo_root: Path,
     *,
-    fallback_agent: str | None = None,
+    fallback_agent: ProviderName | None = None,
     fallback_role: str | None = None,
 ) -> OrchestrationInvocationResponse | None:
     if invocation is None:
         if fallback_agent is None or fallback_role is None:
             return None
         session_id = None
-        agent = fallback_agent
+        agent: ProviderName = fallback_agent
         role = fallback_role
         command: list[str] = []
         cwd = str(repo_root)
@@ -263,16 +268,14 @@ def _shape_invocation(
     )
 
 
-def _normalize_repo_project_path(repo_root: str, agent: str) -> str | None:
+def _normalize_repo_project_path(repo_root: str, agent: ProviderName) -> EncodedProjectKey:
     encoded = repo_root.replace("/", "-")
     if agent == "codex":
         return f"codex:{encoded}"
-    if agent == "claude":
-        return encoded
-    return None
+    return encoded
 
 
-def _derive_task_status(invocation: AgentInvocationResult) -> str:
+def _derive_task_status(invocation: AgentInvocationResult) -> TaskRuntimeStatus:
     if invocation.timed_out:
         return "timed_out"
     if invocation.exit_code == 0:
@@ -280,7 +283,7 @@ def _derive_task_status(invocation: AgentInvocationResult) -> str:
     return "failed"
 
 
-def _derive_run_status(record: RunExecutionRecord) -> str:
+def _derive_run_status(record: RunExecutionRecord) -> RunRuntimeStatus:
     if record.planner is not None:
         if record.planner.timed_out:
             return "timed_out"
@@ -299,7 +302,7 @@ def _build_orchestration_dag(
     tasks: list[OrchestrationTaskResponse],
     *,
     run_title: str,
-    run_status: str,
+    run_status: RunRuntimeStatus,
     active_task_id: str | None,
 ) -> OrchestrationDagResponse:
     nodes: dict[str, OrchestrationDagNodeResponse] = {}
@@ -332,7 +335,7 @@ def _build_orchestration_dag(
             label=task.task_id,
             description=task.title,
             role=invocation.role if invocation is not None else "executor",
-            agent=invocation.agent if invocation is not None else "executor",
+            agent=invocation.agent if invocation is not None else cast(ProviderName, "claude"),
             session_id=invocation.session_id if invocation is not None else None,
             project_path=invocation.project_path if invocation is not None else None,
             conversation_path=invocation.conversation_path if invocation is not None else None,
@@ -389,7 +392,7 @@ def _build_orchestration_dag(
     ordered_edges = sorted(edges.values(), key=lambda edge: edge.id)
 
     breadth_by_depth: dict[int, int] = {}
-    provider_breakdown: dict[str, int] = {}
+    provider_breakdown: dict[ProviderName, int] = {}
     for node in ordered_nodes:
         breadth_by_depth[node.depth] = breadth_by_depth.get(node.depth, 0) + 1
         provider_breakdown[node.agent] = provider_breakdown.get(node.agent, 0) + 1
@@ -441,7 +444,7 @@ def _reconcile_runtime_run_status(
     tasks: list[OrchestrationTaskResponse],
     *,
     stale: bool,
-) -> str:
+) -> RunRuntimeStatus:
     if not stale:
         return state.status
     if any(task.status in {"pending", "blocked"} for task in tasks):
@@ -456,9 +459,9 @@ def _reconcile_runtime_run_status(
 def _derive_invocation_status(
     invocation: OrchestrationInvocationResponse,
     *,
-    run_status: str,
+    run_status: RunRuntimeStatus,
     is_planner: bool = False,
-) -> str:
+) -> TaskRuntimeStatus | RunRuntimeStatus:
     if invocation.timed_out:
         return "timed_out"
     if invocation.exit_code == 0 and invocation.finished_at:
