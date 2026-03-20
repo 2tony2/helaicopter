@@ -1,0 +1,83 @@
+<h2>Design Section 1: Control Plane</h2>
+<p class="subtitle">One Oats run owns one long-lived feature branch stack. Oats and Prefect persist the graph; Helaicopter renders and orchestrates it.</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Ownership model</div>
+    <div class="mockup-body">
+      <div style="display:grid; gap:12px;">
+        <div style="padding:12px; border:1px solid rgba(0,0,0,.14); border-radius:12px;">
+          <div class="label">Run identity</div>
+          <strong>Oats run</strong> = one feature branch, one feature PR, one resumable Prefect flow run family
+        </div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:10px; opacity:.7;">
+          <span>planner</span><span>→</span><span>task graph</span><span>→</span><span>branch / PR graph</span>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px;">
+          <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">Task A<br><small>branch from feature</small></div>
+          <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">Task B<br><small>branch from A</small></div>
+          <div style="padding:10px; border:1px solid rgba(0,0,0,.14); border-radius:10px;">Task C<br><small>branch from B</small></div>
+          <div style="padding:10px; border:1px dashed rgba(0,0,0,.18); border-radius:10px;">Final feature PR<br><small>manual human gate</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Write path</div>
+    <div class="mockup-body">
+      <ol style="margin:0; padding-left:18px;">
+        <li>Planner builds task DAG and branch stack plan.</li>
+        <li>Prefect task execution prepares or reuses the right worktree.</li>
+        <li>Executor task writes code in its task branch.</li>
+        <li>Oats creates the task PR and records PR metadata.</li>
+        <li>Codex merge operator merges the PR into its parent branch.</li>
+        <li>If merge fails, Oats launches a conflict-resolution step and retries.</li>
+        <li>When stack completes, Oats opens the final feature PR to <code>main</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Read path</div>
+    <div class="mockup-body">
+      <ol style="margin:0; padding-left:18px;">
+        <li>Oats runtime and Prefect artifact files are the canonical local record.</li>
+        <li>Backend normalizes them into one orchestration response.</li>
+        <li>Optional GitHub refresh enriches the stored snapshot, but does not replace it.</li>
+        <li>UI shows both task execution state and branch / PR progression from the same graph.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Boundary decision</div>
+    <div class="mockup-body">
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Oats + Prefect own</h4>
+          <ul>
+            <li>Run identity</li>
+            <li>Branch ancestry</li>
+            <li>Worktree lifecycle</li>
+            <li>PR creation + merge attempts</li>
+            <li>Conflict-resolution attempts</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>GitHub does not own</h4>
+          <ul>
+            <li>Primary orchestration truth</li>
+            <li>Resume semantics</li>
+            <li>Dependency graph meaning</li>
+            <li>Operator workflow history</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

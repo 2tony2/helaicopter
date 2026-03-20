@@ -74,6 +74,11 @@ _CODEX_SESSION_ID_PATTERN = re.compile(
 )
 _ACTIVE_WINDOW = timedelta(minutes=1)
 _MAX_RESULT_LENGTH = 20_000
+_CACHE_MISS = object()
+
+
+def _cache_key(prefix: str, *parts: object) -> str:
+    return ":".join([prefix, *(str(part) for part in parts)])
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -84,27 +89,35 @@ def list_conversations(
     days: int | None = None,
 ) -> list[ConversationSummaryResponse]:
     """Return merged persisted and live conversation summaries."""
-    summaries_by_key: dict[tuple[str, str], ConversationSummaryResponse] = {}
+    cache_key = _cache_key("conversation_summaries", project or "*", days or "all")
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if isinstance(cached, list):
+        return cached
 
-    for summary in services.app_sqlite_store.list_historical_conversations(
+    summaries_by_key: dict[tuple[str, str], ConversationSummaryResponse] = {}
+    historical_summaries = services.app_sqlite_store.list_historical_conversations(
         project_path=project,
         days=days,
-    ):
+    )
+    for summary in historical_summaries:
         shaped = _shape_historical_summary(summary)
         _merge_summary(summaries_by_key, shaped)
 
-    if project is None or not project.startswith("codex:"):
-        for shaped in _list_claude_live_summaries(services, project=project, days=days):
-            _merge_summary(summaries_by_key, shaped)
+    if not historical_summaries:
+        if project is None or not project.startswith("codex:"):
+            for shaped in _list_claude_live_summaries(services, project=project, days=days):
+                _merge_summary(summaries_by_key, shaped)
 
-    if project is None or project.startswith("codex:"):
-        for shaped in _list_codex_live_summaries(services, project=project, days=days):
-            _merge_summary(summaries_by_key, shaped)
+        if project is None or project.startswith("codex:"):
+            for shaped in _list_codex_live_summaries(services, project=project, days=days):
+                _merge_summary(summaries_by_key, shaped)
 
-    return sorted(
+    result = sorted(
         summaries_by_key.values(),
         key=lambda item: (-item.last_updated_at, item.project_path, item.session_id),
     )
+    services.cache.set(cache_key, result)
+    return result
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -116,20 +129,38 @@ def get_conversation(
     parent_session_id: str | None = None,
 ) -> ConversationDetailResponse | None:
     """Return one conversation detail view from persisted data or live artifacts."""
+    cache_key = _cache_key(
+        "conversation_detail",
+        project_path,
+        session_id,
+        parent_session_id or "*",
+    )
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, ConversationDetailResponse):
+        return cached
+
+    conversation: ConversationDetailResponse | None
     if historical := services.app_sqlite_store.get_historical_conversation(
         project_path=project_path,
         session_id=_session_id(session_id),
     ):
-        return _shape_historical_detail(historical, services=services)
+        conversation = _shape_historical_detail(historical, services=services)
+    elif project_path.startswith("codex:"):
+        conversation = _get_codex_live_conversation(
+            services,
+            session_id=session_id,
+            project_path=project_path,
+        )
+    else:
+        conversation = _get_claude_live_conversation(
+            services,
+            project_path=project_path,
+            session_id=session_id,
+            parent_session_id=parent_session_id,
+        )
 
-    if project_path.startswith("codex:"):
-        return _get_codex_live_conversation(services, session_id=session_id, project_path=project_path)
-    return _get_claude_live_conversation(
-        services,
-        project_path=project_path,
-        session_id=session_id,
-        parent_session_id=parent_session_id,
-    )
+    services.cache.set(cache_key, conversation)
+    return conversation
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -138,14 +169,21 @@ def resolve_conversation_ref(
     *,
     conversation_ref: str,
 ) -> ConversationRefResolutionResponse | None:
+    cache_key = _cache_key("conversation_ref", conversation_ref)
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, ConversationRefResolutionResponse):
+        return cached
+
     parsed = parse_conversation_ref(conversation_ref)
     if parsed is None:
         return None
-    return _resolve_conversation_identity(
+    resolved = _resolve_conversation_identity(
         services,
         provider=parsed.provider,
         session_id=parsed.session_id,
     )
+    services.cache.set(cache_key, resolved)
+    return resolved
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -186,6 +224,11 @@ def list_conversation_dags(
     provider: ConversationDagProviderParam | None = None,
 ) -> list[ConversationDagSummaryResponse]:
     """Return main conversations with backend-built sub-agent DAG summaries."""
+    cache_key = _cache_key("conversation_dags", project or "*", days or "all", provider or "all")
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if isinstance(cached, list):
+        return cached
+
     provider_filter = None if provider in {None, "all"} else provider
     summaries = list_conversations(services, project=project, days=days)
     dag_summaries: list[ConversationDagSummaryResponse] = []
@@ -210,6 +253,7 @@ def list_conversation_dags(
             )
         )
 
+    services.cache.set(cache_key, dag_summaries)
     return dag_summaries
 
 
@@ -222,6 +266,16 @@ def get_conversation_dag(
     parent_session_id: str | None = None,
 ) -> ConversationDagResponse | None:
     """Return the backend-owned DAG for one main or subagent conversation tree."""
+    cache_key = _cache_key(
+        "conversation_dag",
+        project_path,
+        session_id,
+        parent_session_id or "*",
+    )
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, ConversationDagResponse):
+        return cached
+
     root_session_id = _session_id(session_id)
     root_parent_session_id = _session_id(parent_session_id) if parent_session_id else None
     cache: dict[tuple[str, SessionId | None, SessionId], ConversationDetailResponse | None] = {}
@@ -243,16 +297,23 @@ def get_conversation_dag(
             )
         return cache[cache_key]
 
-    return build_conversation_dag(
+    dag = build_conversation_dag(
         project_path=project_path,
         root_session_id=root_session_id,
         load_conversation=load_conversation,
     )
+    services.cache.set(cache_key, dag)
+    return dag
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_projects(services: InstanceOf[BackendServices]) -> list[ProjectResponse]:
     """Return aggregated project rows derived from merged conversation summaries."""
+    cache_key = "projects"
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if isinstance(cached, list):
+        return cached
+
     projects: dict[str, ProjectResponse] = {}
     for summary in list_conversations(services):
         existing = projects.get(summary.project_path)
@@ -269,10 +330,12 @@ def list_projects(services: InstanceOf[BackendServices]) -> list[ProjectResponse
         if summary.last_updated_at > existing.last_activity:
             existing.last_activity = summary.last_updated_at
 
-    return sorted(
+    result = sorted(
         projects.values(),
         key=lambda item: (-item.last_activity, item.display_name.lower()),
     )
+    services.cache.set(cache_key, result)
+    return result
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)

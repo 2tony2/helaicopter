@@ -1,0 +1,79 @@
+<h2>Design Section 2: Persisted Data Model</h2>
+<p class="subtitle">Extend existing Oats runtime and Prefect artifacts into a first-class branch / PR graph instead of creating a separate ledger.</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Canonical storage</div>
+    <div class="mockup-body">
+      <div style="display:grid; gap:12px;">
+        <div style="padding:12px; border:1px solid rgba(0,0,0,.14); border-radius:12px;">
+          <div class="label">Run-scoped truth</div>
+          <strong>.oats/runtime/&lt;run_id&gt;/state.json</strong><br>
+          Current execution snapshot, plus current feature-branch and task-PR state
+        </div>
+        <div style="padding:12px; border:1px solid rgba(0,0,0,.14); border-radius:12px;">
+          <div class="label">Run-scoped audit trail</div>
+          <strong>.oats/runtime/&lt;run_id&gt;/events.jsonl</strong><br>
+          Append-only lifecycle events for branch creation, PR creation, merge attempts, conflict resolution, and final review gating
+        </div>
+        <div style="padding:12px; border:1px solid rgba(0,0,0,.14); border-radius:12px;">
+          <div class="label">Flow-run snapshots</div>
+          <strong>.oats/prefect/flow-runs/&lt;flow_run_id&gt;/...</strong><br>
+          Execution-attempt snapshots that reference the same <code>run_id</code> and mirror relevant task branch / PR state for observability
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Run-level fields</div>
+    <div class="mockup-body">
+      <ul>
+        <li><strong>feature branch</strong>: long-lived run-owned branch, based on <code>main</code></li>
+        <li><strong>final PR</strong>: PR from feature branch to <code>main</code>, manual-final-gate status</li>
+        <li><strong>stack status</strong>: building, awaiting-merge, resolving-conflict, ready-for-final-review, done</li>
+        <li><strong>active operation</strong>: current PR create / merge / resolve step with session linkage</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Task-level fields</div>
+    <div class="mockup-body">
+      <ul>
+        <li><strong>parent branch reference</strong>: feature branch or upstream task branch</li>
+        <li><strong>worktree path</strong>: stable reusable checkout for that task</li>
+        <li><strong>branch snapshot</strong>: branch name, head sha, pushed / deleted status</li>
+        <li><strong>task PR snapshot</strong>: PR number, URL, state, checks summary, merge outcome</li>
+        <li><strong>operation history</strong>: create PR, merge attempt, conflict-resolution attempt, cleanup</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Versioning and compatibility</div>
+    <div class="mockup-body">
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Proposed</h4>
+          <ul>
+            <li>Introduce additive <code>oats-plan-v2</code>, <code>oats-runtime-v2</code>, and <code>oats-run-v2</code> shapes.</li>
+            <li>Keep current <code>integration_branch</code> fields for compatibility, but treat them as the run’s feature branch in normalized backend responses.</li>
+            <li>Add explicit <code>run_id</code> linkage into Prefect local metadata and task checkpoints.</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Avoid</h4>
+          <ul>
+            <li>Do not create an unrelated app-only git ledger before runtime artifacts are authoritative.</li>
+            <li>Do not make GitHub API responses the canonical stored model.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

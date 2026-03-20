@@ -85,6 +85,24 @@ test("legacy query-param builder drops stale entity params when switching tabs",
   );
 });
 
+test("legacy route builders keep codex project path segments unescaped for app navigation", () => {
+  assert.equal(
+    buildConversationRoute("codex:-Users-tony-Code-helaicopter", "019cdbff-dbb7-71d0-baaf-c669c55af628"),
+    "/conversations/codex:-Users-tony-Code-helaicopter/019cdbff-dbb7-71d0-baaf-c669c55af628"
+  );
+  assert.equal(
+    buildConversationRoute(
+      "codex:-Users-tony-Code-helaicopter",
+      "019cdbff-dbb7-71d0-baaf-c669c55af628",
+      {
+        tab: "subagents",
+        subagent: "019cdbff-dbb7-71d0-baaf-c669c55af629",
+      }
+    ),
+    "/conversations/codex:-Users-tony-Code-helaicopter/019cdbff-dbb7-71d0-baaf-c669c55af628?tab=subagents&subagent=019cdbff-dbb7-71d0-baaf-c669c55af629"
+  );
+});
+
 test("canonical catch-all parsing accepts valid tab and nested segment shapes", () => {
   assert.deepEqual(parseConversationRouteSegments([conversationRef]), {
     kind: "canonical",

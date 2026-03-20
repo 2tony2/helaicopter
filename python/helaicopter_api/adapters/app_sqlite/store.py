@@ -25,6 +25,7 @@ from helaicopter_api.ports.app_sqlite import (
     HistoricalConversationSummary,
     HistoricalConversationTask,
     HistoricalMessageBlock,
+    HistoricalPlanSummary,
     ProviderSubscriptionSetting,
     SubscriptionSettings,
     SubscriptionSettingsUpdate,
@@ -225,6 +226,55 @@ class SqliteAppStore(AppSqliteStore):
             if row is None:
                 return None
             return self._load_tasks(connection, row["conversation_id"])
+        finally:
+            connection.close()
+
+    def list_historical_plan_summaries(self) -> list[HistoricalPlanSummary]:
+        connection = self._connect_readonly()
+        if connection is None or not _table_exists(connection, "conversation_plans"):
+            if connection is not None:
+                connection.close()
+            return []
+
+        try:
+            route_slug_select = (
+                "c.route_slug"
+                if _table_column_exists(connection, "conversations", "route_slug")
+                else "NULL"
+            )
+            rows = connection.execute(
+                f"""
+                SELECT
+                  cp.plan_id,
+                  cp.slug,
+                  cp.title,
+                  cp.preview,
+                  cp.provider,
+                  cp.timestamp,
+                  cp.model,
+                  c.session_id,
+                  c.project_path,
+                  {route_slug_select} AS route_slug
+                FROM conversation_plans cp
+                JOIN conversations c ON c.conversation_id = cp.conversation_id
+                ORDER BY datetime(cp.timestamp) DESC, cp.plan_row_id ASC
+                """
+            ).fetchall()
+            return [
+                HistoricalPlanSummary(
+                    plan_id=row["plan_id"],
+                    slug=row["slug"],
+                    title=row["title"],
+                    preview=row["preview"],
+                    provider=row["provider"],
+                    timestamp=row["timestamp"],
+                    model=row["model"],
+                    session_id=row["session_id"],
+                    project_path=row["project_path"],
+                    route_slug=row["route_slug"],
+                )
+                for row in rows
+            ]
         finally:
             connection.close()
 

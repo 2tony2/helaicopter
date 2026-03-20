@@ -577,7 +577,7 @@ export function buildConversationRoute(
 ): string {
   const target = normalizeLegacyBuilderTarget(opts);
   const query = buildLegacyConversationQuery(target);
-  const path = `/conversations/${encodeURIComponent(projectPath)}/${sessionId}`;
+  const path = `/conversations/${projectPath}/${sessionId}`;
   return query ? `${path}?${query}` : path;
 }
 
@@ -586,7 +586,7 @@ export function buildConversationSubagentRoute(
   sessionId: string,
   agentId: string
 ): string {
-  return `/conversations/${encodeURIComponent(projectPath)}/${sessionId}/subagents/${agentId}`;
+  return `/conversations/${projectPath}/${sessionId}/subagents/${agentId}`;
 }
 
 export function buildOrchestrationRoute(opts?: {

@@ -123,22 +123,24 @@ async function fetchConversationDetail(
 function buildRenderResult(
   decision: Extract<ConversationRouteDecision, { kind: "render" }>,
   resolution: ReturnType<typeof normalizeConversationRouteResolution>,
-  projectPath: string,
-  sessionId: string
+  projectPath?: string,
+  sessionId?: string
 ): ConversationPageRenderResult {
-  const displayName = projectDirToDisplayName(projectPath);
+  const resolvedProjectPath = projectPath ?? resolution.projectPath;
+  const resolvedSessionId = sessionId ?? resolution.sessionId;
+  const displayName = projectDirToDisplayName(resolvedProjectPath);
 
   return {
     kind: "render",
     breadcrumbs: [
       { href: "/conversations", label: "Conversations" },
-      { label: displayName, title: projectPath },
-      { label: `${sessionId.slice(0, 8)}...` },
+      { label: displayName, title: resolvedProjectPath },
+      { label: `${resolvedSessionId.slice(0, 8)}...` },
     ],
     viewer: {
       conversationRef: resolution.conversationRef,
-      projectPath,
-      sessionId,
+      projectPath: resolvedProjectPath,
+      sessionId: resolvedSessionId,
       parentSessionId: resolution.parentSessionId,
       initialTab: decision.tab,
       initialMessageId: decision.messageId,
@@ -195,6 +197,14 @@ export function createConversationPageHandler(deps: ConversationPageDependencies
     }
     if (initialDecision.kind === "not-found") {
       return deps.notFound();
+    }
+
+    if (
+      initialDecision.messageId === undefined &&
+      initialDecision.planId === undefined &&
+      initialDecision.agentId === undefined
+    ) {
+      return buildRenderResult(initialDecision, resolution);
     }
 
     const conversation = await fetchConversationDetail(

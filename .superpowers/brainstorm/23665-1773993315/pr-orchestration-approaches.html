@@ -1,0 +1,97 @@
+<h2>PR and Worktree Orchestration</h2>
+<p class="subtitle">Three ways to make Oats own stacked task branches, task PRs, merge automation, and the final feature PR.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. Artifact-first graph</div>
+        <div class="mockup-body">
+          <div class="label">Recommended</div>
+          <div style="display:grid; gap:10px; margin-top:10px;">
+            <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">Feature branch<br><strong>feat/customer-onboarding</strong></div>
+            <div style="display:flex; gap:10px; align-items:center; justify-content:center;">
+              <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">Task A PR</div>
+              <div style="opacity:.6;">→</div>
+              <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">Task B PR</div>
+              <div style="opacity:.6;">→</div>
+              <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">Task C PR</div>
+            </div>
+            <div style="padding:10px; border:1px dashed rgba(0,0,0,.18); border-radius:10px;">Persist graph in Oats runtime + Prefect artifacts</div>
+            <div style="padding:10px; border:1px dashed rgba(0,0,0,.18); border-radius:10px;">UI reads local truth, enriches with GitHub snapshot details</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Artifact-first orchestration graph</h3>
+      <p>Oats and Prefect persist branch, PR, merge, and conflict-resolution state as first-class run and task metadata. Helaicopter renders that local graph directly.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. GitHub-read-through</div>
+        <div class="mockup-body">
+          <div style="display:grid; gap:10px;">
+            <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">Oats stores only PR ids and branch names</div>
+            <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">UI asks GitHub for current stack state</div>
+            <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">Prefect knows execution, GitHub knows workflow truth</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>GitHub-read-through control plane</h3>
+      <p>Keep orchestration lean and let GitHub become the real PR state system. The UI mostly mirrors live API responses instead of persisted Oats artifacts.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. Separate ledger</div>
+        <div class="mockup-body">
+          <div style="display:grid; gap:10px;">
+            <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">New git/PR tables in app DB</div>
+            <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">Sync Oats, Prefect, and GitHub into ledger</div>
+            <div style="padding:10px; border:1px solid rgba(0,0,0,.12); border-radius:10px;">UI reads database-only model</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Standalone git operations ledger</h3>
+      <p>Create a separate persisted subsystem for worktrees, branches, PRs, merges, and retries, then project orchestration state into it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Trade-offs</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">Why A fits this repo</div>
+      <div class="mockup-body">
+        <ul>
+          <li>Extends existing `.oats/runtime`, `.oats/pr-runs`, and Prefect artifact patterns.</li>
+          <li>Matches your choice that persisted Oats data is the source of truth.</li>
+          <li>Keeps resume semantics stable: one run owns one long-lived branch stack.</li>
+          <li>Lets the UI orchestrate off backend-owned normalized records.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">Why B/C are weaker here</div>
+      <div class="mockup-body">
+        <ul>
+          <li>B makes GitHub the truth, which conflicts with your source-of-truth choice.</li>
+          <li>B also weakens resume and replay when GitHub state drifts from local runs.</li>
+          <li>C adds a second orchestration persistence model before A is complete.</li>
+          <li>C is defensible later for analytics, but heavy for the control plane now.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { DatabaseAutoRefresh } from "@/components/databases/database-auto-refresh";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import "@xyflow/react/dist/style.css";
@@ -32,7 +31,6 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <TooltipProvider>
-          <DatabaseAutoRefresh />
           <div className="flex min-h-screen">
             <AppSidebar />
             <main className="flex-1 p-8 overflow-auto">{children}</main>
