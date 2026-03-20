@@ -227,6 +227,93 @@ def _write_app_db(path: Path) -> None:
         connection.close()
 
 
+def _insert_persisted_conversation_summary(
+    path: Path,
+    *,
+    provider: str,
+    session_id: str,
+    project_path: str,
+    project_name: str,
+    thread_type: str,
+    first_message: str,
+    route_slug: str,
+    started_at: str,
+    ended_at: str,
+    message_count: int = 0,
+    model: str | None = None,
+    git_branch: str | None = None,
+    reasoning_effort: str | None = None,
+    speed: str | None = None,
+    total_input_tokens: int = 0,
+    total_output_tokens: int = 0,
+    total_cache_write_tokens: int = 0,
+    total_cache_read_tokens: int = 0,
+    total_reasoning_tokens: int = 0,
+    tool_use_count: int = 0,
+    subagent_count: int = 0,
+    task_count: int = 0,
+) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            """
+            INSERT INTO conversations (
+              conversation_id,
+              provider,
+              session_id,
+              project_path,
+              project_name,
+              thread_type,
+              first_message,
+              route_slug,
+              started_at,
+              ended_at,
+              message_count,
+              model,
+              git_branch,
+              reasoning_effort,
+              speed,
+              total_input_tokens,
+              total_output_tokens,
+              total_cache_write_tokens,
+              total_cache_read_tokens,
+              total_reasoning_tokens,
+              tool_use_count,
+              subagent_count,
+              task_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"{provider}:{session_id}",
+                provider,
+                session_id,
+                project_path,
+                project_name,
+                thread_type,
+                first_message,
+                route_slug,
+                started_at,
+                ended_at,
+                message_count,
+                model,
+                git_branch,
+                reasoning_effort,
+                speed,
+                total_input_tokens,
+                total_output_tokens,
+                total_cache_write_tokens,
+                total_cache_read_tokens,
+                total_reasoning_tokens,
+                tool_use_count,
+                subagent_count,
+                task_count,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def _seed_sources(tmp_path: Path) -> Settings:
     claude_dir = tmp_path / ".claude"
     codex_dir = tmp_path / ".codex"
@@ -896,6 +983,48 @@ class TestConversationEndpoints:
         assert response.status_code == 404
         assert response.json() == {"detail": "Conversation not found"}
 
+    def test_list_preserves_persisted_canonical_identity_when_live_summary_is_fresher(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _insert_persisted_conversation_summary(
+            tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite",
+            provider="claude",
+            session_id="claude-session-1",
+            project_path="-Users-tony-Code-helaicopter",
+            project_name="Code/helaicopter",
+            thread_type="main",
+            first_message="Persisted canonical title",
+            route_slug="persisted-canonical-claude-session-1",
+            started_at="2026-03-16T09:00:00Z",
+            ended_at="2026-03-16T09:30:00Z",
+            message_count=1,
+            model="claude-sonnet-4-5",
+            git_branch="main",
+            speed="standard",
+        )
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                response = client.get("/conversations")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert response.status_code == 200
+        payload = {item["session_id"]: item for item in response.json()}
+        summary = payload["claude-session-1"]
+        assert summary["route_slug"] == "persisted-canonical-claude-session-1"
+        assert (
+            summary["conversation_ref"]
+            == "persisted-canonical-claude-session-1--claude-claude-session-1"
+        )
+        assert summary["tool_breakdown"] == {"Bash": 1, "Task": 1}
+
     def test_conversation_by_ref_resolves_persisted_and_live_routes(self, conversations_client: TestClient) -> None:
         persisted = conversations_client.get("/conversations/by-ref/stale-slug--claude-historic-session")
         assert persisted.status_code == 200
@@ -930,6 +1059,17 @@ class TestConversationEndpoints:
             "session_id": "claude-agent-1",
             "thread_type": "subagent",
             "parent_session_id": "claude-session-1",
+        }
+
+        claude_live_main = conversations_client.get("/conversations/by-ref/outdated--claude-claude-session-1")
+        assert claude_live_main.status_code == 200
+        assert claude_live_main.json() == {
+            "conversation_ref": "review-the-backend-rollout--claude-claude-session-1",
+            "route_slug": "review-the-backend-rollout",
+            "project_path": "-Users-tony-Code-helaicopter",
+            "session_id": "claude-session-1",
+            "thread_type": "main",
+            "parent_session_id": None,
         }
 
     def test_conversation_by_ref_returns_404_for_unknown_well_formed_ref(

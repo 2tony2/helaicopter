@@ -529,10 +529,22 @@ def _merge_summary(
         summaries_by_key[key] = candidate
         return
     if candidate.is_running and not existing.is_running:
-        summaries_by_key[key] = candidate
+        summaries_by_key[key] = _preserve_authoritative_summary_identity(existing, candidate)
         return
     if candidate.last_updated_at >= existing.last_updated_at:
-        summaries_by_key[key] = candidate
+        summaries_by_key[key] = _preserve_authoritative_summary_identity(existing, candidate)
+
+
+def _preserve_authoritative_summary_identity(
+    existing: ConversationSummaryResponse,
+    candidate: ConversationSummaryResponse,
+) -> ConversationSummaryResponse:
+    return candidate.model_copy(
+        update={
+            "route_slug": existing.route_slug,
+            "conversation_ref": existing.conversation_ref,
+        }
+    )
 
 
 def _shape_historical_summary(summary: HistoricalConversationSummary) -> ConversationSummaryResponse:
