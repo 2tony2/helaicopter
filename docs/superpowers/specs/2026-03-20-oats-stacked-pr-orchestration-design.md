@@ -72,6 +72,13 @@ Branching rules:
 
 That last rule is an implementation inference required by git itself: a task branch cannot simultaneously branch from multiple heads.
 
+When a parent task PR merges:
+- Oats keeps the parent branch alive until all open direct-child PRs that target it are retargeted successfully
+- each direct child PR is retargeted from the merged parent branch to the feature branch
+- only after successful retargeting may branch cleanup delete the merged parent branch if repo policy allows it
+
+Because multi-dependency tasks do not open a branch or PR until their dependencies have merged, the first rollout only needs retargeting logic for direct single-parent child PRs.
+
 ### 3. Oats and Prefect artifacts are the source of truth
 
 The canonical operational record lives in repo-local artifacts:
@@ -82,6 +89,8 @@ The canonical operational record lives in repo-local artifacts:
 - `.oats/prefect/flow-runs/<flow_run_id>/attempts/*`
 
 GitHub state may enrich those records, but it must not replace them as the authoritative orchestration model.
+
+GitHub-derived fields such as mergeability, checks summary, review state, and merge result are stored as persisted snapshots inside the Oats and Prefect artifacts. The persisted snapshot is the control-plane truth; GitHub is the observation source.
 
 ### 4. Codex handles merge operations and conflict resolution
 
@@ -166,6 +175,7 @@ Each run should persist:
   - state (`not_created`, `open`, `ready_for_review`, `merged`, `closed`)
   - review gate status
   - checks summary snapshot
+  - snapshot metadata (`snapshot_source`, `last_refreshed_at`, `is_stale`)
 - `stack_status`
   - `building`
   - `awaiting_task_merge`
@@ -195,7 +205,9 @@ Each task should persist:
   - base branch and head branch
   - state (`not_created`, `open`, `merged`, `closed`, `blocked`)
   - checks summary snapshot
+  - mergeability snapshot
   - merge result snapshot
+  - snapshot metadata (`snapshot_source`, `last_refreshed_at`, `is_stale`)
 - `operation_history`
   - PR create operations
   - merge attempts
@@ -218,6 +230,30 @@ Each task should persist:
 - `final_pr_created`
 - `final_review_ready`
 
+### GitHub snapshot contract
+
+GitHub remains the source for PR observation fields, but Oats is responsible for deciding when to fetch and persist them.
+
+Required refresh points:
+- immediately after task PR creation
+- immediately before a merge attempt
+- immediately after a merge attempt
+- immediately after a conflict-resolution attempt
+- when a run is resumed
+- when a human explicitly requests refresh from the orchestration UI or backend action surface
+
+Required persisted snapshot fields:
+- `snapshot_source` such as `github_cli` or a later REST adapter
+- `last_refreshed_at`
+- mergeability state
+- checks rollup
+- review-gate summary for the final PR
+
+Backend serving rules:
+- serve the most recent persisted snapshot without silently replacing it
+- expose staleness so the UI can distinguish fresh from old GitHub observations
+- treat refresh as an explicit orchestration operation, not ambient background polling in the first rollout
+
 ## Runtime Flow
 
 1. Oats planning builds the task DAG and the branch-stack plan.
@@ -228,8 +264,9 @@ Each task should persist:
 6. Oats creates or updates the task PR and records the PR snapshot.
 7. If the task PR is mergeable and checks satisfy policy, Codex runs the merge operation.
 8. On merge failure, Oats launches conflict resolution, records the attempt, and retries the merge within configured limits.
-9. Once all task PRs required by the run have merged upward into the feature branch, Oats creates the final PR to `main`.
-10. The run transitions to `ready_for_final_review` and waits for human approval outside Oats auto-merge.
+9. When a task PR merges, Oats retargets any open direct-child PRs to the feature branch before parent-branch cleanup.
+10. Once all task PRs required by the run have merged upward into the feature branch, Oats creates the final PR to `main`.
+11. The run transitions to `ready_for_final_review` and waits for human approval outside Oats auto-merge.
 
 ## API and Serving Design
 
@@ -351,7 +388,7 @@ Extend orchestration schemas, normalize the new graph, and add the stacked-PR UI
 
 ### Phase 4: Derived analytics
 
-Optionally extend historical fact generation so PR and merge metrics can be analyzed alongside orchestration runs without changing control-plane truth.
+Treat derived analytics as an explicitly later follow-on after the first implementation plan completes the orchestration control plane.
 
 ## Open Questions Resolved By This Design
 
