@@ -332,79 +332,90 @@ export function buildConversationSubagentTabRoute(
   return `${buildConversationTabRoute(parentConversationRef, "subagents")}/${encodePathSegment(agentId)}`;
 }
 
-export function parseConversationRouteSegments(
+function parseCanonicalConversationRouteSegments(
   segments: readonly string[]
-): ConversationRouteParseResult {
+): Extract<ConversationRouteParseResult, { kind: "canonical" }> | null {
   const [first, second, third, fourth] = segments;
-
   if (!first) {
-    return { kind: "invalid" };
+    return null;
   }
 
   const parsedRef = parseConversationRef(first);
-  if (parsedRef) {
-    if (!second) {
-      return {
-        kind: "canonical",
-        ...parsedRef,
-        tab: "messages",
-        isBaseRoute: true,
-      };
-    }
+  if (!parsedRef) {
+    return null;
+  }
 
-    if (!(conversationDetailTabs as readonly string[]).includes(second)) {
-      return { kind: "invalid" };
-    }
+  if (!second) {
+    return {
+      kind: "canonical",
+      ...parsedRef,
+      tab: "messages",
+      isBaseRoute: true,
+    };
+  }
 
-    const tab = second as ConversationDetailTab;
-    if (!third) {
-      return {
-        kind: "canonical",
-        ...parsedRef,
-        tab,
-        isBaseRoute: false,
-      };
-    }
+  if (!(conversationDetailTabs as readonly string[]).includes(second)) {
+    return null;
+  }
 
-    if (fourth || !isValidCanonicalNestedTab(tab)) {
-      return { kind: "invalid" };
-    }
-
-    const nestedId = normalizeLegacyEntityId(third);
-    if (!nestedId) {
-      return { kind: "invalid" };
-    }
-
-    if (tab === "messages") {
-      return {
-        kind: "canonical",
-        ...parsedRef,
-        tab,
-        isBaseRoute: false,
-        messageId: nestedId,
-      };
-    }
-
-    if (tab === "plans") {
-      return {
-        kind: "canonical",
-        ...parsedRef,
-        tab,
-        isBaseRoute: false,
-        planId: nestedId,
-      };
-    }
-
+  const tab = second as ConversationDetailTab;
+  if (!third) {
     return {
       kind: "canonical",
       ...parsedRef,
       tab,
       isBaseRoute: false,
-      agentId: nestedId,
     };
   }
 
-  if (segments.length === 2 && second) {
+  if (fourth || !isValidCanonicalNestedTab(tab)) {
+    return null;
+  }
+
+  const nestedId = normalizeLegacyEntityId(third);
+  if (!nestedId) {
+    return null;
+  }
+
+  if (tab === "messages") {
+    return {
+      kind: "canonical",
+      ...parsedRef,
+      tab,
+      isBaseRoute: false,
+      messageId: nestedId,
+    };
+  }
+
+  if (tab === "plans") {
+    return {
+      kind: "canonical",
+      ...parsedRef,
+      tab,
+      isBaseRoute: false,
+      planId: nestedId,
+    };
+  }
+
+  return {
+    kind: "canonical",
+    ...parsedRef,
+    tab,
+    isBaseRoute: false,
+    agentId: nestedId,
+  };
+}
+
+function parseLegacyConversationRouteSegments(
+  segments: readonly string[]
+): Extract<ConversationRouteParseResult, { kind: "legacy" }> | null {
+  const [first, second, third, fourth] = segments;
+
+  if (!first || !second) {
+    return null;
+  }
+
+  if (segments.length === 2) {
     return {
       kind: "legacy",
       projectPath: first,
@@ -412,10 +423,10 @@ export function parseConversationRouteSegments(
     };
   }
 
-  if (segments.length === 4 && second && third === "subagents") {
+  if (segments.length === 4 && third === "subagents") {
     const agentId = normalizeLegacyEntityId(fourth);
     if (!agentId) {
-      return { kind: "invalid" };
+      return null;
     }
     return {
       kind: "legacy",
@@ -423,6 +434,22 @@ export function parseConversationRouteSegments(
       sessionId: second,
       agentId,
     };
+  }
+
+  return null;
+}
+
+export function parseConversationRouteSegments(
+  segments: readonly string[]
+): ConversationRouteParseResult {
+  const canonicalRoute = parseCanonicalConversationRouteSegments(segments);
+  if (canonicalRoute) {
+    return canonicalRoute;
+  }
+
+  const legacyRoute = parseLegacyConversationRouteSegments(segments);
+  if (legacyRoute) {
+    return legacyRoute;
   }
 
   return { kind: "invalid" };
