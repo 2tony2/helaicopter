@@ -16,7 +16,6 @@ import type {
   SupportedProvider,
 } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { isOpenAIModel } from "@/lib/utils";
 
 function pct(part: number, total: number): string {
   if (total === 0) return "0%";
@@ -31,12 +30,6 @@ type BreakdownOption = {
 
 function modelLabel(model: string): string {
   return model === "unknown" ? "Model: Unknown" : `Model: ${model}`;
-}
-
-function isOpenAISelection(selectedKey: string): boolean {
-  if (selectedKey === "provider:codex") return true;
-  if (!selectedKey.startsWith("model:")) return false;
-  return isOpenAIModel(selectedKey.slice("model:".length));
 }
 
 function getBudgetForSelection(
@@ -113,7 +106,6 @@ export function CostBreakdownCard({
   const selected =
     options.find((option) => option.key === selectedKey) || options[0];
   const cb = selected.breakdown;
-  const openAISelection = isOpenAISelection(selected.key);
   const budgetInfo = getBudgetForSelection(selected.key, subscriptionSettings);
   const subscriptionPercentLabel =
     budgetInfo && budgetInfo.budget > 0
@@ -133,20 +125,18 @@ export function CostBreakdownCard({
       colorClass: "text-green-500",
     },
     {
-      label: openAISelection ? "Cached input" : "Cache read",
+      label: "Cache write",
+      cost: cb.cacheWriteCost,
+      icon: DatabaseZap,
+      colorClass: "text-yellow-500",
+    },
+    {
+      label: "Cache read",
       cost: cb.cacheReadCost,
       icon: BookOpen,
       colorClass: "text-purple-500",
     },
   ];
-  if (!openAISelection) {
-    rows.splice(2, 0, {
-      label: "Cache write (5m)",
-      cost: cb.cacheWriteCost,
-      icon: DatabaseZap,
-      colorClass: "text-yellow-500",
-    });
-  }
   const hasLongContext = cb.longContextPremium > 0;
 
   return (
@@ -180,12 +170,6 @@ export function CostBreakdownCard({
             </span>
           </div>
         ))}
-
-        {openAISelection && (
-          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            OpenAI/Codex does not bill cache writes separately. Cache fills are included in input cost, and only cached input is discounted separately.
-          </div>
-        )}
 
         {hasLongContext && (
           <div className="flex items-center gap-3">
@@ -253,7 +237,7 @@ export function CostBreakdownCard({
               title={`Output: ${formatCost(cb.outputCost)}`}
             />
           )}
-          {!openAISelection && cb.cacheWriteCost > 0 && (
+          {cb.cacheWriteCost > 0 && (
             <div
               className="bg-yellow-500"
               style={{ width: pct(cb.cacheWriteCost, cb.totalCost) }}
@@ -278,10 +262,8 @@ export function CostBreakdownCard({
         <div className="flex gap-3 text-xs text-muted-foreground flex-wrap mt-1">
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-500" />Input</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500" />Output</span>
-          {!openAISelection && (
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-500" />Cache write</span>
-          )}
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-purple-500" />{openAISelection ? "Cached input" : "Cache read"}</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-500" />Cache write</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-purple-500" />Cache read</span>
           {hasLongContext && (
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-500" />Long ctx premium</span>
           )}

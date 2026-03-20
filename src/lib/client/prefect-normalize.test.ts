@@ -204,3 +204,82 @@ test("Prefect normalizers join deployments, flow runs, workers, and local Oats m
     statusTone: "healthy",
   });
 });
+
+test("Prefect normalizers prefer backend-owned status fields when present", () => {
+  const flowRuns = normalizePrefectFlowRuns([
+    {
+      flowRunId: "flow-run-456",
+      flowRunName: "backend-owned-status",
+      stateType: "RUNNING",
+      stateName: "Running",
+      statusTone: "pending",
+      statusLabel: "Waiting on worker",
+      isActive: false,
+    },
+  ]);
+
+  const workers = normalizePrefectWorkers([
+    {
+      workerId: "worker-2",
+      workerName: "mac-mini-02",
+      status: "ONLINE",
+      statusTone: "warning",
+      isOnline: false,
+    },
+  ]);
+
+  const workPools = normalizePrefectWorkPools(
+    [
+      {
+        workPoolId: "pool-2",
+        workPoolName: "backend-owned-pool",
+        status: "READY",
+        workerCount: 9,
+        onlineWorkerCount: 4,
+        statusTone: "warning",
+      },
+    ],
+    workers
+  );
+
+  assert.deepEqual(flowRuns[0], {
+    flowRunId: "flow-run-456",
+    flowRunName: "backend-owned-status",
+    deploymentId: undefined,
+    deploymentName: undefined,
+    flowId: undefined,
+    flowName: undefined,
+    workPoolName: undefined,
+    workQueueName: undefined,
+    stateType: "RUNNING",
+    stateName: "Running",
+    createdAt: undefined,
+    updatedAt: undefined,
+    oatsMetadata: undefined,
+    statusTone: "pending",
+    statusLabel: "Waiting on worker",
+    isActive: false,
+  });
+
+  assert.deepEqual(workers[0], {
+    workerId: "worker-2",
+    workerName: "mac-mini-02",
+    workPoolName: undefined,
+    status: "ONLINE",
+    lastHeartbeatAt: undefined,
+    statusTone: "warning",
+    isOnline: false,
+  });
+
+  assert.deepEqual(workPools[0], {
+    workPoolId: "pool-2",
+    workPoolName: "backend-owned-pool",
+    type: undefined,
+    status: "READY",
+    isPaused: false,
+    concurrencyLimit: undefined,
+    workerCount: 9,
+    onlineWorkerCount: 4,
+    statusTone: "warning",
+  });
+});

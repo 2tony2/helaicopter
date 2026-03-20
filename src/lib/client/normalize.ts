@@ -25,6 +25,13 @@ import type {
   DisplayBlock,
   EvaluationPrompt,
   HistoryEntry,
+  OrchestrationDag,
+  OrchestrationDagNode,
+  OrchestrationInvocation,
+  OrchestrationRunEvaluation,
+  OrchestrationRunEvaluationConversation,
+  OrchestrationTaskRecord,
+  OvernightOatsRunRecord,
   PrefectDeploymentRecord,
   PrefectFlowRunRecord,
   PrefectOatsMetadata,
@@ -526,94 +533,122 @@ export function normalizeProjects(value: unknown): ProjectInfo[] {
 function normalizeCostBreakdown(value: unknown): AnalyticsCostBreakdown {
   const item = asRecord(value);
   return {
-    inputCost: numberOr(item.input_cost),
-    outputCost: numberOr(item.output_cost),
-    cacheWriteCost: numberOr(item.cache_write_cost),
-    cacheReadCost: numberOr(item.cache_read_cost),
-    longContextPremium: numberOr(item.long_context_premium),
-    longContextConversations: numberOr(item.long_context_conversations),
-    totalCost: numberOr(item.total_cost),
+    inputCost: numberOr(field(item, "inputCost", "input_cost")),
+    outputCost: numberOr(field(item, "outputCost", "output_cost")),
+    cacheWriteCost: numberOr(field(item, "cacheWriteCost", "cache_write_cost")),
+    cacheReadCost: numberOr(field(item, "cacheReadCost", "cache_read_cost")),
+    longContextPremium: numberOr(field(item, "longContextPremium", "long_context_premium")),
+    longContextConversations: numberOr(
+      field(item, "longContextConversations", "long_context_conversations")
+    ),
+    totalCost: numberOr(field(item, "totalCost", "total_cost")),
   };
 }
 
 function normalizeProviderBreakdown(value: unknown): ProviderBreakdown {
   const item = asRecord(value);
   return {
-    claude: numberOr(item.claude),
-    codex: numberOr(item.codex),
+    claude: numberOr(field(item, "claude")),
+    codex: numberOr(field(item, "codex")),
   };
 }
 
 function normalizeRateValue(value: unknown): AnalyticsRateValue {
   const item = asRecord(value);
   return {
-    perHour: numberOr(item.per_hour),
-    perDay: numberOr(item.per_day),
-    perWeek: numberOr(item.per_week),
-    perMonth: numberOr(item.per_month),
+    perHour: numberOr(field(item, "perHour", "per_hour")),
+    perDay: numberOr(field(item, "perDay", "per_day")),
+    perWeek: numberOr(field(item, "perWeek", "per_week")),
+    perMonth: numberOr(field(item, "perMonth", "per_month")),
   };
 }
 
 function normalizeRates(value: unknown): AnalyticsRates {
   const item = asRecord(value);
   return {
-    spend: normalizeRateValue(item.spend),
-    totalTokens: normalizeRateValue(item.total_tokens),
-    inputTokens: normalizeRateValue(item.input_tokens),
-    outputTokens: normalizeRateValue(item.output_tokens),
-    cacheWriteTokens: normalizeRateValue(item.cache_write_tokens),
-    cacheReadTokens: normalizeRateValue(item.cache_read_tokens),
-    reasoningTokens: normalizeRateValue(item.reasoning_tokens),
-    conversations: normalizeRateValue(item.conversations),
-    toolCalls: normalizeRateValue(item.tool_calls),
-    failedToolCalls: normalizeRateValue(item.failed_tool_calls),
-    subagents: normalizeRateValue(item.subagents),
+    spend: normalizeRateValue(field(item, "spend")),
+    totalTokens: normalizeRateValue(field(item, "totalTokens", "total_tokens", "tokens")),
+    inputTokens: normalizeRateValue(field(item, "inputTokens", "input_tokens")),
+    outputTokens: normalizeRateValue(field(item, "outputTokens", "output_tokens")),
+    cacheWriteTokens: normalizeRateValue(field(item, "cacheWriteTokens", "cache_write_tokens")),
+    cacheReadTokens: normalizeRateValue(field(item, "cacheReadTokens", "cache_read_tokens")),
+    reasoningTokens: normalizeRateValue(field(item, "reasoningTokens", "reasoning_tokens")),
+    conversations: normalizeRateValue(field(item, "conversations")),
+    toolCalls: normalizeRateValue(field(item, "toolCalls", "tool_calls")),
+    failedToolCalls: normalizeRateValue(field(item, "failedToolCalls", "failed_tool_calls")),
+    subagents: normalizeRateValue(field(item, "subagents")),
   };
 }
 
 function normalizeTimeSeriesPoint(value: unknown): AnalyticsTimeSeriesPoint {
   const item = asRecord(value);
   return {
-    key: stringOr(item.key),
-    label: stringOr(item.label),
-    start: stringOr(item.start),
-    end: stringOr(item.end),
-    estimatedCost: numberOr(item.estimated_cost),
-    claudeEstimatedCost: numberOr(item.claude_estimated_cost),
-    codexEstimatedCost: numberOr(item.codex_estimated_cost),
-    inputTokens: numberOr(item.input_tokens),
-    outputTokens: numberOr(item.output_tokens),
-    cacheWriteTokens: numberOr(item.cache_write_tokens),
-    cacheReadTokens: numberOr(item.cache_read_tokens),
-    reasoningTokens: numberOr(item.reasoning_tokens),
-    totalTokens: numberOr(item.total_tokens),
-    conversations: numberOr(item.conversations),
-    toolCalls: numberOr(item.tool_calls),
-    failedToolCalls: numberOr(item.failed_tool_calls),
-    toolErrorRatePct: numberOr(item.tool_error_rate_pct),
-    subagents: numberOr(item.subagents),
-    claudeInputTokens: numberOr(item.claude_input_tokens),
-    claudeOutputTokens: numberOr(item.claude_output_tokens),
-    claudeCacheWriteTokens: numberOr(item.claude_cache_write_tokens),
-    claudeCacheReadTokens: numberOr(item.claude_cache_read_tokens),
-    claudeReasoningTokens: numberOr(item.claude_reasoning_tokens),
-    claudeTotalTokens: numberOr(item.claude_total_tokens),
-    claudeConversations: numberOr(item.claude_conversations),
-    claudeToolCalls: numberOr(item.claude_tool_calls),
-    claudeFailedToolCalls: numberOr(item.claude_failed_tool_calls),
-    claudeToolErrorRatePct: numberOr(item.claude_tool_error_rate_pct),
-    claudeSubagents: numberOr(item.claude_subagents),
-    codexInputTokens: numberOr(item.codex_input_tokens),
-    codexOutputTokens: numberOr(item.codex_output_tokens),
-    codexCacheWriteTokens: numberOr(item.codex_cache_write_tokens),
-    codexCacheReadTokens: numberOr(item.codex_cache_read_tokens),
-    codexReasoningTokens: numberOr(item.codex_reasoning_tokens),
-    codexTotalTokens: numberOr(item.codex_total_tokens),
-    codexConversations: numberOr(item.codex_conversations),
-    codexToolCalls: numberOr(item.codex_tool_calls),
-    codexFailedToolCalls: numberOr(item.codex_failed_tool_calls),
-    codexToolErrorRatePct: numberOr(item.codex_tool_error_rate_pct),
-    codexSubagents: numberOr(item.codex_subagents),
+    key: stringOr(field(item, "key")),
+    label: stringOr(field(item, "label")),
+    start: stringOr(field(item, "start")),
+    end: stringOr(field(item, "end")),
+    estimatedCost: numberOr(field(item, "estimatedCost", "estimated_cost")),
+    claudeEstimatedCost: numberOr(
+      field(item, "claudeEstimatedCost", "claude_estimated_cost")
+    ),
+    codexEstimatedCost: numberOr(field(item, "codexEstimatedCost", "codex_estimated_cost")),
+    inputTokens: numberOr(field(item, "inputTokens", "input_tokens")),
+    outputTokens: numberOr(field(item, "outputTokens", "output_tokens")),
+    cacheWriteTokens: numberOr(field(item, "cacheWriteTokens", "cache_write_tokens")),
+    cacheReadTokens: numberOr(field(item, "cacheReadTokens", "cache_read_tokens")),
+    reasoningTokens: numberOr(field(item, "reasoningTokens", "reasoning_tokens")),
+    totalTokens: numberOr(field(item, "totalTokens", "total_tokens")),
+    conversations: numberOr(field(item, "conversations")),
+    toolCalls: numberOr(field(item, "toolCalls", "tool_calls")),
+    failedToolCalls: numberOr(field(item, "failedToolCalls", "failed_tool_calls")),
+    toolErrorRatePct: numberOr(field(item, "toolErrorRatePct", "tool_error_rate_pct")),
+    subagents: numberOr(field(item, "subagents")),
+    claudeInputTokens: numberOr(field(item, "claudeInputTokens", "claude_input_tokens")),
+    claudeOutputTokens: numberOr(
+      field(item, "claudeOutputTokens", "claude_output_tokens")
+    ),
+    claudeCacheWriteTokens: numberOr(
+      field(item, "claudeCacheWriteTokens", "claude_cache_write_tokens")
+    ),
+    claudeCacheReadTokens: numberOr(
+      field(item, "claudeCacheReadTokens", "claude_cache_read_tokens")
+    ),
+    claudeReasoningTokens: numberOr(
+      field(item, "claudeReasoningTokens", "claude_reasoning_tokens")
+    ),
+    claudeTotalTokens: numberOr(field(item, "claudeTotalTokens", "claude_total_tokens")),
+    claudeConversations: numberOr(
+      field(item, "claudeConversations", "claude_conversations")
+    ),
+    claudeToolCalls: numberOr(field(item, "claudeToolCalls", "claude_tool_calls")),
+    claudeFailedToolCalls: numberOr(
+      field(item, "claudeFailedToolCalls", "claude_failed_tool_calls")
+    ),
+    claudeToolErrorRatePct: numberOr(
+      field(item, "claudeToolErrorRatePct", "claude_tool_error_rate_pct")
+    ),
+    claudeSubagents: numberOr(field(item, "claudeSubagents", "claude_subagents")),
+    codexInputTokens: numberOr(field(item, "codexInputTokens", "codex_input_tokens")),
+    codexOutputTokens: numberOr(field(item, "codexOutputTokens", "codex_output_tokens")),
+    codexCacheWriteTokens: numberOr(
+      field(item, "codexCacheWriteTokens", "codex_cache_write_tokens")
+    ),
+    codexCacheReadTokens: numberOr(
+      field(item, "codexCacheReadTokens", "codex_cache_read_tokens")
+    ),
+    codexReasoningTokens: numberOr(
+      field(item, "codexReasoningTokens", "codex_reasoning_tokens")
+    ),
+    codexTotalTokens: numberOr(field(item, "codexTotalTokens", "codex_total_tokens")),
+    codexConversations: numberOr(field(item, "codexConversations", "codex_conversations")),
+    codexToolCalls: numberOr(field(item, "codexToolCalls", "codex_tool_calls")),
+    codexFailedToolCalls: numberOr(
+      field(item, "codexFailedToolCalls", "codex_failed_tool_calls")
+    ),
+    codexToolErrorRatePct: numberOr(
+      field(item, "codexToolErrorRatePct", "codex_tool_error_rate_pct")
+    ),
+    codexSubagents: numberOr(field(item, "codexSubagents", "codex_subagents")),
   };
 }
 
@@ -630,48 +665,84 @@ function normalizeTimeSeries(value: unknown): AnalyticsTimeSeries {
 function normalizeDailyUsage(value: unknown): DailyUsage {
   const item = asRecord(value);
   return {
-    date: stringOr(item.date),
-    inputTokens: numberOr(item.input_tokens),
-    outputTokens: numberOr(item.output_tokens),
-    cacheWriteTokens: numberOr(item.cache_write_tokens),
-    cacheReadTokens: numberOr(item.cache_read_tokens),
-    conversations: numberOr(item.conversations),
-    subagents: numberOr(item.subagents),
-    claudeInputTokens: numberOr(item.claude_input_tokens),
-    claudeOutputTokens: numberOr(item.claude_output_tokens),
-    claudeCacheWriteTokens: numberOr(item.claude_cache_write_tokens),
-    claudeCacheReadTokens: numberOr(item.claude_cache_read_tokens),
-    codexInputTokens: numberOr(item.codex_input_tokens),
-    codexOutputTokens: numberOr(item.codex_output_tokens),
-    codexCacheWriteTokens: numberOr(item.codex_cache_write_tokens),
-    codexCacheReadTokens: numberOr(item.codex_cache_read_tokens),
-    claudeConversations: numberOr(item.claude_conversations),
-    codexConversations: numberOr(item.codex_conversations),
-    claudeSubagents: numberOr(item.claude_subagents),
-    codexSubagents: numberOr(item.codex_subagents),
+    date: stringOr(field(item, "date")),
+    inputTokens: numberOr(field(item, "inputTokens", "input_tokens")),
+    outputTokens: numberOr(field(item, "outputTokens", "output_tokens")),
+    cacheWriteTokens: numberOr(field(item, "cacheWriteTokens", "cache_write_tokens")),
+    cacheReadTokens: numberOr(field(item, "cacheReadTokens", "cache_read_tokens")),
+    conversations: numberOr(field(item, "conversations")),
+    subagents: numberOr(field(item, "subagents")),
+    claudeInputTokens: numberOr(field(item, "claudeInputTokens", "claude_input_tokens")),
+    claudeOutputTokens: numberOr(
+      field(item, "claudeOutputTokens", "claude_output_tokens")
+    ),
+    claudeCacheWriteTokens: numberOr(
+      field(item, "claudeCacheWriteTokens", "claude_cache_write_tokens")
+    ),
+    claudeCacheReadTokens: numberOr(
+      field(item, "claudeCacheReadTokens", "claude_cache_read_tokens")
+    ),
+    codexInputTokens: numberOr(field(item, "codexInputTokens", "codex_input_tokens")),
+    codexOutputTokens: numberOr(field(item, "codexOutputTokens", "codex_output_tokens")),
+    codexCacheWriteTokens: numberOr(
+      field(item, "codexCacheWriteTokens", "codex_cache_write_tokens")
+    ),
+    codexCacheReadTokens: numberOr(
+      field(item, "codexCacheReadTokens", "codex_cache_read_tokens")
+    ),
+    claudeConversations: numberOr(
+      field(item, "claudeConversations", "claude_conversations")
+    ),
+    codexConversations: numberOr(field(item, "codexConversations", "codex_conversations")),
+    claudeSubagents: numberOr(field(item, "claudeSubagents", "claude_subagents")),
+    codexSubagents: numberOr(field(item, "codexSubagents", "codex_subagents")),
   };
 }
 
 export function normalizeAnalytics(value: unknown): AnalyticsData {
   const item = asRecord(value);
-  const modelBreakdownByProvider = asRecord(item.model_breakdown_by_provider);
-  const toolBreakdownByProvider = asRecord(item.tool_breakdown_by_provider);
-  const subagentTypeBreakdownByProvider = asRecord(item.subagent_type_breakdown_by_provider);
-  const costBreakdownByProvider = asRecord(item.cost_breakdown_by_provider);
-  const costBreakdownByModel = asRecord(item.cost_breakdown_by_model);
+  const modelBreakdownByProvider = asRecord(
+    field(item, "modelBreakdownByProvider", "model_breakdown_by_provider")
+  );
+  const toolBreakdownByProvider = asRecord(
+    field(item, "toolBreakdownByProvider", "tool_breakdown_by_provider")
+  );
+  const subagentTypeBreakdownByProvider = asRecord(
+    field(item, "subagentTypeBreakdownByProvider", "subagent_type_breakdown_by_provider")
+  );
+  const costBreakdownByProvider = asRecord(
+    field(item, "costBreakdownByProvider", "cost_breakdown_by_provider")
+  );
+  const costBreakdownByModel = asRecord(
+    field(item, "costBreakdownByModel", "cost_breakdown_by_model")
+  );
 
   return {
-    totalConversations: numberOr(item.total_conversations),
-    totalInputTokens: numberOr(item.total_input_tokens),
-    totalOutputTokens: numberOr(item.total_output_tokens),
-    totalCacheCreationTokens: numberOr(item.total_cache_creation_tokens),
-    totalCacheReadTokens: numberOr(item.total_cache_read_tokens),
-    totalReasoningTokens: numberOr(item.total_reasoning_tokens),
-    totalToolCalls: numberOr(item.total_tool_calls),
-    totalFailedToolCalls: numberOr(item.total_failed_tool_calls),
-    modelBreakdown: asRecord(item.model_breakdown) as Record<string, number>,
-    toolBreakdown: asRecord(item.tool_breakdown) as Record<string, number>,
-    subagentTypeBreakdown: asRecord(item.subagent_type_breakdown) as Record<string, number>,
+    totalConversations: numberOr(field(item, "totalConversations", "total_conversations")),
+    totalInputTokens: numberOr(field(item, "totalInputTokens", "total_input_tokens")),
+    totalOutputTokens: numberOr(field(item, "totalOutputTokens", "total_output_tokens")),
+    totalCacheCreationTokens: numberOr(
+      field(item, "totalCacheCreationTokens", "total_cache_creation_tokens")
+    ),
+    totalCacheReadTokens: numberOr(field(item, "totalCacheReadTokens", "total_cache_read_tokens")),
+    totalReasoningTokens: numberOr(
+      field(item, "totalReasoningTokens", "total_reasoning_tokens")
+    ),
+    totalToolCalls: numberOr(field(item, "totalToolCalls", "total_tool_calls")),
+    totalFailedToolCalls: numberOr(
+      field(item, "totalFailedToolCalls", "total_failed_tool_calls")
+    ),
+    modelBreakdown: asRecord(field(item, "modelBreakdown", "model_breakdown")) as Record<
+      string,
+      number
+    >,
+    toolBreakdown: asRecord(field(item, "toolBreakdown", "tool_breakdown")) as Record<
+      string,
+      number
+    >,
+    subagentTypeBreakdown: asRecord(
+      field(item, "subagentTypeBreakdown", "subagent_type_breakdown")
+    ) as Record<string, number>,
     modelBreakdownByProvider: Object.fromEntries(
       Object.entries(modelBreakdownByProvider).map(([key, entry]) => [
         key,
@@ -690,11 +761,11 @@ export function normalizeAnalytics(value: unknown): AnalyticsData {
         normalizeProviderBreakdown(entry),
       ])
     ),
-    dailyUsage: asArray(item.daily_usage).map(normalizeDailyUsage),
-    rates: normalizeRates(item.rates),
-    timeSeries: normalizeTimeSeries(item.time_series),
-    estimatedCost: numberOr(item.estimated_cost),
-    costBreakdown: normalizeCostBreakdown(item.cost_breakdown),
+    dailyUsage: asArray(field(item, "dailyUsage", "daily_usage")).map(normalizeDailyUsage),
+    rates: normalizeRates(field(item, "rates")),
+    timeSeries: normalizeTimeSeries(field(item, "timeSeries", "time_series")),
+    estimatedCost: numberOr(field(item, "estimatedCost", "estimated_cost")),
+    costBreakdown: normalizeCostBreakdown(field(item, "costBreakdown", "cost_breakdown")),
     costBreakdownByProvider: Object.fromEntries(
       Object.entries(costBreakdownByProvider).map(([key, entry]) => [
         key,
@@ -1001,6 +1072,198 @@ function normalizePrefectOatsMetadata(value: unknown): PrefectOatsMetadata | und
   ) as PrefectOatsMetadata;
 }
 
+function normalizeBooleanLike(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function normalizeInvocation(value: unknown): OrchestrationInvocation | null {
+  if (value === null) {
+    return null;
+  }
+
+  const item = asRecord(value);
+  return {
+    agent: stringOr(field(item, "agent")),
+    role: stringOr(field(item, "role")),
+    command: asArray(field(item, "command")).map((entry) => stringOr(entry)),
+    cwd: stringOr(field(item, "cwd")),
+    prompt: stringOr(field(item, "prompt")),
+    sessionId: nullableString(field(item, "sessionId", "session_id")),
+    sessionIdField: nullableString(field(item, "sessionIdField", "session_id_field")),
+    requestedSessionId: nullableString(field(item, "requestedSessionId", "requested_session_id")),
+    outputText: stringOr(field(item, "outputText", "output_text")),
+    rawStdout: stringOr(field(item, "rawStdout", "raw_stdout")),
+    rawStderr: stringOr(field(item, "rawStderr", "raw_stderr")),
+    exitCode: nullableNumber(field(item, "exitCode", "exit_code")),
+    timedOut: booleanOr(field(item, "timedOut", "timed_out")),
+    startedAt: stringOr(field(item, "startedAt", "started_at")),
+    finishedAt: nullableString(field(item, "finishedAt", "finished_at")),
+    projectPath: nullableString(field(item, "projectPath", "project_path")),
+    conversationPath: nullableString(field(item, "conversationPath", "conversation_path")),
+  };
+}
+
+function normalizeOrchestrationTask(value: unknown): OrchestrationTaskRecord {
+  const item = asRecord(value);
+  return {
+    taskId: stringOr(field(item, "taskId", "task_id")),
+    title: stringOr(field(item, "title")),
+    dependsOn: asArray(field(item, "dependsOn", "depends_on")).map((entry) => stringOr(entry)),
+    status: stringOr(field(item, "status")) as OrchestrationTaskRecord["status"],
+    attempts: numberOr(field(item, "attempts")),
+    invocation:
+      field(item, "invocation") === undefined ? null : normalizeInvocation(field(item, "invocation")),
+  };
+}
+
+function normalizeOrchestrationDag(value: unknown): OrchestrationDag {
+  const item = asRecord(value);
+  const stats = asRecord(field(item, "stats"));
+
+  return {
+    nodes: asArray(field(item, "nodes")).map((entry) => {
+      const node = asRecord(entry);
+      return {
+        id: stringOr(field(node, "id")),
+        kind: stringOr(field(node, "kind")) as OrchestrationDagNode["kind"],
+        label: stringOr(field(node, "label")),
+        description: nullableString(field(node, "description")),
+        role: stringOr(field(node, "role")),
+        agent: stringOr(field(node, "agent")),
+        sessionId: nullableString(field(node, "sessionId", "session_id")),
+        projectPath: nullableString(field(node, "projectPath", "project_path")),
+        conversationPath: nullableString(field(node, "conversationPath", "conversation_path")),
+        status: stringOr(field(node, "status")) as OrchestrationDagNode["status"],
+        isActive: booleanOr(field(node, "isActive", "is_active")),
+        isStale: booleanOr(field(node, "isStale", "is_stale")),
+        statusTone: nullableString(field(node, "statusTone", "status_tone")) as
+          | OrchestrationDagNode["statusTone"]
+          | undefined,
+        statusLabel: nullableString(field(node, "statusLabel", "status_label")),
+        attempts: nullableNumber(field(node, "attempts")),
+        lastHeartbeatAt: nullableString(field(node, "lastHeartbeatAt", "last_heartbeat_at")),
+        exitCode: nullableNumber(field(node, "exitCode", "exit_code")),
+        timedOut: booleanOr(field(node, "timedOut", "timed_out")),
+        depth: numberOr(field(node, "depth")),
+      };
+    }),
+    edges: asArray(field(item, "edges")).map((entry) => {
+      const edge = asRecord(entry);
+      return {
+        id: stringOr(field(edge, "id")),
+        source: stringOr(field(edge, "source")),
+        target: stringOr(field(edge, "target")),
+        label: nullableString(field(edge, "label")),
+      };
+    }),
+    stats: {
+      totalNodes: numberOr(field(stats, "totalNodes", "total_nodes")),
+      totalEdges: numberOr(field(stats, "totalEdges", "total_edges")),
+      maxDepth: numberOr(field(stats, "maxDepth", "max_depth")),
+      maxBreadth: numberOr(field(stats, "maxBreadth", "max_breadth")),
+      rootCount: numberOr(field(stats, "rootCount", "root_count")),
+      providerBreakdown: asRecord(
+        field(stats, "providerBreakdown", "provider_breakdown")
+      ) as Record<string, number>,
+      timedOutCount: numberOr(field(stats, "timedOutCount", "timed_out_count")),
+      activeCount: numberOr(field(stats, "activeCount", "active_count")),
+      pendingCount: numberOr(field(stats, "pendingCount", "pending_count")),
+      failedCount: numberOr(field(stats, "failedCount", "failed_count")),
+      succeededCount: numberOr(field(stats, "succeededCount", "succeeded_count")),
+    },
+  };
+}
+
+function normalizeOrchestrationEvaluation(value: unknown): OrchestrationRunEvaluation | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const item = asRecord(value);
+  const summary = asRecord(field(item, "summary"));
+
+  return {
+    summary: {
+      conversationCount: numberOr(field(summary, "conversationCount", "conversation_count")),
+      linkedConversationCount: numberOr(
+        field(summary, "linkedConversationCount", "linked_conversation_count")
+      ),
+      missingConversationCount: numberOr(
+        field(summary, "missingConversationCount", "missing_conversation_count")
+      ),
+      activeConversationCount: numberOr(
+        field(summary, "activeConversationCount", "active_conversation_count")
+      ),
+      failedConversationCount: numberOr(
+        field(summary, "failedConversationCount", "failed_conversation_count")
+      ),
+      providerBreakdown: asRecord(
+        field(summary, "providerBreakdown", "provider_breakdown")
+      ) as Record<string, number>,
+    },
+    conversations: asArray(field(item, "conversations")).map((entry) => {
+      const conversation = asRecord(entry);
+      return {
+        nodeId: stringOr(field(conversation, "nodeId", "node_id")),
+        label: stringOr(field(conversation, "label")),
+        role: stringOr(field(conversation, "role")),
+        agent: stringOr(field(conversation, "agent")),
+        status: stringOr(field(conversation, "status")) as OrchestrationRunEvaluationConversation["status"],
+        taskId: nullableString(field(conversation, "taskId", "task_id")),
+        sessionId: nullableString(field(conversation, "sessionId", "session_id")),
+        projectPath: nullableString(field(conversation, "projectPath", "project_path")),
+        conversationPath: nullableString(
+          field(conversation, "conversationPath", "conversation_path")
+        ),
+        startedAt: stringOr(field(conversation, "startedAt", "started_at")),
+        finishedAt: nullableString(field(conversation, "finishedAt", "finished_at")),
+        hasSessionLink:
+          normalizeBooleanLike(field(conversation, "hasSessionLink", "has_session_link")) ??
+          Boolean(field(conversation, "conversationPath", "conversation_path")),
+      };
+    }),
+  };
+}
+
+export function normalizeOvernightOatsRuns(value: unknown): OvernightOatsRunRecord[] {
+  return asArray(value).map((entry) => {
+    const item = asRecord(entry);
+    return {
+      source:
+        stringOr(field(item, "source")) === "overnight-oats" ? "overnight-oats" : "overnight-oats",
+      contractVersion:
+        stringOr(field(item, "contractVersion", "contract_version")) === "oats-run-v1"
+          ? "oats-run-v1"
+          : "oats-runtime-v1",
+      runId: stringOr(field(item, "runId", "run_id")),
+      runTitle: stringOr(field(item, "runTitle", "run_title")),
+      repoRoot: stringOr(field(item, "repoRoot", "repo_root")),
+      configPath: stringOr(field(item, "configPath", "config_path")),
+      runSpecPath: stringOr(field(item, "runSpecPath", "run_spec_path")),
+      mode: stringOr(field(item, "mode")),
+      integrationBranch: stringOr(field(item, "integrationBranch", "integration_branch")),
+      taskPrTarget: stringOr(field(item, "taskPrTarget", "task_pr_target")),
+      finalPrTarget: stringOr(field(item, "finalPrTarget", "final_pr_target")),
+      status: stringOr(field(item, "status")) as OvernightOatsRunRecord["status"],
+      activeTaskId: nullableString(field(item, "activeTaskId", "active_task_id")),
+      heartbeatAt: nullableString(field(item, "heartbeatAt", "heartbeat_at")),
+      finishedAt: nullableString(field(item, "finishedAt", "finished_at")),
+      planner:
+        field(item, "planner") === undefined ? null : normalizeInvocation(field(item, "planner")),
+      tasks: asArray(field(item, "tasks")).map(normalizeOrchestrationTask),
+      createdAt: stringOr(field(item, "createdAt", "created_at")),
+      lastUpdatedAt: stringOr(field(item, "lastUpdatedAt", "last_updated_at")),
+      isRunning:
+        normalizeBooleanLike(field(item, "isRunning", "is_running")) ??
+        stringOr(field(item, "status")) === "running",
+      recordedAt: stringOr(field(item, "recordedAt", "recorded_at")),
+      recordPath: stringOr(field(item, "recordPath", "record_path")),
+      dag: normalizeOrchestrationDag(field(item, "dag")),
+      evaluation: normalizeOrchestrationEvaluation(field(item, "evaluation")),
+    };
+  });
+}
+
 export function normalizePrefectDeployments(value: unknown): PrefectDeploymentRecord[] {
   return asArray(value).map((entry) => {
     const item = asRecord(entry);
@@ -1024,6 +1287,9 @@ export function normalizePrefectFlowRuns(value: unknown): PrefectFlowRunRecord[]
     const item = asRecord(entry);
     const stateName = nullableString(field(item, "stateName", "state_name"));
     const stateType = nullableString(field(item, "stateType", "state_type"));
+    const backendStatusTone = nullableString(field(item, "statusTone", "status_tone"));
+    const backendStatusLabel = nullableString(field(item, "statusLabel", "status_label"));
+    const backendIsActive = normalizeBooleanLike(field(item, "isActive", "is_active"));
     return {
       flowRunId: stringOr(field(item, "flowRunId", "flow_run_id")),
       flowRunName: nullableString(field(item, "flowRunName", "flow_run_name")),
@@ -1038,9 +1304,11 @@ export function normalizePrefectFlowRuns(value: unknown): PrefectFlowRunRecord[]
       createdAt: nullableString(field(item, "createdAt", "created_at")),
       updatedAt: nullableString(field(item, "updatedAt", "updated_at")),
       oatsMetadata: normalizePrefectOatsMetadata(field(item, "oatsMetadata", "oats_metadata")),
-      statusTone: normalizePrefectRunTone(stateType),
-      statusLabel: stateName ?? stateType ?? "Unknown",
-      isActive: stateType === "RUNNING" || stateType === "PENDING",
+      statusTone:
+        (backendStatusTone as PrefectFlowRunRecord["statusTone"] | undefined) ??
+        normalizePrefectRunTone(stateType),
+      statusLabel: backendStatusLabel ?? stateName ?? stateType ?? "Unknown",
+      isActive: backendIsActive ?? (stateType === "RUNNING" || stateType === "PENDING"),
     };
   });
 }
@@ -1049,14 +1317,18 @@ export function normalizePrefectWorkers(value: unknown): PrefectWorkerRecord[] {
   return asArray(value).map((entry) => {
     const item = asRecord(entry);
     const status = nullableString(field(item, "status"));
+    const backendStatusTone = nullableString(field(item, "statusTone", "status_tone"));
+    const backendIsOnline = normalizeBooleanLike(field(item, "isOnline", "is_online"));
     return {
       workerId: stringOr(field(item, "workerId", "worker_id")),
       workerName: stringOr(field(item, "workerName", "worker_name")),
       workPoolName: nullableString(field(item, "workPoolName", "work_pool_name")),
       status,
       lastHeartbeatAt: nullableString(field(item, "lastHeartbeatAt", "last_heartbeat_at")),
-      statusTone: normalizeInfraTone(status),
-      isOnline: status?.toUpperCase() === "ONLINE",
+      statusTone:
+        (backendStatusTone as PrefectWorkerRecord["statusTone"] | undefined) ??
+        normalizeInfraTone(status),
+      isOnline: backendIsOnline ?? status?.toUpperCase() === "ONLINE",
     };
   });
 }
@@ -1071,6 +1343,11 @@ export function normalizePrefectWorkPools(
     const attachedWorkers = workers.filter((worker) => worker.workPoolName === workPoolName);
     const status = nullableString(field(item, "status"));
     const isPaused = booleanOr(field(item, "isPaused", "is_paused"));
+    const backendWorkerCount = nullableNumber(field(item, "workerCount", "worker_count"));
+    const backendOnlineWorkerCount = nullableNumber(
+      field(item, "onlineWorkerCount", "online_worker_count")
+    );
+    const backendStatusTone = nullableString(field(item, "statusTone", "status_tone"));
     return {
       workPoolId: stringOr(field(item, "workPoolId", "work_pool_id")),
       workPoolName,
@@ -1084,9 +1361,12 @@ export function normalizePrefectWorkPools(
             typeof field(item, "concurrencyLimit", "concurrency_limit") === "number")
           ? numberOr(field(item, "concurrencyLimit", "concurrency_limit"))
           : undefined,
-      workerCount: attachedWorkers.length,
-      onlineWorkerCount: attachedWorkers.filter((worker) => worker.isOnline).length,
-      statusTone: isPaused ? "warning" : normalizeInfraTone(status),
+      workerCount: backendWorkerCount ?? attachedWorkers.length,
+      onlineWorkerCount:
+        backendOnlineWorkerCount ?? attachedWorkers.filter((worker) => worker.isOnline).length,
+      statusTone:
+        (backendStatusTone as PrefectWorkPoolRecord["statusTone"] | undefined) ??
+        (isPaused ? "warning" : normalizeInfraTone(status)),
     };
   });
 }

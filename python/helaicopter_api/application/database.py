@@ -140,7 +140,7 @@ def _status_payload_is_complete(payload: DatabaseStatusPayload | None) -> bool:
 
 def _fallback_runtime_surface() -> DatabaseRuntimePayload:
     return {
-        "analyticsReadBackend": "legacy",
+        "analyticsReadBackend": "duckdb",
         "conversationSummaryReadBackend": "legacy",
     }
 

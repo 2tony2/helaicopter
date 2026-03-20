@@ -164,7 +164,12 @@ def resolve_flow_run_identity(
     flow_run_name: str | None = None,
 ) -> tuple[str, str | None]:
     resolved_id = flow_run_id or _runtime_value(runtime.flow_run.id) or f"local-{uuid.uuid4().hex}"
-    resolved_name = flow_run_name or _runtime_value(runtime.flow_run.name)
+    resolved_name = flow_run_name
+    if resolved_name is None:
+        try:
+            resolved_name = _runtime_value(runtime.flow_run.name)
+        except Exception:
+            resolved_name = None
     return resolved_id, resolved_name
 
 

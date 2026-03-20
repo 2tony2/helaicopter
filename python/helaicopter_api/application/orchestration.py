@@ -12,13 +12,21 @@ from pydantic import ConfigDict, InstanceOf, validate_call
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.orchestration import StoredOatsRunRecord, StoredOatsRuntimeState
 from helaicopter_api.schema.orchestration import (
+    OrchestrationFactsResponse,
     OrchestrationDagEdgeResponse,
     OrchestrationDagNodeResponse,
     OrchestrationDagResponse,
     OrchestrationDagStatsResponse,
     OrchestrationInvocationResponse,
+    OrchestrationRunFactResponse,
     OrchestrationRunResponse,
+    OrchestrationTaskAttemptFactResponse,
     OrchestrationTaskResponse,
+)
+from helaicopter_api.pure.orchestration_analytics import (
+    StoredRuntimeArtifact,
+    StoredTerminalArtifact,
+    build_oats_orchestration_facts,
 )
 from oats.models import (
     AgentInvocationResult,
@@ -63,6 +71,28 @@ def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationR
             reverse=True,
         )
     ]
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def get_oats_facts(services: InstanceOf[BackendServices]) -> OrchestrationFactsResponse:
+    facts = build_oats_orchestration_facts(
+        [
+            StoredRuntimeArtifact(path=item.path, state=item.state)
+            for item in services.oats_run_store.list_runtime_states()
+        ],
+        [
+            StoredTerminalArtifact(path=item.path, record=item.record)
+            for item in services.oats_run_store.list_run_records()
+        ],
+    )
+    return OrchestrationFactsResponse(
+        canonical_rules=list(facts.canonical_rules),
+        run_facts=[OrchestrationRunFactResponse.model_validate(fact.to_dict()) for fact in facts.run_facts],
+        task_attempt_facts=[
+            OrchestrationTaskAttemptFactResponse.model_validate(fact.to_dict())
+            for fact in facts.task_attempt_facts
+        ],
+    )
 
 
 def _merge_run(runs_by_id: dict[str, _ShapedRun], shaped: _ShapedRun) -> None:

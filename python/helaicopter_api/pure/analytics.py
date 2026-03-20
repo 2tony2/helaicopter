@@ -7,8 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
-
-from .pricing import calculate_cost, supports_long_context_premium
+from helaicopter_semantics import calculate_cost, supports_long_context_premium, resolve_provider
 
 AnalyticsProvider = Literal["claude", "codex"]
 TimeSeriesKey = Literal["hourly", "daily", "weekly", "monthly"]
@@ -406,11 +405,12 @@ def build_analytics(
 
 
 def provider_for_summary(conversation: HistoricalConversationSummary) -> AnalyticsProvider:
-    """Infer provider using the persisted provider field with a project-path fallback."""
-    provider = conversation.provider.lower()
-    if provider == "codex" or conversation.project_path.startswith("codex:"):
-        return "codex"
-    return "claude"
+    """Infer provider using canonical semantic resolution rules."""
+    return resolve_provider(
+        model=conversation.model,
+        provider=conversation.provider,
+        project_path=conversation.project_path,
+    )
 
 
 def _ensure_utc(value: datetime | None) -> datetime:

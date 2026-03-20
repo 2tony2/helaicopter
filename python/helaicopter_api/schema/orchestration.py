@@ -114,3 +114,42 @@ class OrchestrationRunResponse(CamelCaseHttpResponseModel):
     recorded_at: str
     record_path: str
     dag: OrchestrationDagResponse
+
+
+class OrchestrationRunFactResponse(CamelCaseHttpResponseModel):
+    run_id: RunId
+    run_title: str
+    source_kind: Literal["runtime_snapshot", "terminal_record"]
+    canonical_reason: str
+    status: RunRuntimeStatus
+    task_count: int = 0
+    attempt_count: int = 0
+    completed_task_count: int = 0
+    failed_task_count: int = 0
+    pending_task_count: int = 0
+    running_task_count: int = 0
+    timed_out_task_count: int = 0
+    active_task_id: TaskId | None = None
+    is_running: bool = False
+    is_stale: bool = False
+    runtime_state_path: str | None = None
+    terminal_record_path: str | None = None
+
+
+class OrchestrationTaskAttemptFactResponse(CamelCaseHttpResponseModel):
+    run_id: RunId
+    task_id: TaskId
+    task_title: str
+    attempt_number: int
+    source_kind: Literal["runtime_snapshot", "terminal_record"]
+    status: TaskRuntimeStatus
+    agent: ProviderName | None = None
+    session_id: SessionId | None = None
+    exit_code: int | None = None
+    timed_out: bool = False
+
+
+class OrchestrationFactsResponse(CamelCaseHttpResponseModel):
+    canonical_rules: list[str] = []
+    run_facts: list[OrchestrationRunFactResponse] = []
+    task_attempt_facts: list[OrchestrationTaskAttemptFactResponse] = []

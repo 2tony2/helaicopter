@@ -113,6 +113,9 @@ class ExportConversationSummaryPayload(TypedDict, total=False):
     taskCount: int
     toolBreakdown: dict[str, int]
     subagentTypeBreakdown: dict[str, int]
+    recordSource: str
+    sourcePath: str
+    sourceFileModifiedAt: int | float
 
 
 class ExportConversationDetailPayload(TypedDict, total=False):

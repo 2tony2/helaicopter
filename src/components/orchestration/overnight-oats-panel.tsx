@@ -30,6 +30,7 @@ import {
 } from "@/hooks/use-conversations";
 import type {
   OrchestrationDagNode,
+  OrchestrationStatusTone,
   OvernightOatsRunRecord,
   PrefectFlowRunRecord,
   PrefectOatsMetadata,
@@ -59,10 +60,12 @@ interface OatsNodeData {
   role: string;
   agent: string;
   status: string;
+  statusLabel: string;
+  statusTone: OrchestrationStatusTone;
   isActive: boolean;
   isStale: boolean;
   timedOut: boolean;
-  exitCode: number;
+  exitCode?: number | null;
   depth: number;
   attempts?: number;
   clickable: boolean;
@@ -78,32 +81,44 @@ function isStaleHeartbeat(timestamp?: string | null, active = false) {
   return Date.now() - new Date(timestamp).getTime() > OATS_STALE_AFTER_MS;
 }
 
+function deriveOatsNodeTone(node: OrchestrationDagNode, isStale: boolean): OrchestrationStatusTone {
+  if (node.statusTone) return node.statusTone;
+  if (isStale) return "warning";
+  if (node.isActive) return "running";
+  if (node.status === "succeeded" || node.status === "completed") return "success";
+  if (node.status === "failed" || node.status === "timed_out") return "error";
+  if (node.status === "pending" || node.status === "planning" || node.status === "blocked") {
+    return "pending";
+  }
+  return "unknown";
+}
+
+function deriveOatsNodeLabel(node: OrchestrationDagNode, isStale: boolean): string {
+  if (node.statusLabel) return node.statusLabel;
+  if (isStale) return "stale";
+  if (node.timedOut) return "timed out";
+  return node.status;
+}
+
 const OatsNode = memo(function OatsNode({ data }: NodeProps) {
   const d = data as unknown as OatsNodeData;
   const isPlanner = d.role === "planner";
-  const statusTone = d.isStale
+  const statusToneClass = d.statusTone === "warning"
     ? "border-amber-500/70 ring-2 ring-amber-500/30"
-    : d.isActive
+    : d.statusTone === "running"
     ? "border-emerald-500/80 ring-4 ring-emerald-500/20 animate-pulse"
-    : d.status === "succeeded"
+    : d.statusTone === "success"
     ? "border-emerald-500/40 ring-1 ring-emerald-500/10"
-    : d.status === "failed" || d.status === "timed_out"
+    : d.statusTone === "error"
     ? "border-rose-500/50 ring-1 ring-rose-500/15"
     : "border-sky-500/40 ring-1 ring-sky-500/10";
-  const statusLabel = d.isStale
-    ? "stale"
-    : d.isActive
-    ? "running"
-    : d.timedOut
-    ? "timed out"
-    : d.status;
 
   return (
     <div
       className={cn(
         "nodrag flex w-[280px] min-h-[212px] flex-col overflow-hidden rounded-2xl border-2 bg-card text-card-foreground shadow-lg transition-all hover:shadow-xl hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
         isPlanner ? "bg-slate-50/70 dark:bg-slate-950/20" : "",
-        statusTone
+        statusToneClass
       )}
       onClick={d.onClick}
       role={d.clickable ? "button" : undefined}
@@ -143,16 +158,16 @@ const OatsNode = memo(function OatsNode({ data }: NodeProps) {
           <div className="rounded-lg border border-border/50 bg-muted/50 px-2.5 py-2">
             <div className="text-muted-foreground">Status</div>
             <div className="mt-1 flex items-center gap-1 font-medium">
-              {d.isActive ? (
+              {d.statusTone === "running" ? (
                 <Activity className="h-3 w-3 text-emerald-500" />
-              ) : d.status === "succeeded" ? (
+              ) : d.statusTone === "success" ? (
                 <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-              ) : d.status === "failed" || d.status === "timed_out" || d.isStale ? (
+              ) : d.statusTone === "error" || d.statusTone === "warning" ? (
                 <CircleAlert className="h-3 w-3 text-amber-500" />
               ) : (
                 <Clock3 className="h-3 w-3 text-muted-foreground" />
               )}
-              {statusLabel}
+              {d.statusLabel}
             </div>
           </div>
           <div className="rounded-lg border border-border/50 bg-muted/50 px-2.5 py-2">
@@ -256,31 +271,36 @@ function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
   const { fitView } = useReactFlow();
 
   const graph = useMemo(() => {
-    const nodes: Node[] = run.dag.nodes.map((node: OrchestrationDagNode) => ({
-      id: node.id,
-      type: "oats",
-      position: { x: 0, y: 0 },
-      draggable: false,
-      data: {
-        label: node.label,
-        description: node.description,
-        role: node.role,
-        agent: node.agent,
-        status: node.status,
-        isActive: node.isActive,
-        isStale: isStaleHeartbeat(node.lastHeartbeatAt, node.isActive),
-        timedOut: node.timedOut,
-        exitCode: node.exitCode,
-        depth: node.depth,
-        attempts: node.attempts,
-        clickable: Boolean(node.conversationPath),
-        onClick: () => {
-          if (node.conversationPath) {
-            router.push(node.conversationPath);
-          }
-        },
-      } satisfies OatsNodeData,
-    }));
+    const nodes: Node[] = run.dag.nodes.map((node: OrchestrationDagNode) => {
+      const isStale = node.isStale ?? isStaleHeartbeat(node.lastHeartbeatAt, node.isActive);
+      return {
+        id: node.id,
+        type: "oats",
+        position: { x: 0, y: 0 },
+        draggable: false,
+        data: {
+          label: node.label,
+          description: node.description,
+          role: node.role,
+          agent: node.agent,
+          status: node.status,
+          statusLabel: deriveOatsNodeLabel(node, isStale),
+          statusTone: deriveOatsNodeTone(node, isStale),
+          isActive: node.isActive,
+          isStale,
+          timedOut: node.timedOut,
+          exitCode: node.exitCode,
+          depth: node.depth,
+          attempts: node.attempts,
+          clickable: Boolean(node.conversationPath),
+          onClick: () => {
+            if (node.conversationPath) {
+              router.push(node.conversationPath);
+            }
+          },
+        } satisfies OatsNodeData,
+      };
+    });
     const edges: Edge[] = run.dag.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
@@ -927,7 +947,7 @@ export function OvernightOatsPanel() {
                     )}
                     {selectedRun.tasks.map((task) => (
                       <div key={task.taskId}>
-                        {task.invocation.conversationPath ? (
+                        {task.invocation?.conversationPath ? (
                           <a
                             href={task.invocation.conversationPath}
                             className="flex items-center gap-2 text-primary hover:underline"
@@ -937,7 +957,7 @@ export function OvernightOatsPanel() {
                           </a>
                         ) : (
                           <div className="text-muted-foreground">
-                            {task.taskId} has no session link
+                            {task.taskId} has no invocation session link
                           </div>
                         )}
                       </div>

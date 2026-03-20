@@ -8,6 +8,7 @@ from typing import Iterator
 
 from fastapi.testclient import TestClient
 
+from helaicopter_api.application import analytics as analytics_application
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.server.dependencies import get_services
@@ -58,14 +59,21 @@ def _services_stub(**attrs: object) -> BackendServices:
 
 
 @contextmanager
-def analytics_client(rows: list[HistoricalConversationSummary]) -> Iterator[tuple[TestClient, StubStore]]:
+def analytics_client(
+    rows: list[HistoricalConversationSummary],
+    *,
+    warehouse_rows: list[HistoricalConversationSummary] | None = None,
+) -> Iterator[tuple[TestClient, StubStore]]:
     store = StubStore(rows)
     application = create_app()
     application.dependency_overrides[get_services] = lambda: _services_stub(app_sqlite_store=store)
+    original_loader = analytics_application.list_warehouse_historical_conversations
+    analytics_application.list_warehouse_historical_conversations = lambda _services: list(warehouse_rows or [])
     try:
         with TestClient(application) as client:
             yield client, store
     finally:
+        analytics_application.list_warehouse_historical_conversations = original_loader
         application.dependency_overrides.clear()
 
 
@@ -140,6 +148,53 @@ class TestAnalyticsEndpoint:
 
         assert invalid_provider.status_code == 422
         assert invalid_days.status_code == 422
+
+    def test_endpoint_supplements_recent_window_from_sqlite_without_double_counting(self) -> None:
+        now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        historical_row = _summary(
+            "claude-historical",
+            started_at=(now - timedelta(days=2)).isoformat().replace("+00:00", "Z"),
+            ended_at=(now - timedelta(days=2, hours=-1)).isoformat().replace("+00:00", "Z"),
+            model="claude-sonnet-4-5-20250929",
+            total_input_tokens=11_000,
+        )
+        recent_warehouse_row = _summary(
+            "codex-recent",
+            provider="codex",
+            project_path="codex:-Users-tony-Code-helaicopter",
+            started_at=(now - timedelta(hours=4)).isoformat().replace("+00:00", "Z"),
+            ended_at=(now - timedelta(hours=3)).isoformat().replace("+00:00", "Z"),
+            model="gpt-5",
+            total_input_tokens=20_000,
+        )
+        recent_sqlite_row = _summary(
+            "codex-recent",
+            provider="codex",
+            project_path="codex:-Users-tony-Code-helaicopter",
+            started_at=(now - timedelta(hours=4)).isoformat().replace("+00:00", "Z"),
+            ended_at=(now - timedelta(hours=3)).isoformat().replace("+00:00", "Z"),
+            model="gpt-5",
+            total_input_tokens=24_000,
+        )
+        newest_sqlite_only_row = _summary(
+            "claude-newest",
+            started_at=(now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+            ended_at=(now - timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
+            model="claude-sonnet-4-5-20250929",
+            total_input_tokens=7_000,
+        )
+
+        with analytics_client(
+            [recent_sqlite_row, newest_sqlite_only_row],
+            warehouse_rows=[historical_row, recent_warehouse_row],
+        ) as (client, store):
+            response = client.get("/analytics", params={"days": 7})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total_conversations"] == 3
+        assert payload["total_input_tokens"] == 42_000
+        assert store.calls == [{}]
 
     def test_openapi_exposes_explicit_analytics_parameters_and_response_schema(self) -> None:
         with analytics_client([]) as (client, _store):
