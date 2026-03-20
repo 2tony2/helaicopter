@@ -16,21 +16,39 @@ def _assert_paths_exist(relative_paths: list[str]) -> None:
 def _assert_thin_route_shell(
     relative_path: str,
     *,
-    view_import: str,
-    rendered_view: str,
+    import_line: str,
+    export_signature: str,
+    return_line: str,
 ) -> None:
     path = ROOT / relative_path
     assert path.exists()
 
     content = path.read_text(encoding="utf-8")
     significant_lines = [line.strip() for line in content.splitlines() if line.strip()]
+    import_lines = [line for line in significant_lines if line.startswith("import ")]
 
-    assert view_import in content
-    assert rendered_view in content
+    assert import_lines == [import_line]
+    assert export_signature in content
+    assert return_line in significant_lines
+    assert significant_lines[-1] == "}"
     assert len(significant_lines) <= 12
     assert '"use client"' not in content
+    assert content.count("return") == 1
+    assert content.count("export default function ") == 1
 
     for forbidden in (
+        "const ",
+        "let ",
+        "if ",
+        "switch ",
+        "for ",
+        "while ",
+        "try ",
+        "catch",
+        "await ",
+        "async ",
+        "=>",
+        "use(",
         "@/components/plans",
         "@/features/plans/hooks/use-plans",
         "@/shared/",
@@ -43,6 +61,26 @@ def _assert_thin_route_shell(
         "PageHeader",
     ):
         assert forbidden not in content
+
+
+def _assert_eslint_layer_guardrail(
+    content: str,
+    *,
+    files_glob: str,
+    restricted_patterns: tuple[str, ...],
+) -> None:
+    start = content.find(files_glob)
+    assert start != -1
+
+    next_files = content.find("files:", start + len(files_glob))
+    block = content[start : next_files if next_files != -1 else len(content)]
+
+    assert "rules" in block
+    assert "no-restricted-imports" in block
+    assert "patterns" in block
+
+    for pattern in restricted_patterns:
+        assert pattern in block
 
 
 def _assert_deprecated_ts_reexport(relative_path: str, target: str) -> None:
@@ -120,13 +158,15 @@ def test_repo_boundaries_plans_route_shells() -> None:
 
     _assert_thin_route_shell(
         "src/app/plans/page.tsx",
-        view_import='@/views/plans/plans-index-view',
-        rendered_view="<PlansIndexView />",
+        import_line='import { PlansIndexView } from "@/views/plans/plans-index-view";',
+        export_signature="export default function PlansPage()",
+        return_line="return <PlansIndexView />;",
     )
     _assert_thin_route_shell(
         "src/app/plans/[slug]/page.tsx",
-        view_import='@/views/plans/plan-detail-view',
-        rendered_view="<PlanDetailView params={params} />",
+        import_line='import { PlanDetailView } from "@/views/plans/plan-detail-view";',
+        export_signature="export default function PlanDetailPage(",
+        return_line="return <PlanDetailView params={params} />;",
     )
 
 
@@ -150,16 +190,21 @@ def test_repo_boundaries_architecture_note_and_lint() -> None:
         assert required_term in content
 
     lint_config = _read("eslint.config.mjs")
-    for required_snippet in (
-        "no-restricted-imports",
-        "src/views/**/*.ts?(x)",
-        "src/features/**/*.ts?(x)",
-        "src/shared/**/*.ts?(x)",
-        "@/app/*",
-        "@/views/*",
-        "@/features/*",
-    ):
-        assert required_snippet in lint_config
+    _assert_eslint_layer_guardrail(
+        lint_config,
+        files_glob="src/views/**/*.ts?(x)",
+        restricted_patterns=("@/app/*",),
+    )
+    _assert_eslint_layer_guardrail(
+        lint_config,
+        files_glob="src/features/**/*.ts?(x)",
+        restricted_patterns=("@/app/*", "@/views/*"),
+    )
+    _assert_eslint_layer_guardrail(
+        lint_config,
+        files_glob="src/shared/**/*.ts?(x)",
+        restricted_patterns=("@/app/*", "@/views/*", "@/features/*"),
+    )
 
 
 def test_repo_boundaries_backend_plans_layers() -> None:
