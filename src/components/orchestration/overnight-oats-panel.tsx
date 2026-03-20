@@ -196,11 +196,6 @@ const nodeTypes = {
   oats: OatsNode,
 };
 
-function formatRelativeTimestamp(value?: string) {
-  if (!value) return "unknown";
-  return formatDistanceToNow(new Date(value), { addSuffix: true });
-}
-
 function OatsGraph({ run }: { run: OvernightOatsRunRecord }) {
   const router = useRouter();
   const { fitView } = useReactFlow();
@@ -471,7 +466,7 @@ export function OvernightOatsPanel() {
         </div>
       ) : filteredRuns.length === 0 ? (
         <p className="py-12 text-center text-muted-foreground">
-          No Overnight Oats runs found under `~/Code/*/.oats/runs`.
+          No authoritative OATS runs found in the backend orchestration store.
         </p>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -550,12 +545,16 @@ export function OvernightOatsPanel() {
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="secondary">Oats run</Badge>
-                        <Badge variant="outline">{selectedRun.mode}</Badge>
-                        <Badge variant="secondary">{selectedRun.integrationBranch}</Badge>
+                        {selectedRun.mode ? <Badge variant="outline">{selectedRun.mode}</Badge> : null}
+                        {selectedRun.integrationBranch ? (
+                          <Badge variant="secondary">{selectedRun.integrationBranch}</Badge>
+                        ) : null}
                         <Badge variant="outline">{selectedRun.status}</Badge>
-                        <Badge variant="outline">
-                          spec: {selectedRun.runSpecPath.split("/").pop()}
-                        </Badge>
+                        {selectedRun.runSpecPath ? (
+                          <Badge variant="outline">
+                            spec: {selectedRun.runSpecPath.split("/").pop()}
+                          </Badge>
+                        ) : null}
                         {selectedRun.isRunning && (
                           <Badge variant="outline" className="gap-2 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
                             <span className="relative flex h-2.5 w-2.5">

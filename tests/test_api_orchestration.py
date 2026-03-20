@@ -11,11 +11,16 @@ from urllib.parse import quote
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from helaicopter_api.adapters.oats_artifacts import FileOatsRunStore
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.ports.prefect import PrefectFlowRunRecord
+from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
+from helaicopter_db.models.oltp import FactOrchestrationRun, FactOrchestrationTaskAttempt, OltpBase
 from oats.models import (
     AgentInvocationResult,
     InvocationRuntimeRecord,
@@ -38,14 +43,28 @@ def _services_stub(**attrs: object) -> BackendServices:
     return services
 
 
+def _init_sqlite(project_root: Path) -> Settings:
+    settings = Settings(project_root=project_root)
+    settings.app_sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    engine = create_engine(f"sqlite:///{settings.app_sqlite_path}")
+    OltpBase.metadata.create_all(engine)
+    engine.dispose()
+    return settings
+
+
 @contextmanager
-def orchestration_client(project_root: Path) -> Iterator[TestClient]:
+def orchestration_client(project_root: Path, **service_attrs: object) -> Iterator[TestClient]:
     application = create_app()
     store = FileOatsRunStore(
         project_root=project_root,
         runtime_dir=project_root / ".oats" / "runtime",
     )
-    application.dependency_overrides[get_services] = lambda: _services_stub(oats_run_store=store)
+    settings = service_attrs.pop("settings", None) or Settings(project_root=project_root)
+    application.dependency_overrides[get_services] = lambda: _services_stub(
+        oats_run_store=store,
+        settings=settings,
+        **service_attrs,
+    )
     try:
         with TestClient(application) as client:
             yield client
@@ -412,307 +431,282 @@ class TestOrchestrationEndpoint:
             }
         ]
 
-    def test_runtime_state_response_is_camel_cased_and_preferred_over_stale_run_record(
-        self,
-        tmp_path: Path,
-    ) -> None:
+    def test_run_list_reads_persisted_oats_facts_and_filters_sample_runs(self, tmp_path: Path) -> None:
         now = datetime.now(UTC)
         repo_root = tmp_path
-        run_id = "oats-runtime-1"
-        record_path = repo_root / ".oats" / "runs" / "sample-older.json"
-        state_path = repo_root / ".oats" / "runtime" / run_id / "state.json"
-
-        stale_record = RunExecutionRecord(
-            run_id=run_id,
-            run_title="Ship orchestration API",
-            repo_root=repo_root,
-            config_path=repo_root / ".oats" / "config.toml",
-            run_spec_path=repo_root / "runs" / "sample.md",
-            mode="writable",
-            integration_branch="oats/overnight/orchestration-api",
-            task_pr_target="oats/overnight/orchestration-api",
-            final_pr_target="main",
-            planner=AgentInvocationResult(
-                agent="codex",
-                role="planner",
-                command=["codex", "exec"],
-                cwd=repo_root,
-                prompt="plan the run",
-                session_id="planner-old",
-                exit_code=0,
-                started_at=now - timedelta(minutes=20),
-                finished_at=now - timedelta(minutes=19),
-            ),
-            tasks=[],
-            recorded_at=now - timedelta(minutes=18),
-        )
-        _write_model(record_path, stale_record)
-
-        runtime_state = RunRuntimeState(
-            run_id=run_id,
-            run_title="Ship orchestration API",
-            repo_root=repo_root,
-            config_path=repo_root / ".oats" / "config.toml",
-            run_spec_path=repo_root / "runs" / "sample.md",
-            mode="writable",
-            integration_branch="oats/overnight/orchestration-api",
-            task_pr_target="oats/overnight/orchestration-api",
-            final_pr_target="main",
-            runtime_dir=state_path.parent,
-            status="running",
-            active_task_id="task-api",
-            started_at=now - timedelta(minutes=10),
-            updated_at=now - timedelta(seconds=5),
-            heartbeat_at=now - timedelta(seconds=2),
-            planner=InvocationRuntimeRecord(
-                agent="codex",
-                role="planner",
-                command=["codex", "exec"],
-                cwd=repo_root,
-                prompt="plan the run",
-                session_id="planner-live",
-                exit_code=0,
-                started_at=now - timedelta(minutes=10),
-                last_heartbeat_at=now - timedelta(minutes=9),
-                finished_at=now - timedelta(minutes=9),
-            ),
-            tasks=[
-                TaskRuntimeRecord(
-                    task_id="task-api",
-                    title="Implement route",
-                    depends_on=[],
-                    branch_name="oats/task/task-api",
-                    pr_base="oats/overnight/orchestration-api",
-                    agent="claude",
+        settings = _init_sqlite(repo_root)
+        engine = create_engine(f"sqlite:///{settings.app_sqlite_path}")
+        with Session(engine) as session:
+            session.add(
+                FactOrchestrationRun(
+                    run_fact_id="oats_local:sample-run-1",
+                    run_source="oats_local",
+                    run_id="sample-run-1",
+                    flow_run_name=None,
+                    run_title="Run: Auth And Dashboard",
+                    source_path=str(repo_root / "examples" / "sample_run.md"),
+                    repo_root=str(repo_root),
+                    config_path=str(repo_root / ".oats" / "config.toml"),
+                    artifact_root=str(repo_root / ".oats" / "runtime" / "sample-run-1"),
                     status="running",
-                    attempts=1,
-                    invocation=InvocationRuntimeRecord(
+                    canonical_status_source="runtime_state_snapshot",
+                    has_runtime_snapshot=True,
+                    has_terminal_record=False,
+                    task_count=1,
+                    completed_task_count=0,
+                    running_task_count=1,
+                    failed_task_count=0,
+                    task_attempt_count=1,
+                    started_at=now - timedelta(minutes=15),
+                    updated_at=now - timedelta(minutes=10),
+                    finished_at=None,
+                )
+            )
+            session.add(
+                FactOrchestrationRun(
+                    run_fact_id="oats_local:real-run-1",
+                    run_source="oats_local",
+                    run_id="real-run-1",
+                    flow_run_name=None,
+                    run_title="Ship real orchestration run",
+                    source_path=str(repo_root / "docs" / "superpowers" / "plans" / "run.md"),
+                    repo_root=str(repo_root),
+                    config_path=str(repo_root / ".oats" / "config.toml"),
+                    artifact_root=str(repo_root / ".oats" / "runtime" / "real-run-1"),
+                    status="running",
+                    canonical_status_source="runtime_state_snapshot",
+                    has_runtime_snapshot=True,
+                    has_terminal_record=True,
+                    task_count=2,
+                    completed_task_count=0,
+                    running_task_count=1,
+                    failed_task_count=0,
+                    task_attempt_count=2,
+                    started_at=now - timedelta(minutes=12),
+                    updated_at=now - timedelta(minutes=8),
+                    finished_at=None,
+                )
+            )
+            session.add_all(
+                [
+                    FactOrchestrationTaskAttempt(
+                        task_attempt_fact_id="oats_local:real-run-1:task-api:1",
+                        run_fact_id="oats_local:real-run-1",
+                        run_source="oats_local",
+                        run_id="real-run-1",
+                        task_id="task-api",
+                        task_title="Implement route",
+                        attempt=1,
+                        status="running",
+                        upstream_task_ids_json="[]",
                         agent="claude",
-                        role="executor",
-                        command=["claude", "run"],
-                        cwd=repo_root,
-                        prompt="implement the route",
                         session_id="claude-task-1",
+                        model=None,
+                        reasoning_effort=None,
+                        error=None,
                         output_text="working",
-                        started_at=now - timedelta(minutes=3),
-                        last_heartbeat_at=now - timedelta(seconds=2),
+                        started_at=now - timedelta(minutes=10),
+                        updated_at=now - timedelta(minutes=8),
+                        finished_at=None,
+                        last_heartbeat_at=now - timedelta(minutes=8),
+                        last_progress_event_at=now - timedelta(minutes=8),
                     ),
-                ),
-                TaskRuntimeRecord(
-                    task_id="task-tests",
-                    title="Add endpoint tests",
-                    depends_on=["task-api"],
-                    branch_name="oats/task/task-tests",
-                    pr_base="oats/overnight/orchestration-api",
-                    agent="claude",
-                    status="pending",
-                    attempts=0,
-                    invocation=None,
-                ),
-            ],
-            final_record_path=record_path,
-        )
-        _write_model(state_path, runtime_state)
+                    FactOrchestrationTaskAttempt(
+                        task_attempt_fact_id="oats_local:real-run-1:task-tests:1",
+                        run_fact_id="oats_local:real-run-1",
+                        run_source="oats_local",
+                        run_id="real-run-1",
+                        task_id="task-tests",
+                        task_title="Add endpoint tests",
+                        attempt=1,
+                        status="blocked",
+                        upstream_task_ids_json='["task-api"]',
+                        agent="claude",
+                        session_id=None,
+                        model=None,
+                        reasoning_effort=None,
+                        error=None,
+                        output_text=None,
+                        started_at=None,
+                        updated_at=now - timedelta(minutes=8),
+                        finished_at=None,
+                        last_heartbeat_at=None,
+                        last_progress_event_at=None,
+                    ),
+                ]
+            )
+            session.commit()
+        engine.dispose()
 
-        with orchestration_client(repo_root) as client:
+        with orchestration_client(repo_root, settings=settings) as client:
             response = client.get("/orchestration/oats")
 
         assert response.status_code == 200
         payload = response.json()
-        assert len(payload) == 1
+        assert [run["runId"] for run in payload] == ["real-run-1"]
 
         run = payload[0]
-        encoded_codex_project = quote(f"codex:{str(repo_root).replace('/', '-')}", safe="")
         encoded_claude_project = quote(str(repo_root).replace("/", "-"), safe="")
 
         assert run["contractVersion"] == "oats-runtime-v1"
-        assert run["runId"] == run_id
-        assert run["recordPath"].endswith(f"/.oats/runtime/{run_id}/state.json")
-        assert run["status"] == "running"
-        assert run["activeTaskId"] == "task-api"
-        assert run["isRunning"] is True
-        assert run["planner"]["conversationPath"] == f"/conversations/{encoded_codex_project}/planner-live"
-        assert run["tasks"][0]["taskId"] == "task-api"
+        assert run["recordPath"] == "oats_local:real-run-1"
+        assert run["status"] == "pending"
+        assert run["activeTaskId"] is None
+        assert run["isRunning"] is False
+        assert [task["taskId"] for task in run["tasks"]] == ["task-api", "task-tests"]
+        assert [task["status"] for task in run["tasks"]] == ["pending", "blocked"]
         assert run["tasks"][0]["invocation"]["conversationPath"] == (
             f"/conversations/{encoded_claude_project}/claude-task-1"
         )
         assert run["tasks"][1]["dependsOn"] == ["task-api"]
-        assert run["tasks"][1]["invocation"]["agent"] == "claude"
-        assert run["tasks"][1]["invocation"]["conversationPath"] is None
-        assert run["dag"]["stats"]["totalNodes"] == 3
-        assert run["dag"]["stats"]["totalEdges"] == 2
-        assert run["dag"]["stats"]["activeCount"] == 1
-        assert "contract_version" not in run
-        assert "task_id" not in run["tasks"][0]
-
-    def test_stale_runtime_state_is_reconciled_so_graph_no_longer_reports_running(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        now = datetime.now(UTC)
-        repo_root = tmp_path
-        run_id = "oats-runtime-stale"
-        state_path = repo_root / ".oats" / "runtime" / run_id / "state.json"
-
-        runtime_state = RunRuntimeState(
-            run_id=run_id,
-            run_title="Repair orchestration graph",
-            repo_root=repo_root,
-            config_path=repo_root / ".oats" / "config.toml",
-            run_spec_path=repo_root / "runs" / "sample.md",
-            mode="writable",
-            integration_branch="oats/overnight/orchestration-graph",
-            task_pr_target="oats/overnight/orchestration-graph",
-            final_pr_target="main",
-            runtime_dir=state_path.parent,
-            status="running",
-            active_task_id="task-api",
-            started_at=now - timedelta(minutes=20),
-            updated_at=now - timedelta(minutes=8),
-            heartbeat_at=now - timedelta(minutes=8),
-            planner=InvocationRuntimeRecord(
-                agent="codex",
-                role="planner",
-                command=["codex", "exec"],
-                cwd=repo_root,
-                prompt="plan the run",
-                session_id="planner-live",
-                exit_code=0,
-                started_at=now - timedelta(minutes=20),
-                last_heartbeat_at=now - timedelta(minutes=19),
-                finished_at=now - timedelta(minutes=19),
-            ),
-            tasks=[
-                TaskRuntimeRecord(
-                    task_id="task-api",
-                    title="Implement route",
-                    depends_on=[],
-                    branch_name="oats/task/task-api",
-                    pr_base="oats/overnight/orchestration-graph",
-                    agent="claude",
-                    status="running",
-                    attempts=1,
-                    invocation=InvocationRuntimeRecord(
-                        agent="claude",
-                        role="executor",
-                        command=["claude", "run"],
-                        cwd=repo_root,
-                        prompt="implement the route",
-                        session_id="claude-task-1",
-                        output_text="stuck",
-                        started_at=now - timedelta(minutes=10),
-                        last_heartbeat_at=now - timedelta(minutes=8),
-                    ),
-                ),
-                TaskRuntimeRecord(
-                    task_id="task-tests",
-                    title="Add endpoint tests",
-                    depends_on=["task-api"],
-                    branch_name="oats/task/task-tests",
-                    pr_base="oats/overnight/orchestration-graph",
-                    agent="claude",
-                    status="blocked",
-                    attempts=0,
-                    invocation=None,
-                ),
-            ],
-        )
-        _write_model(state_path, runtime_state)
-
-        with orchestration_client(repo_root) as client:
-            response = client.get("/orchestration/oats")
-
-        assert response.status_code == 200
-        payload = response.json()
-        assert len(payload) == 1
-
-        run = payload[0]
-        assert run["status"] == "pending"
-        assert run["activeTaskId"] is None
-        assert run["isRunning"] is False
-        assert [task["status"] for task in run["tasks"]] == ["pending", "blocked"]
+        assert run["planner"] is None
+        assert run["dag"]["stats"]["totalNodes"] == 2
         assert run["dag"]["stats"]["activeCount"] == 0
-        task_node = next(node for node in run["dag"]["nodes"] if node["id"] == "task-api")
-        assert task_node["status"] == "pending"
-        assert task_node["isActive"] is False
-        assert task_node["lastHeartbeatAt"] == (
-            runtime_state.tasks[0].invocation.last_heartbeat_at.isoformat().replace("+00:00", "Z")
-        )
+        assert run["dag"]["stats"]["providerBreakdown"] == {"claude": 2}
 
-    def test_run_record_response_shapes_terminal_summary_without_runtime_state(
-        self,
-        tmp_path: Path,
-    ) -> None:
+    def test_run_list_overlays_prefect_state_for_matching_persisted_prefect_run(self, tmp_path: Path) -> None:
         now = datetime.now(UTC)
         repo_root = tmp_path
-        record_path = repo_root / ".oats" / "runs" / "sample-record.json"
-        record = RunExecutionRecord(
-            run_id="oats-record-1",
-            run_title="Fix rollout failures",
-            repo_root=repo_root,
-            config_path=repo_root / ".oats" / "config.toml",
-            run_spec_path=repo_root / "runs" / "failures.md",
-            mode="read-only",
-            integration_branch="oats/overnight/fix-rollout-failures",
-            task_pr_target="oats/overnight/fix-rollout-failures",
-            final_pr_target="main",
-            planner=AgentInvocationResult(
-                agent="codex",
-                role="planner",
-                command=["codex", "exec"],
-                cwd=repo_root,
-                prompt="plan the run",
-                session_id="planner-1",
-                exit_code=0,
-                started_at=now - timedelta(minutes=7),
-                finished_at=now - timedelta(minutes=6),
-            ),
-            tasks=[
-                TaskExecutionRecord(
-                    task_id="task-one",
-                    title="Inspect failure",
-                    depends_on=[],
-                    invocation=AgentInvocationResult(
-                        agent="claude",
-                        role="executor",
-                        command=["claude", "run"],
-                        cwd=repo_root,
-                        prompt="inspect failure",
-                        session_id="task-thread-1",
-                        exit_code=1,
-                        raw_stderr="boom",
-                        started_at=now - timedelta(minutes=5),
-                        finished_at=now - timedelta(minutes=4),
-                    ),
-                )
-            ],
-            recorded_at=now - timedelta(minutes=3),
+        settings = _init_sqlite(repo_root)
+        metadata_dir = repo_root / ".oats" / "prefect" / "flow-runs" / "flow-run-1"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        (metadata_dir / "metadata.json").write_text(
+            """
+            {
+              "flow_run_id": "flow-run-1",
+              "flow_run_name": "real-prefect-run",
+              "run_title": "Run: Prefect Native Oats Orchestration",
+              "source_path": "/repo/examples/prefect_native_oats_orchestration_run.md",
+              "repo_root": "/repo",
+              "config_path": "/repo/.oats/config.toml",
+              "artifact_root": "/repo/.oats/prefect/flow-runs/flow-run-1",
+              "created_at": "2026-03-20T10:00:00Z",
+              "updated_at": "2026-03-20T10:05:00Z",
+              "completed_at": null
+            }
+            """.strip(),
+            encoding="utf-8",
         )
-        _write_model(record_path, record)
-        (repo_root / ".oats" / "runs" / "ignore-me.json").write_text("{not json", encoding="utf-8")
+        task_attempt_dir = metadata_dir / "attempts" / "task-api"
+        task_attempt_dir.mkdir(parents=True, exist_ok=True)
+        (task_attempt_dir / "attempt-1.json").write_text(
+            """
+            {
+              "flow_run_id": "flow-run-1",
+              "flow_run_name": "real-prefect-run",
+              "task_id": "task-api",
+              "task_title": "Implement route",
+              "status": "completed",
+              "attempt": 1,
+              "upstream_task_ids": [],
+              "session_id": null,
+              "session_id_field": null,
+              "requested_session_id": null,
+              "output_text": null,
+              "last_heartbeat_at": "2026-03-20T10:04:00Z",
+              "last_progress_event_at": "2026-03-20T10:04:00Z",
+              "result": {
+                "agent": "codex",
+                "session_id": "thread-123",
+                "output_text": "done"
+              },
+              "error": null,
+              "updated_at": "2026-03-20T10:05:00Z"
+            }
+            """.strip(),
+            encoding="utf-8",
+        )
+        engine = create_engine(f"sqlite:///{settings.app_sqlite_path}")
+        with Session(engine) as session:
+            session.add(
+                FactOrchestrationRun(
+                    run_fact_id="prefect_local:flow-run-1",
+                    run_source="prefect_local",
+                    run_id="flow-run-1",
+                    flow_run_name="real-prefect-run",
+                    run_title="Run: Prefect Native Oats Orchestration",
+                    source_path=str(repo_root / "examples" / "prefect_native_oats_orchestration_run.md"),
+                    repo_root=str(repo_root),
+                    config_path=str(repo_root / ".oats" / "config.toml"),
+                    artifact_root=str(repo_root / ".oats" / "prefect" / "flow-runs" / "flow-run-1"),
+                    status="running",
+                    canonical_status_source="prefect_local_artifacts",
+                    has_runtime_snapshot=True,
+                    has_terminal_record=False,
+                    task_count=1,
+                    completed_task_count=0,
+                    running_task_count=1,
+                    failed_task_count=0,
+                    task_attempt_count=1,
+                    started_at=now - timedelta(minutes=4),
+                    updated_at=now - timedelta(minutes=1),
+                    finished_at=None,
+                )
+            )
+            session.add(
+                FactOrchestrationTaskAttempt(
+                    task_attempt_fact_id="prefect_local:flow-run-1:task-api:1",
+                    run_fact_id="prefect_local:flow-run-1",
+                    run_source="prefect_local",
+                    run_id="flow-run-1",
+                    task_id="task-api",
+                    task_title="Implement route",
+                    attempt=1,
+                    status="running",
+                    upstream_task_ids_json="[]",
+                    agent=None,
+                    session_id=None,
+                    model=None,
+                    reasoning_effort=None,
+                    error=None,
+                    output_text=None,
+                    started_at=now - timedelta(minutes=3),
+                    updated_at=now - timedelta(minutes=1),
+                    finished_at=None,
+                    last_heartbeat_at=now - timedelta(minutes=1),
+                    last_progress_event_at=now - timedelta(minutes=1),
+                )
+            )
+            session.commit()
+        engine.dispose()
 
-        with orchestration_client(repo_root) as client:
+        class StubPrefectClient:
+            def list_flow_runs(self) -> list[PrefectFlowRunRecord]:
+                return [
+                    PrefectFlowRunRecord(
+                        flow_run_id="flow-run-1",
+                        flow_run_name="real-prefect-run",
+                        deployment_id="deployment-1",
+                        deployment_name="oats/deployment",
+                        flow_id="flow-1",
+                        flow_name="oats-flow",
+                        work_pool_name="local-macos",
+                        work_queue_name="scheduled",
+                        state_type="COMPLETED",
+                        state_name="Completed",
+                        created_at="2026-03-20T10:00:00Z",
+                        updated_at="2026-03-20T10:05:00Z",
+                    )
+                ]
+
+        with orchestration_client(
+            repo_root,
+            settings=settings,
+            prefect_client=StubPrefectClient(),
+        ) as client:
             response = client.get("/orchestration/oats")
 
         assert response.status_code == 200
         payload = response.json()
         assert len(payload) == 1
-
-        run = payload[0]
-        encoded_claude_project = quote(str(repo_root).replace("/", "-"), safe="")
-
-        assert run["contractVersion"] == "oats-run-v1"
-        assert run["status"] == "failed"
-        assert run["isRunning"] is False
-        assert run["finishedAt"] == run["recordedAt"]
-        assert run["tasks"][0]["status"] == "failed"
-        assert run["tasks"][0]["invocation"]["conversationPath"] == (
-            f"/conversations/{encoded_claude_project}/task-thread-1"
+        assert payload[0]["runId"] == "flow-run-1"
+        assert payload[0]["status"] == "completed"
+        assert payload[0]["isRunning"] is False
+        assert payload[0]["activeTaskId"] is None
+        encoded_project = quote("codex:-repo", safe="")
+        assert payload[0]["tasks"][0]["invocation"]["conversationPath"] == (
+            f"/conversations/{encoded_project}/thread-123"
         )
-        assert run["dag"]["stats"]["failedCount"] == 1
-        planner_node = next(node for node in run["dag"]["nodes"] if node["id"] == "planner")
-        assert planner_node["status"] == "succeeded"
-        assert run["dag"]["stats"]["providerBreakdown"] == {"codex": 1, "claude": 1}
 
     def test_openapi_exposes_orchestration_route(self, tmp_path: Path) -> None:
         with orchestration_client(tmp_path) as client:

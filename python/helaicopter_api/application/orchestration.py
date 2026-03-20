@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import json
 from pathlib import Path
+import sqlite3
 from typing import cast
 from urllib.parse import quote
 
@@ -40,9 +42,14 @@ from oats.models import (
     TaskExecutionRecord,
     TaskRuntimeRecord,
 )
+from oats.prefect.analytics import StoredLocalFlowRunArtifacts, load_local_flow_run_artifacts
 
 ACTIVE_RUN_STATUSES: set[RunRuntimeStatus] = {"pending", "planning", "running"}
 STALE_RUNTIME_AFTER_SECONDS = 300
+_PREFECT_ACTIVE_STATES = {"RUNNING"}
+_PREFECT_PENDING_STATES = {"PENDING", "SCHEDULED", "LATE"}
+_PREFECT_FAILED_STATES = {"FAILED", "CRASHED", "CANCELLED", "CANCELED", "CANCELLING"}
+_SAMPLE_RUN_SPEC_NAMES = {"sample_run.md"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,25 +64,8 @@ class _ShapedRun:
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
 def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationRunResponse]:
-    """Return OATS local-runtime summaries."""
-    runs_by_id: dict[str, _ShapedRun] = {}
-
-    for stored_record in services.oats_run_store.list_run_records():
-        shaped = _shape_run_record(stored_record)
-        _merge_run(runs_by_id, shaped)
-
-    for stored_state in services.oats_run_store.list_runtime_states():
-        shaped = _shape_runtime_state(stored_state)
-        _merge_run(runs_by_id, shaped)
-
-    return [
-        shaped.response
-        for shaped in sorted(
-            runs_by_id.values(),
-            key=lambda item: (item.is_running, item.last_updated_at, item.response.run_id),
-            reverse=True,
-        )
-    ]
+    """Return persisted OATS orchestration runs from the authoritative facts tables."""
+    return _list_persisted_oats_runs(services)
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -110,6 +100,368 @@ def _merge_run(runs_by_id: dict[str, _ShapedRun], shaped: _ShapedRun) -> None:
         return
     if shaped.last_updated_at >= existing.last_updated_at:
         runs_by_id[shaped.response.run_id] = shaped
+
+
+def _list_persisted_oats_runs(services: BackendServices) -> list[OrchestrationRunResponse]:
+    settings = getattr(services, "settings", None)
+    if settings is None or not settings.app_sqlite_path.exists():
+        return []
+
+    connection = _connect_readonly_sqlite(settings.app_sqlite_path)
+    if connection is None:
+        return []
+    try:
+        if not _table_exists(connection, "fact_orchestration_runs"):
+            return []
+        run_rows = connection.execute(
+            """
+            SELECT
+              run_fact_id,
+              run_source,
+              run_id,
+              flow_run_name,
+              run_title,
+              source_path,
+              repo_root,
+              config_path,
+              artifact_root,
+              status,
+              canonical_status_source,
+              has_runtime_snapshot,
+              has_terminal_record,
+              task_count,
+              completed_task_count,
+              running_task_count,
+              failed_task_count,
+              task_attempt_count,
+              started_at,
+              updated_at,
+              finished_at
+            FROM fact_orchestration_runs
+            ORDER BY datetime(updated_at) DESC, run_id DESC
+            """
+        ).fetchall()
+        if not run_rows:
+            return []
+
+        attempt_rows = connection.execute(
+            """
+            SELECT
+              task_attempt_fact_id,
+              run_fact_id,
+              run_source,
+              run_id,
+              task_id,
+              task_title,
+              attempt,
+              status,
+              upstream_task_ids_json,
+              agent,
+              session_id,
+              model,
+              reasoning_effort,
+              error,
+              output_text,
+              started_at,
+              updated_at,
+              finished_at,
+              last_heartbeat_at,
+              last_progress_event_at
+            FROM fact_orchestration_task_attempts
+            ORDER BY task_id ASC, attempt DESC, datetime(updated_at) DESC
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+
+    attempts_by_run: dict[str, list[sqlite3.Row]] = {}
+    for row in attempt_rows:
+        attempts_by_run.setdefault(str(row["run_fact_id"]), []).append(row)
+
+    prefect_by_run_id = _prefect_flow_runs_by_id(services)
+    prefect_artifacts_by_run_id = load_local_flow_run_artifacts(settings.project_root)
+    responses: list[OrchestrationRunResponse] = []
+    for row in run_rows:
+        if _should_exclude_persisted_run(row):
+            continue
+        response = _shape_persisted_run(
+            row,
+            attempts_by_run.get(str(row["run_fact_id"]), []),
+            prefect_by_run_id.get(str(row["run_id"])),
+            prefect_artifacts_by_run_id.get(str(row["run_id"])),
+        )
+        responses.append(response)
+
+    return responses
+
+
+def _connect_readonly_sqlite(path: Path) -> sqlite3.Connection | None:
+    try:
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _prefect_flow_runs_by_id(services: BackendServices) -> dict[str, object]:
+    prefect_client = getattr(services, "prefect_client", None)
+    if prefect_client is None or not hasattr(prefect_client, "list_flow_runs"):
+        return {}
+    try:
+        flow_runs = prefect_client.list_flow_runs()
+    except Exception:
+        return {}
+    return {str(item.flow_run_id): item for item in flow_runs}
+
+
+def _should_exclude_persisted_run(row: sqlite3.Row) -> bool:
+    source_path = row["source_path"]
+    if source_path is None:
+        return False
+    return Path(str(source_path)).name in _SAMPLE_RUN_SPEC_NAMES
+
+
+def _shape_persisted_run(
+    row: sqlite3.Row,
+    attempts: list[sqlite3.Row],
+    prefect_flow_run: object | None,
+    prefect_artifacts: StoredLocalFlowRunArtifacts | None,
+) -> OrchestrationRunResponse:
+    repo_root = (
+        prefect_artifacts.metadata.repo_root
+        if prefect_artifacts is not None
+        else Path(str(row["repo_root"]))
+    )
+    run_status = _normalize_persisted_run_status(row, prefect_flow_run)
+    tasks = _shape_persisted_tasks(
+        attempts,
+        repo_root=repo_root,
+        run_status=run_status,
+        prefect_artifacts=prefect_artifacts,
+    )
+    active_task_id = next((task.task_id for task in tasks if task.status == "running"), None)
+    latest_heartbeat_at = max(
+        (
+            timestamp
+            for timestamp in (_parse_datetime_value(task["last_heartbeat_at"]) for task in attempts)
+            if timestamp is not None
+        ),
+        default=None,
+    )
+    last_updated_at = _parse_datetime_value(row["updated_at"]) or datetime.now(UTC)
+    created_at = _parse_datetime_value(row["started_at"]) or last_updated_at
+    finished_at = _parse_datetime_value(row["finished_at"])
+    contract_version = "oats-runtime-v1" if bool(row["has_runtime_snapshot"]) else "oats-run-v1"
+    source_path = str(row["source_path"] or "")
+    config_path = str(row["config_path"] or "")
+
+    return OrchestrationRunResponse(
+        source="overnight-oats",
+        contract_version=contract_version,
+        run_id=str(row["run_id"]),
+        run_title=str(row["run_title"]),
+        repo_root=str(repo_root),
+        config_path=config_path,
+        run_spec_path=source_path,
+        mode="prefect" if str(row["run_source"]) == "prefect_local" else "persisted",
+        integration_branch="",
+        task_pr_target="",
+        final_pr_target="",
+        status=run_status,
+        active_task_id=active_task_id,
+        heartbeat_at=_isoformat(latest_heartbeat_at),
+        finished_at=_isoformat(finished_at),
+        planner=None,
+        tasks=tasks,
+        created_at=_isoformat(created_at) or "",
+        last_updated_at=_isoformat(last_updated_at) or "",
+        is_running=run_status in ACTIVE_RUN_STATUSES and active_task_id is not None,
+        recorded_at=_isoformat(last_updated_at) or "",
+        record_path=str(row["run_fact_id"]),
+        dag=_build_orchestration_dag(
+            None,
+            tasks,
+            run_title=str(row["run_title"]),
+            run_status=run_status,
+            active_task_id=active_task_id,
+        ),
+    )
+
+
+def _shape_persisted_tasks(
+    attempts: list[sqlite3.Row],
+    *,
+    repo_root: Path,
+    run_status: RunRuntimeStatus,
+    prefect_artifacts: StoredLocalFlowRunArtifacts | None,
+) -> list[OrchestrationTaskResponse]:
+    latest_attempts: dict[str, sqlite3.Row] = {}
+    for row in attempts:
+        task_id = str(row["task_id"])
+        if task_id not in latest_attempts:
+            latest_attempts[task_id] = row
+
+    prefect_attempts = _prefect_attempts_by_task_id(prefect_artifacts)
+
+    tasks: list[OrchestrationTaskResponse] = []
+    for task_id in sorted(latest_attempts):
+        row = latest_attempts[task_id]
+        tasks.append(
+            OrchestrationTaskResponse(
+                task_id=task_id,
+                title=str(row["task_title"]),
+                depends_on=_parse_upstream_ids(row["upstream_task_ids_json"]),
+                status=_normalize_persisted_task_status(str(row["status"]), run_status),
+                attempts=int(row["attempt"] or 0),
+                invocation=_shape_persisted_invocation(
+                    row,
+                    repo_root=repo_root,
+                    prefect_attempt=prefect_attempts.get(task_id),
+                ),
+            )
+        )
+    return tasks
+
+
+def _shape_persisted_invocation(
+    row: sqlite3.Row,
+    *,
+    repo_root: Path,
+    prefect_attempt: object | None = None,
+) -> OrchestrationInvocationResponse | None:
+    agent_value = row["agent"]
+    session_id = str(row["session_id"]) if row["session_id"] is not None else None
+    output_text = str(row["output_text"] or "")
+    error_text = str(row["error"] or "")
+    if prefect_attempt is not None:
+        result = getattr(prefect_attempt, "result", None)
+        if agent_value is None and isinstance(result, dict):
+            agent_value = result.get("agent")
+        if session_id is None:
+            checkpoint_session_id = getattr(prefect_attempt, "session_id", None)
+            requested_session_id = getattr(prefect_attempt, "requested_session_id", None)
+            if isinstance(checkpoint_session_id, str) and checkpoint_session_id:
+                session_id = checkpoint_session_id
+            elif isinstance(result, dict) and isinstance(result.get("session_id"), str):
+                session_id = str(result["session_id"])
+            elif isinstance(requested_session_id, str) and requested_session_id:
+                session_id = requested_session_id
+        if not output_text and isinstance(result, dict) and isinstance(result.get("output_text"), str):
+            output_text = str(result["output_text"])
+        if not error_text and getattr(prefect_attempt, "error", None):
+            error_text = str(getattr(prefect_attempt, "error"))
+    if agent_value not in {"claude", "codex"}:
+        return None
+    agent = cast(ProviderName, str(agent_value))
+    project_path = _normalize_repo_project_path(str(repo_root), agent) if session_id else None
+    conversation_path = (
+        f"/conversations/{quote(project_path, safe='')}/{session_id}"
+        if project_path and session_id
+        else None
+    )
+    task_status = str(row["status"]).strip().lower()
+    return OrchestrationInvocationResponse(
+        agent=agent,
+        role="executor",
+        command=[],
+        cwd=str(repo_root),
+        prompt="",
+        session_id=session_id,
+        output_text=output_text,
+        raw_stdout="",
+        raw_stderr=error_text,
+        exit_code=None,
+        timed_out=task_status == "timed_out",
+        started_at=_isoformat(_parse_datetime_value(row["started_at"])) or "",
+        last_heartbeat_at=_isoformat(_parse_datetime_value(row["last_heartbeat_at"])),
+        finished_at=_isoformat(_parse_datetime_value(row["finished_at"])),
+        project_path=project_path,
+        conversation_path=conversation_path,
+    )
+
+
+def _parse_upstream_ids(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    try:
+        parsed = json.loads(str(raw))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if isinstance(item, str)]
+
+
+def _prefect_attempts_by_task_id(
+    prefect_artifacts: StoredLocalFlowRunArtifacts | None,
+) -> dict[str, object]:
+    if prefect_artifacts is None:
+        return {}
+    attempts_by_task_id: dict[str, object] = {}
+    for checkpoint in prefect_artifacts.attempts:
+        task_id = checkpoint.task_id
+        if task_id not in attempts_by_task_id:
+            attempts_by_task_id[task_id] = checkpoint
+    return attempts_by_task_id
+
+
+def _normalize_persisted_run_status(row: sqlite3.Row, prefect_flow_run: object | None) -> RunRuntimeStatus:
+    prefect_status = _normalize_prefect_flow_run_status(prefect_flow_run)
+    if prefect_status is not None:
+        return prefect_status
+    status = str(row["status"]).strip().lower()
+    updated_at = _parse_datetime_value(row["updated_at"])
+    if status in ACTIVE_RUN_STATUSES and updated_at is not None:
+        if (datetime.now(UTC) - updated_at).total_seconds() > STALE_RUNTIME_AFTER_SECONDS:
+            return "pending"
+    if status == "completed":
+        return "completed"
+    if status in {"failed", "timed_out"}:
+        return cast(RunRuntimeStatus, status)
+    if status in {"planning", "pending", "running"}:
+        return cast(RunRuntimeStatus, status)
+    if status in {"succeeded", "success"}:
+        return "completed"
+    return "pending"
+
+
+def _normalize_prefect_flow_run_status(prefect_flow_run: object | None) -> RunRuntimeStatus | None:
+    if prefect_flow_run is None:
+        return None
+    state_type = str(getattr(prefect_flow_run, "state_type", "") or "").upper()
+    if state_type in _PREFECT_ACTIVE_STATES:
+        return "running"
+    if state_type in _PREFECT_PENDING_STATES:
+        return "pending"
+    if state_type == "COMPLETED":
+        return "completed"
+    if state_type in _PREFECT_FAILED_STATES:
+        return "failed"
+    return None
+
+
+def _normalize_persisted_task_status(status: str, run_status: RunRuntimeStatus) -> TaskRuntimeStatus:
+    normalized = status.strip().lower()
+    if normalized == "running" and run_status == "completed":
+        return "succeeded"
+    if normalized == "running" and run_status == "pending":
+        return "pending"
+    if normalized in {"pending", "blocked"} and run_status == "completed":
+        return "skipped"
+    if normalized in {"pending", "running", "succeeded", "failed", "timed_out", "skipped", "blocked"}:
+        return cast(TaskRuntimeStatus, normalized)
+    if normalized in {"completed", "success"}:
+        return "succeeded"
+    return "pending"
 
 
 def _shape_runtime_state(stored: StoredOatsRuntimeState) -> _ShapedRun:
@@ -451,6 +803,21 @@ def _coerce_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _parse_datetime_value(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return _coerce_datetime(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return _coerce_datetime(parsed)
 
 
 def _isoformat(value: datetime | None) -> str | None:
