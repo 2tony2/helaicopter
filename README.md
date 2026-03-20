@@ -34,7 +34,7 @@ uv run oats run examples/sample_run.md
 ```
 
 The default repo policy lives in `.oats/config.toml`, sample run specs live in `examples/`, and the Python implementation lives in `python/oats/`.
-Use [`docs/prefect-local-ops.md`](/Users/tony/Code/helaicopter/docs/prefect-local-ops.md) for local control-plane setup and [`docs/oats-prefect-cutover.md`](/Users/tony/Code/helaicopter/docs/oats-prefect-cutover.md) for the cutover and rollback checklist.
+Use [`docs/prefect-local-ops.md`](docs/prefect-local-ops.md) for local control-plane setup and [`docs/oats-prefect-cutover.md`](docs/oats-prefect-cutover.md) for the cutover and rollback checklist.
 
 ## Requirements
 
@@ -55,7 +55,7 @@ npm run dev
 - The Next.js frontend serves on `http://localhost:3000`.
 - The FastAPI backend serves on `http://127.0.0.1:30000`.
 - `npm run dev` starts both servers, kills stale repo-local `next dev` and `uvicorn` processes, and sets `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:30000` unless you override it yourself.
-- When `NEXT_PUBLIC_API_BASE_URL` is unset and the frontend runs on `localhost` or `127.0.0.1`, [`src/lib/client/endpoints.ts`](/Users/tony/Code/helaicopter/src/lib/client/endpoints.ts) automatically targets port `30000`.
+- When `NEXT_PUBLIC_API_BASE_URL` is unset and the frontend runs on `localhost` or `127.0.0.1`, [`src/lib/client/endpoints.ts`](src/lib/client/endpoints.ts) automatically targets port `30000`.
 - If you want the frontend to use a different backend origin, set `NEXT_PUBLIC_API_BASE_URL` before starting `npm run dev`.
 
 If you want to run the processes separately:
@@ -65,7 +65,7 @@ npm run dev:web
 npm run api:dev
 ```
 
-Backend settings are read from `HELA_*` environment variables in [`python/helaicopter_api/server/config.py`](/Users/tony/Code/helaicopter/python/helaicopter_api/server/config.py). The most useful local overrides are:
+Backend settings are read from `HELA_*` environment variables in [`python/helaicopter_api/server/config.py`](python/helaicopter_api/server/config.py). The most useful local overrides are:
 
 ```bash
 HELA_PROJECT_ROOT=/path/to/helaicopter
@@ -83,11 +83,11 @@ open http://127.0.0.1:30000/openapi.json
 npm run api:openapi
 ```
 
-The migration runbook and validation checklist live in [`docs/fastapi-backend-rollout.md`](/Users/tony/Code/helaicopter/docs/fastapi-backend-rollout.md).
+The migration runbook and validation checklist live in [`docs/fastapi-backend-rollout.md`](docs/fastapi-backend-rollout.md).
 
 ## OpenAPI Artifacts
 
-The repo commits generated OpenAPI snapshots for the FastAPI backend under [`public/openapi/`](/Users/tony/Code/helaicopter/public/openapi). This keeps the backend contract in a stable repo-local location that the Next.js app can serve directly from the sidebar API section.
+The repo commits generated OpenAPI snapshots for the FastAPI backend under [`public/openapi/`](public/openapi). This keeps the backend contract in a stable repo-local location that the Next.js app can serve directly from the sidebar API section.
 
 Regenerate the artifacts whenever the backend router or schema surface changes:
 
@@ -97,8 +97,8 @@ npm run api:openapi
 
 That command writes:
 
-- [`public/openapi/helaicopter-api.json`](/Users/tony/Code/helaicopter/public/openapi/helaicopter-api.json)
-- [`public/openapi/helaicopter-api.yaml`](/Users/tony/Code/helaicopter/public/openapi/helaicopter-api.yaml)
+- [`public/openapi/helaicopter-api.json`](public/openapi/helaicopter-api.json)
+- [`public/openapi/helaicopter-api.yaml`](public/openapi/helaicopter-api.yaml)
 
 For live local inspection during development, compare those generated snapshots with `http://127.0.0.1:30000/openapi.json`.
 
@@ -140,8 +140,23 @@ Token counts are split into color-coded badges with individual tooltips:
 
 Plus a **cost badge** (amber) showing estimated dollar cost with full breakdown on hover.
 
+### Conversation DAGs
+A directed acyclic graph view of conversation relationships, accessible from the Orchestration hub (`/orchestration?tab=conversation-dags`).
+
 ### Plans
 Browse and view saved implementation plans from `~/.claude/plans/` rendered as markdown.
+
+### Evaluation System
+Evaluate conversations against saved prompts using Claude or Codex. Prompts are stored in the SQLite OLTP database and managed from the `/prompts` page. Evaluation results are recorded per-conversation.
+
+### Orchestration Hub
+Unified view for Prefect workflows and OATS runtime artifacts at `/orchestration`. Tabs:
+- **Prefect** — embedded Prefect UI and flow run history
+- **Conversation DAGs** — visual DAG of conversation relationships
+- **OATS** — local runtime state from `.oats/runtime`
+
+### Database Inspector
+Operational status overview for backend data stores (SQLite, DuckDB, Prefect Postgres) with manual refresh trigger at `/databases`.
 
 ### Pricing Reference
 
@@ -162,17 +177,16 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 
 - **FastAPI** is the single network gateway for the product. The Next.js frontend, Prefect orchestration views, database artifact inspection, and repo-local Oats artifact reads all flow through backend-owned routes.
 - **SQLite** stores app-local metadata, refresh bookkeeping, evaluations, and historical detail tables.
-- **ClickHouse** is the primary analytics and event store for warehouse-style reads.
-- **DuckDB** is no longer on the primary serving path. If present, it is only an optional local inspection artifact surfaced through the Databases API and page.
+- **DuckDB** is the analytics store for warehouse-style reads. If not yet populated it is surfaced as an optional local inspection artifact through the Databases API and page.
 - **Prefect** is the primary orchestration control plane and is exposed through `/orchestration/prefect/*`.
 - **Oats local runtime** remains a compatibility and artifact-inspection surface under `/orchestration/oats`.
 
 ## Frontend/Backend Split
 
-- [`src/`](/Users/tony/Code/helaicopter/src) is frontend-only code: App Router pages, React components, hooks, and HTTP clients.
-- [`python/helaicopter_api/`](/Users/tony/Code/helaicopter/python/helaicopter_api) owns the backend surface: FastAPI app creation, dependency wiring, routers, and application services.
-- [`python/oats/`](/Users/tony/Code/helaicopter/python/oats) contains the orchestration CLI packaged alongside the backend code.
-- The removed Next.js route-handler layer is no longer part of the runtime. Frontend callers now hit FastAPI routes directly.
+- [`src/`](src) is frontend-only code: App Router pages, React components, hooks, and HTTP clients.
+- [`python/helaicopter_api/`](python/helaicopter_api) owns the backend surface: FastAPI app creation, dependency wiring, routers, and application services.
+- [`python/oats/`](python/oats) contains the orchestration CLI packaged alongside the backend code.
+- Frontend callers hit FastAPI routes directly; there is no Next.js route-handler layer.
 
 ## How It Works
 
@@ -236,10 +250,13 @@ src/
 │   ├── page.tsx                   # Analytics homepage
 │   ├── conversations/
 │   │   ├── page.tsx               # Conversation list
-│   │   └── [projectPath]/[sessionId]/page.tsx
+│   │   └── [...segments]/page.tsx # Conversation viewer
+│   ├── orchestration/page.tsx     # Orchestration hub (Prefect + OATS + DAGs)
+│   ├── databases/page.tsx         # Database inspector
 │   ├── plans/
 │   │   ├── page.tsx               # Plans list
 │   │   └── [slug]/page.tsx        # Plan viewer
+│   ├── prompts/page.tsx           # Evaluation prompt manager
 │   └── pricing/page.tsx           # Pricing reference
 ├── components/                    # React UI building blocks
 ├── hooks/                         # SWR data hooks
@@ -253,25 +270,8 @@ src/
     └── utils.ts                   # UI helper utilities
 ```
 
-Compatibility shim: [`src/lib/client/normalize.ts`](/Users/tony/Code/helaicopter/src/lib/client/normalize.ts) still accepts the legacy camelCase Next.js payload shape as well as the FastAPI snake_case schema so cached fixtures and in-flight responses continue to normalize during rollout cleanup.
+Frontend runtime validation: Zod lives at the TypeScript client boundary under [`src/lib/client/schemas/`](src/lib/client/schemas). Raw backend JSON, route/query state, and form payloads are parsed with a schema first, then mapped into UI-facing types in `normalize.ts` or component state helpers. FastAPI and Pydantic remain the backend contract authority.
 
-Frontend runtime validation: Zod now lives at the TypeScript client boundary under [`src/lib/client/schemas/`](/Users/tony/Code/helaicopter/src/lib/client/schemas). The intended pattern is parse raw backend JSON, route/query state, or form payloads with a schema first, then map the validated result into UI-facing types in [`src/lib/client/normalize.ts`](/Users/tony/Code/helaicopter/src/lib/client/normalize.ts) or component state helpers. FastAPI and Pydantic remain the backend contract authority; Zod does not replace Python-side validation.
-
-## Legacy Runtime Structure
-
-The removed Next.js route handlers and their Node-side backend adapters previously lived in `src/`. They are superseded by the FastAPI backend under [`python/helaicopter_api/`](/Users/tony/Code/helaicopter/python/helaicopter_api), so `src/` now stays focused on frontend code.
-
-## Historical Layout
-
-The pre-cutover app structure looked like this:
-
-```
-src/
-├── app/                           # Frontend pages plus embedded Node API
-├── lib/                           # Shared frontend code plus Node data loaders
-├── hooks/
-└── components/
-```
 ## Tech Stack
 
 - [Next.js 16](https://nextjs.org/) (App Router, Turbopack)
@@ -292,6 +292,7 @@ src/
 npm run dev              # Start Next.js + FastAPI together
 npm run dev:web          # Start only the Next.js development server
 npm run api:dev          # Start only the FastAPI backend with uvicorn (port 30000)
+npm run api:openapi      # Regenerate OpenAPI artifacts under public/openapi/
 npm run build            # Production frontend build
 npm run start            # Start the production Next.js server
 npm run lint             # ESLint
@@ -316,7 +317,7 @@ uv run --group dev pytest -q
 
 - If the frontend cannot reach the backend, confirm `npm run dev` or `npm run api:dev` is running and that `NEXT_PUBLIC_API_BASE_URL` points to the correct origin.
 - If the backend cannot find local conversation data, set `HELA_CLAUDE_DIR`, `HELA_CODEX_DIR`, or `HELA_PROJECT_ROOT` explicitly.
-- If API behavior looks wrong, compare `http://127.0.0.1:30000/openapi.json` against the expected router surface under [`python/helaicopter_api/router/`](/Users/tony/Code/helaicopter/python/helaicopter_api/router).
+- If API behavior looks wrong, compare `http://127.0.0.1:30000/openapi.json` against the expected router surface under [`python/helaicopter_api/router/`](python/helaicopter_api/router).
 
 ## License
 
