@@ -319,6 +319,7 @@ def _insert_persisted_conversation_summary(
 def _seed_sources(tmp_path: Path) -> Settings:
     claude_dir = tmp_path / ".claude"
     codex_dir = tmp_path / ".codex"
+    openclaw_dir = tmp_path / ".openclaw"
     project_path = "-Users-tony-Code-helaicopter"
     claude_project_dir = claude_dir / "projects" / project_path
     claude_project_dir.mkdir(parents=True)
@@ -768,9 +769,229 @@ def _seed_sources(tmp_path: Path) -> Settings:
             ),
         ],
     )
+    openclaw_main_sessions_dir = openclaw_dir / "agents" / "main" / "sessions"
+    openclaw_secondary_sessions_dir = openclaw_dir / "agents" / "secondary" / "sessions"
+    openclaw_main_sessions_dir.mkdir(parents=True)
+    openclaw_secondary_sessions_dir.mkdir(parents=True)
+
+    openclaw_main_session_id = "openclaw-main-session"
+    openclaw_secondary_session_id = "openclaw-secondary-session"
+    openclaw_main_sessions_dir.joinpath("sessions.json").write_text(
+        json.dumps(
+            {
+                "sessions": [
+                    {
+                        "id": openclaw_main_session_id,
+                        "updatedAt": "2026-03-19T12:00:06Z",
+                        "title": "Review OpenClaw backend rollout",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    openclaw_secondary_sessions_dir.joinpath("sessions.json").write_text(
+        json.dumps(
+            {
+                "sessions": [
+                    {
+                        "id": openclaw_secondary_session_id,
+                        "updatedAt": "2026-03-19T12:05:01Z",
+                        "title": "Inspect secondary agent transcript",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    openclaw_main_session = openclaw_main_sessions_dir / f"{openclaw_main_session_id}.jsonl"
+    openclaw_main_session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-19T12:00:00Z",
+                        "session": {
+                            "id": openclaw_main_session_id,
+                            "cwd": "/tmp/not-the-grouping-key",
+                            "agentId": "main",
+                            "title": "Review OpenClaw backend rollout",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "model_change",
+                        "timestamp": "2026-03-19T12:00:01Z",
+                        "model": "gpt-5",
+                        "provider": "openai-codex",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "thinking_level_change",
+                        "timestamp": "2026-03-19T12:00:02Z",
+                        "thinkingLevel": "high",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:03Z",
+                        "message": {
+                            "id": "openclaw-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Review OpenClaw backend rollout"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:04Z",
+                        "message": {
+                            "id": "openclaw-assistant-1",
+                            "role": "assistant",
+                            "model": "gpt-5",
+                            "usage": {
+                                "inputTokens": 100,
+                                "outputTokens": 40,
+                                "cacheReadTokens": 5,
+                                "cacheCreationTokens": 2,
+                                "reasoningTokens": 12,
+                            },
+                            "content": [
+                                {"type": "text", "text": "Starting backend scan."},
+                                {"type": "thinking", "thinking": "Need to inspect all agent trees."},
+                                {
+                                    "type": "toolCall",
+                                    "toolCallId": "tool-oc-1",
+                                    "toolName": "Shell",
+                                    "input": {"cmd": "ls agents"},
+                                },
+                            ],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:05Z",
+                        "message": {
+                            "id": "openclaw-tool-result-1",
+                            "role": "tool",
+                            "toolCallId": "tool-oc-1",
+                            "toolName": "Shell",
+                            "isError": False,
+                            "content": [{"type": "text", "text": "agents/main\nagents/secondary"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "custom",
+                        "timestamp": "2026-03-19T12:00:05.500000Z",
+                        "data": {"note": "safe to ignore"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:06Z",
+                        "message": {
+                            "id": "openclaw-tool-result-2",
+                            "role": "tool",
+                            "toolCallId": "tool-oc-unmatched",
+                            "toolName": "Shell",
+                            "isError": True,
+                            "content": [{"type": "text", "text": "unmatched stderr"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "unknown_event",
+                        "timestamp": "2026-03-19T12:00:07Z",
+                        "payload": {"ignored": True},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:08Z",
+                        "message": {
+                            "id": "openclaw-assistant-2",
+                            "role": "assistant",
+                            "usage": {
+                                "inputTokens": 130,
+                                "outputTokens": 55,
+                                "cacheReadTokens": 8,
+                                "cacheCreationTokens": 4,
+                                "reasoningTokens": 18,
+                            },
+                            "content": [{"type": "text", "text": "Completed discovery."}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    openclaw_secondary_session = openclaw_secondary_sessions_dir / f"{openclaw_secondary_session_id}.jsonl"
+    openclaw_secondary_session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-19T12:05:00Z",
+                        "session": {
+                            "id": openclaw_secondary_session_id,
+                            "cwd": "/Users/tony/Code/helaicopter",
+                            "agentId": "secondary",
+                            "title": "Inspect secondary agent transcript",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:05:01Z",
+                        "message": {
+                            "id": "openclaw-secondary-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Inspect secondary agent transcript"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:05:02Z",
+                        "message": {
+                            "id": "openclaw-secondary-assistant-1",
+                            "role": "assistant",
+                            "model": "gpt-4.1",
+                            "usage": {"inputTokens": 20, "outputTokens": 10},
+                            "content": [{"type": "text", "text": "Secondary transcript loaded."}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    os.utime(openclaw_main_session, (1_763_585_608, 1_763_585_608))
+    os.utime(openclaw_secondary_session, (1_763_585_902, 1_763_585_902))
     _write_app_db(tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite")
 
-    return Settings(project_root=tmp_path, claude_dir=claude_dir, codex_dir=codex_dir)
+    return Settings(
+        project_root=tmp_path,
+        claude_dir=claude_dir,
+        codex_dir=codex_dir,
+        openclaw_dir=openclaw_dir,
+    )
 
 
 @pytest.fixture()
@@ -954,6 +1175,100 @@ class TestConversationEndpoints:
             "019cdbff-dbb7-71d0-baaf-c669c55af628",
             "019cdbff-dbb7-71d0-baaf-c669c55af629",
         }
+
+    def test_openclaw_list_discovers_all_agents_and_uses_agent_project_paths(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get("/conversations")
+
+        assert response.status_code == 200
+        payload = response.json()
+        by_session = {item["session_id"]: item for item in payload}
+
+        main_summary = by_session["openclaw-main-session"]
+        assert main_summary["project_path"] == "openclaw:agent:main"
+        assert main_summary["project_name"] == "openclaw:agent:main"
+        assert main_summary["route_slug"] == "review-openclaw-backend-rollout"
+        assert (
+            main_summary["conversation_ref"]
+            == "review-openclaw-backend-rollout--openclaw-openclaw-main-session"
+        )
+        assert main_summary["model"] == "gpt-5"
+        assert main_summary["reasoning_effort"] == "high"
+        assert main_summary["total_input_tokens"] == 130
+        assert main_summary["total_output_tokens"] == 55
+        assert main_summary["total_cache_creation_tokens"] == 4
+        assert main_summary["total_cache_read_tokens"] == 8
+        assert main_summary["total_reasoning_tokens"] == 18
+        assert main_summary["tool_breakdown"] == {"Shell": 2}
+        assert main_summary["failed_tool_call_count"] == 1
+
+        secondary_summary = by_session["openclaw-secondary-session"]
+        assert secondary_summary["project_path"] == "openclaw:agent:secondary"
+        assert secondary_summary["conversation_ref"] == (
+            "inspect-secondary-agent-transcript--openclaw-openclaw-secondary-session"
+        )
+
+        filtered = conversations_client.get("/conversations", params={"project": "openclaw:agent:main"})
+        assert filtered.status_code == 200
+        assert [item["session_id"] for item in filtered.json()] == ["openclaw-main-session"]
+
+    def test_openclaw_detail_shapes_tool_results_and_ignores_unknown_events(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get("/conversations/openclaw:agent:main/openclaw-main-session")
+
+        assert response.status_code == 200
+        payload = response.json()
+
+        assert payload["project_path"] == "openclaw:agent:main"
+        assert payload["route_slug"] == "review-openclaw-backend-rollout"
+        assert payload["conversation_ref"] == (
+            "review-openclaw-backend-rollout--openclaw-openclaw-main-session"
+        )
+        assert payload["model"] == "gpt-5"
+        assert payload["reasoning_effort"] == "high"
+        assert payload["total_reasoning_tokens"] == 18
+        assert payload["total_usage"] == {
+            "input_tokens": 130,
+            "output_tokens": 55,
+            "cache_creation_tokens": 4,
+            "cache_read_tokens": 8,
+        }
+        assert [message["id"] for message in payload["messages"]] == [
+            "openclaw-user-1",
+            "openclaw-assistant-1",
+            "openclaw-tool-result-2",
+            "openclaw-assistant-2",
+        ]
+
+        assistant_blocks = payload["messages"][1]["blocks"]
+        assert assistant_blocks[0] == {"type": "text", "text": "Starting backend scan."}
+        assert assistant_blocks[1]["type"] == "thinking"
+        assert assistant_blocks[1]["thinking"] == "Need to inspect all agent trees."
+        assert assistant_blocks[2] == {
+            "type": "tool_call",
+            "tool_use_id": "tool-oc-1",
+            "tool_name": "Shell",
+            "input": {"cmd": "ls agents"},
+            "result": "agents/main\nagents/secondary",
+            "is_error": False,
+        }
+
+        unmatched_tool_result = payload["messages"][2]
+        assert unmatched_tool_result["role"] == "tool"
+        assert unmatched_tool_result["blocks"] == [
+            {
+                "type": "tool_call",
+                "tool_use_id": "tool-oc-unmatched",
+                "tool_name": "Shell",
+                "input": {},
+                "result": "unmatched stderr",
+                "is_error": True,
+            }
+        ]
 
     def test_subagent_detail_route_covers_claude_and_codex(self, conversations_client: TestClient) -> None:
         claude_subagent = conversations_client.get(
@@ -1364,16 +1679,24 @@ class TestProjectsHistoryAndTasks:
         assert projects.status_code == 200
         payload = projects.json()
         assert [item["encoded_path"] for item in payload] == [
+            "openclaw:agent:secondary",
+            "openclaw:agent:main",
             "codex:-Users-tony-Code-helaicopter",
             "-Users-tony-Code-helaicopter",
         ]
-        assert payload[0]["display_name"] == "Codex/Code/helaicopter"
-        assert payload[0]["full_path"] == "codex:-Users-tony-Code-helaicopter"
-        assert payload[0]["session_count"] == 2
-        assert payload[1]["display_name"] == "Code/helaicopter"
-        assert payload[1]["full_path"].endswith("/.claude/projects/-Users-tony-Code-helaicopter")
-        assert payload[1]["session_count"] == 2
-        assert payload[0]["last_activity"] >= payload[1]["last_activity"]
+        assert payload[0]["display_name"] == "openclaw:agent:secondary"
+        assert payload[0]["full_path"] == "openclaw:agent:secondary"
+        assert payload[0]["session_count"] == 1
+        assert payload[1]["display_name"] == "openclaw:agent:main"
+        assert payload[1]["full_path"] == "openclaw:agent:main"
+        assert payload[1]["session_count"] == 1
+        assert payload[2]["display_name"] == "Codex/Code/helaicopter"
+        assert payload[2]["full_path"] == "codex:-Users-tony-Code-helaicopter"
+        assert payload[2]["session_count"] == 2
+        assert payload[3]["display_name"] == "Code/helaicopter"
+        assert payload[3]["full_path"].endswith("/.claude/projects/-Users-tony-Code-helaicopter")
+        assert payload[3]["session_count"] == 2
+        assert payload[0]["last_activity"] >= payload[1]["last_activity"] >= payload[2]["last_activity"]
 
         history = conversations_client.get("/history", params={"limit": 2})
         assert history.status_code == 200

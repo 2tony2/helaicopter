@@ -98,10 +98,14 @@ def test_settings_expose_nested_cli_and_database_sections(tmp_path) -> None:
         project_root=tmp_path,
         claude_dir=tmp_path / ".claude",
         codex_dir=tmp_path / ".codex",
+        openclaw_dir=tmp_path / ".openclaw",
     )
 
     assert settings.cli.claude_dir == tmp_path / ".claude"
     assert settings.cli.codex_dir == tmp_path / ".codex"
+    assert settings.cli.openclaw_dir == tmp_path / ".openclaw"
+    assert settings.openclaw_agents_dir == tmp_path / ".openclaw" / "agents"
+    assert settings.openclaw_agent_sessions_glob.endswith(".openclaw/agents/*/sessions")
     assert settings.database.runtime_dir == tmp_path / "var" / "database-runtime"
     assert settings.database.sqlite.path == (
         tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"

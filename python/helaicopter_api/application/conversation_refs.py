@@ -7,7 +7,7 @@ from dataclasses import dataclass
 _ROUTE_SLUG_MAX_LENGTH = 80
 _ROUTE_SLUG_FALLBACK = "conversation"
 _ROUTE_SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
-_KNOWN_CONVERSATION_REF_PROVIDERS = ("claude", "codex")
+_KNOWN_CONVERSATION_REF_PROVIDERS = ("claude", "codex", "openclaw")
 
 
 @dataclass(frozen=True)
