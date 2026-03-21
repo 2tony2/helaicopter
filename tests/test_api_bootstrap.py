@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -84,6 +85,16 @@ class TestBuildServices:
         cache.delete("k")
         assert cache.get("k") is None
         assert cache.get("missing", "default") == "default"
+
+    def test_cache_entries_expire_after_ttl(self):
+        cache = LocalCache()
+
+        cache.set("ephemeral", 42, ttl_seconds=0.01)
+        assert cache.get("ephemeral") == 42
+
+        time.sleep(0.02)
+
+        assert cache.get("ephemeral") is None
 
 
 # ---------------------------------------------------------------------------

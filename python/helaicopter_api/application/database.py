@@ -92,6 +92,7 @@ def trigger_database_refresh(
     services: InstanceOf[BackendServices],
     *,
     force: bool,
+    full_rebuild: bool,
     trigger: str,
     stale_after_seconds: int,
 ) -> DatabaseStatusResponse:
@@ -121,7 +122,8 @@ def trigger_database_refresh(
     settings = _service_settings_or_none(services)
     try:
         payload = _run_refresh_with_optional_settings(
-            force=force,
+            force=force or full_rebuild,
+            full_rebuild=full_rebuild,
             trigger=trigger,
             stale_after_seconds=stale_after_seconds,
             settings=settings,
@@ -300,18 +302,21 @@ def _service_settings_or_none(services: BackendServices) -> Settings | None:
 def _run_refresh_with_optional_settings(
     *,
     force: bool,
+    full_rebuild: bool = False,
     trigger: str,
     stale_after_seconds: int,
     settings: Settings | None,
 ) -> DatabaseStatusPayload:
+    kwargs = {
+        "force": force,
+        "trigger": trigger,
+        "stale_after_seconds": stale_after_seconds,
+    }
+    if full_rebuild:
+        kwargs["full_rebuild"] = True
     if settings is None:
-        return run_refresh(force=force, trigger=trigger, stale_after_seconds=stale_after_seconds)
-    return run_refresh(
-        force=force,
-        trigger=trigger,
-        stale_after_seconds=stale_after_seconds,
-        settings=settings,
-    )
+        return run_refresh(**kwargs)
+    return run_refresh(**kwargs, settings=settings)
 
 
 def _load_status_with_optional_settings(settings: Settings | None) -> object | None:
