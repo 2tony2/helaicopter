@@ -39,6 +39,33 @@ test("requestJson parses successful JSON responses through a schema", async () =
   }
 });
 
+test("requestJson disables browser caching by default for repeated live reads", async () => {
+  const payloadSchema = z.object({
+    ok: z.boolean(),
+  });
+  const restoreFetch = installFetchStub(async (input, init) => {
+    assert.equal(String(input), "https://api.example.test/conversations?days=7");
+    assert.equal(init?.cache, "no-store");
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+
+  try {
+    const payload = await requestJson(
+      "https://api.example.test/conversations?days=7",
+      undefined,
+      payloadSchema
+    );
+
+    assert.equal(payload.ok, true);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("requestJson throws a concise validation error when schema parsing fails", async () => {
   const payloadSchema = z.object({
     projectId: z.string(),
