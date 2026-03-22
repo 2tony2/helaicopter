@@ -7,7 +7,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
-from helaicopter_semantics import calculate_cost, supports_long_context_premium, resolve_provider
+from helaicopter_semantics import (
+    CLAUDE_PRICING,
+    OPENAI_PRICING,
+    calculate_cost,
+    resolve_provider,
+    supports_long_context_premium,
+)
 
 AnalyticsProvider = Literal["claude", "codex", "openclaw"]
 TimeSeriesKey = Literal["hourly", "daily", "weekly", "monthly"]
@@ -251,30 +257,7 @@ def build_analytics(
     for conversation in conversations:
         provider = provider_for_summary(conversation)
         reasoning_tokens = conversation.total_reasoning_tokens or 0
-        cost = calculate_cost(
-            input_tokens=conversation.total_input_tokens,
-            output_tokens=conversation.total_output_tokens,
-            cache_write_tokens=conversation.total_cache_write_tokens,
-            cache_read_tokens=conversation.total_cache_read_tokens,
-            model=conversation.model,
-        )
-        long_context_premium = 0.0
-        long_context_conversations = 0
-        if conversation.total_input_tokens > 200_000 and supports_long_context_premium(conversation.model):
-            long_context_premium = (
-                cost.input_cost + (cost.output_cost * 0.5) + cost.cache_write_cost + cost.cache_read_cost
-            )
-            long_context_conversations = 1
-
-        conversation_cost = AnalyticsCostBreakdown(
-            input_cost=cost.input_cost,
-            output_cost=cost.output_cost,
-            cache_write_cost=cost.cache_write_cost,
-            cache_read_cost=cost.cache_read_cost,
-            long_context_premium=long_context_premium,
-            long_context_conversations=long_context_conversations,
-            total_cost=cost.total_cost + long_context_premium,
-        )
+        conversation_cost = _conversation_cost_breakdown(conversation, provider=provider)
         total_tokens = (
             conversation.total_input_tokens
             + conversation.total_output_tokens
@@ -449,6 +432,68 @@ def provider_for_summary(conversation: HistoricalConversationSummary) -> Analyti
         provider=conversation.provider,
         project_path=conversation.project_path,
     )
+
+
+def _conversation_cost_breakdown(
+    conversation: HistoricalConversationSummary,
+    *,
+    provider: AnalyticsProvider,
+) -> AnalyticsCostBreakdown:
+    if provider == "openclaw" and not _openclaw_has_known_cost_model(conversation.model):
+        return AnalyticsCostBreakdown()
+
+    cost = calculate_cost(
+        input_tokens=conversation.total_input_tokens,
+        output_tokens=conversation.total_output_tokens,
+        cache_write_tokens=conversation.total_cache_write_tokens,
+        cache_read_tokens=conversation.total_cache_read_tokens,
+        model=conversation.model,
+    )
+    long_context_premium = 0.0
+    long_context_conversations = 0
+    if conversation.total_input_tokens > 200_000 and supports_long_context_premium(conversation.model):
+        long_context_premium = cost.input_cost + (cost.output_cost * 0.5) + cost.cache_write_cost + cost.cache_read_cost
+        long_context_conversations = 1
+
+    return AnalyticsCostBreakdown(
+        input_cost=cost.input_cost,
+        output_cost=cost.output_cost,
+        cache_write_cost=cost.cache_write_cost,
+        cache_read_cost=cost.cache_read_cost,
+        long_context_premium=long_context_premium,
+        long_context_conversations=long_context_conversations,
+        total_cost=cost.total_cost + long_context_premium,
+    )
+
+
+def _openclaw_has_known_cost_model(model: str | None) -> bool:
+    if not model:
+        return False
+    if model in CLAUDE_PRICING or model in OPENAI_PRICING:
+        return True
+    if any(model.startswith(key) for key in CLAUDE_PRICING):
+        return True
+    if any(model.startswith(key) for key in OPENAI_PRICING):
+        return True
+    if "gpt-5.4" in model or "gpt5.4" in model:
+        return True
+    if "gpt-5.2" in model or "gpt5.2" in model:
+        return True
+    if "gpt-5.1" in model or "gpt5.1" in model:
+        return True
+    if "gpt-5-mini" in model or "gpt5-mini" in model:
+        return True
+    if "gpt-5" in model or "gpt5" in model:
+        return True
+    if "o4-mini" in model or "o3" in model:
+        return True
+    if "opus-4-6" in model or "opus-4-5" in model:
+        return True
+    if "opus-4-1" in model or "opus-4" in model:
+        return True
+    if "sonnet" in model or "haiku" in model:
+        return True
+    return False
 
 
 def _ensure_utc(value: datetime | None) -> datetime:

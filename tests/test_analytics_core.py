@@ -350,6 +350,35 @@ class TestPureAnalyticsAggregation:
         assert analytics.cost_breakdown_by_provider["codex"].total_cost == pytest.approx(0.45125)
         assert analytics.cost_breakdown_by_provider["openclaw"].total_cost == pytest.approx(0.22935)
 
+    def test_build_analytics_omits_unpriced_openclaw_costs_from_cost_math(self) -> None:
+        now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
+        openclaw = _summary(
+            "openclaw-unpriced",
+            provider="openclaw",
+            project_path="openclaw:agent:main",
+            started_at="2026-03-17T07:00:00Z",
+            ended_at="2026-03-17T07:20:00Z",
+            model="openclaw-internal-preview",
+            total_input_tokens=50_000,
+            total_output_tokens=5_000,
+            total_cache_write_tokens=1_000,
+            total_cache_read_tokens=2_000,
+            tool_use_count=3,
+            failed_tool_call_count=1,
+            tool_breakdown={"search": 1, "bash": 2},
+        )
+
+        analytics = build_analytics([openclaw], days=7, now=now)
+
+        assert analytics.total_conversations == 1
+        assert analytics.total_tool_calls == 3
+        assert analytics.tool_breakdown_by_provider["bash"].openclaw == 2
+        assert analytics.model_breakdown_by_provider["openclaw-internal-preview"].openclaw == 1
+        assert analytics.estimated_cost == pytest.approx(0.0)
+        assert analytics.cost_breakdown.total_cost == pytest.approx(0.0)
+        assert analytics.cost_breakdown_by_provider["openclaw"].total_cost == pytest.approx(0.0)
+        assert analytics.cost_breakdown_by_model["openclaw-internal-preview"].total_cost == pytest.approx(0.0)
+
     def test_build_analytics_keeps_claude_and_codex_provider_filters_stable(self) -> None:
         now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
         conversations = [
