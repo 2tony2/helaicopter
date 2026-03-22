@@ -408,6 +408,21 @@ test("normalizeConversations preserves openclaw providers from summary payloads"
   assert.equal(normalized[0].provider, "openclaw");
 });
 
+test("normalizePlan rejects unknown providers instead of coercing them to claude", () => {
+  assert.throws(
+    () =>
+      normalizePlan({
+        id: "plan-unknown-provider",
+        slug: "plan-unknown-provider",
+        title: "Unknown provider",
+        content: "content",
+        provider: "mystery",
+        timestamp: 1763000004000,
+      }),
+    /Invalid option/i
+  );
+});
+
 test("normalizeConversationDetail preserves token usage semantics expected by the viewer", () => {
   const normalized = normalizeConversationDetail({
     session_id: "session-123",

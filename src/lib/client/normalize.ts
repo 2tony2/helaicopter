@@ -63,6 +63,7 @@ import type {
   EvaluationPromptPayload,
 } from "./schemas/evaluations.ts";
 import type { SubscriptionSettingsPayload } from "./schemas/subscriptions.ts";
+import { providerSchema } from "./schemas/shared.ts";
 
 /**
  * Compatibility shim for the FastAPI rollout: frontend callers now target the
@@ -121,14 +122,7 @@ function stringOr(value: unknown, fallback = ""): string {
 }
 
 function normalizeProvider(value: unknown): FrontendProvider {
-  switch (value) {
-    case "codex":
-    case "openclaw":
-    case "claude":
-      return value;
-    default:
-      return "claude";
-  }
+  return providerSchema.parse(value);
 }
 
 function normalizeOptionalProvider(value: unknown): FrontendProvider | undefined {
