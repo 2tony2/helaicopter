@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-ProviderIdentifier = Literal["claude", "codex", "openclaw"]
+ProviderIdentifier = Literal["claude", "codex", "openclaw", "opencloud"]
 
 
 def resolve_provider(
@@ -36,11 +36,13 @@ def resolve_provider(
     # Explicit provider field takes precedence when recognized.
     if provider:
         provider_lower = provider.lower()
-        if provider_lower in {"codex", "openclaw"}:
+        if provider_lower in {"codex", "openclaw", "opencloud"}:
             return provider_lower
 
     # Project path prefix is authoritative when provenance is encoded there.
     if project_path:
+        if project_path.startswith("opencloud:"):
+            return "opencloud"
         if project_path.startswith("openclaw:"):
             return "openclaw"
         if project_path.startswith("codex:"):

@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { TokenUsageBadge } from "./token-usage-badge";
 import { ThinkingBlock } from "./thinking-block";
 import { ToolCallBlock } from "./tool-call-block";
-import type { ProcessedMessage } from "@/lib/types";
+import type { FrontendProvider, ProcessedMessage } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
 import { Link as LinkIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -21,7 +21,7 @@ export function MessageCard({
   onSelect,
 }: {
   message: ProcessedMessage;
-  provider?: "claude" | "codex";
+  provider?: FrontendProvider;
   href?: string;
   isSelected?: boolean;
   onSelect?: () => void;

@@ -36,6 +36,7 @@ function providerLabel(provider: string): string {
   if (provider === "claude") return "Claude";
   if (provider === "codex") return "Codex";
   if (provider === "openclaw") return "OpenClaw";
+  if (provider === "opencloud") return "OpenCloud";
   return provider;
 }
 
@@ -48,6 +49,9 @@ function getBudgetForSelection(
     : null;
 
   if (providerFromKey) {
+    if (providerFromKey !== "claude" && providerFromKey !== "codex") {
+      return null;
+    }
     const setting = settings[providerFromKey];
     if (!setting || !setting.hasSubscription || setting.monthlyCost <= 0) {
       return null;

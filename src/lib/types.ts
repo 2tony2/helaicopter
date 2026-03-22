@@ -506,7 +506,7 @@ export interface ContextBucket {
 export interface ContextStep {
   messageId: string;
   index: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   label: string;
   category: ContextBucket["category"];
   timestamp: number;
@@ -531,7 +531,7 @@ export interface ContextWindowStats {
   cumulativeTokens: number;
 }
 
-export type FrontendProvider = "claude" | "codex" | "openclaw";
+export type FrontendProvider = "claude" | "codex" | "openclaw" | "opencloud";
 
 export type PlanProvider = FrontendProvider;
 
@@ -695,6 +695,8 @@ export interface AnalyticsCostBreakdownMap {
 export interface ProviderBreakdown {
   claude: number;
   codex: number;
+  openclaw?: number;
+  opencloud?: number;
 }
 
 export interface AnalyticsRateValue {
@@ -748,6 +750,30 @@ export interface AnalyticsTimeSeriesPoint {
   claudeFailedToolCalls: number;
   claudeToolErrorRatePct: number;
   claudeSubagents: number;
+  openclawEstimatedCost?: number;
+  openclawInputTokens?: number;
+  openclawOutputTokens?: number;
+  openclawCacheWriteTokens?: number;
+  openclawCacheReadTokens?: number;
+  openclawReasoningTokens?: number;
+  openclawTotalTokens?: number;
+  openclawConversations?: number;
+  openclawToolCalls?: number;
+  openclawFailedToolCalls?: number;
+  openclawToolErrorRatePct?: number;
+  openclawSubagents?: number;
+  opencloudEstimatedCost?: number;
+  opencloudInputTokens?: number;
+  opencloudOutputTokens?: number;
+  opencloudCacheWriteTokens?: number;
+  opencloudCacheReadTokens?: number;
+  opencloudReasoningTokens?: number;
+  opencloudTotalTokens?: number;
+  opencloudConversations?: number;
+  opencloudToolCalls?: number;
+  opencloudFailedToolCalls?: number;
+  opencloudToolErrorRatePct?: number;
+  opencloudSubagents?: number;
   codexInputTokens: number;
   codexOutputTokens: number;
   codexCacheWriteTokens: number;
@@ -826,6 +852,18 @@ export interface DailyUsage {
   codexConversations: number;
   claudeSubagents: number;
   codexSubagents: number;
+  openclawInputTokens?: number;
+  openclawOutputTokens?: number;
+  openclawCacheWriteTokens?: number;
+  openclawCacheReadTokens?: number;
+  openclawConversations?: number;
+  openclawSubagents?: number;
+  opencloudInputTokens?: number;
+  opencloudOutputTokens?: number;
+  opencloudCacheWriteTokens?: number;
+  opencloudCacheReadTokens?: number;
+  opencloudConversations?: number;
+  opencloudSubagents?: number;
 }
 
 export interface DatabaseColumnSchema {

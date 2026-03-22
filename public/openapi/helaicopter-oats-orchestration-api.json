@@ -12,7 +12,7 @@
           "orchestration"
         ],
         "summary": "List OATS local-runtime records.",
-        "description": "View over repo-local OATS runtime and record files.",
+        "description": "List all OATS run records found in the local runtime directory.\n\nReturns:\n    A list of OATS run records parsed from repo-local runtime and record\n    files, each describing the run ID, status, and associated task attempts.",
         "operationId": "orchestration_oats_index_orchestration_oats_get",
         "responses": {
           "200": {
@@ -74,7 +74,8 @@
           }
         },
         "type": "object",
-        "title": "AnalyticsCostBreakdownResponse"
+        "title": "AnalyticsCostBreakdownResponse",
+        "description": "Itemised cost breakdown across input, output, cache, and long-context charges."
       },
       "AnalyticsDataResponse": {
         "properties": {
@@ -254,7 +255,8 @@
           }
         },
         "type": "object",
-        "title": "AnalyticsRateValueResponse"
+        "title": "AnalyticsRateValueResponse",
+        "description": "Usage rate for a single metric expressed across multiple time horizons."
       },
       "AnalyticsRatesResponse": {
         "properties": {
@@ -306,7 +308,8 @@
           "failed_tool_calls",
           "subagents"
         ],
-        "title": "AnalyticsRatesResponse"
+        "title": "AnalyticsRatesResponse",
+        "description": "Aggregated usage rates for all tracked metrics over multiple time horizons."
       },
       "AnalyticsTimeSeriesPointResponse": {
         "properties": {
@@ -514,7 +517,8 @@
           "start",
           "end"
         ],
-        "title": "AnalyticsTimeSeriesPointResponse"
+        "title": "AnalyticsTimeSeriesPointResponse",
+        "description": "Token, cost, and activity metrics for a single time-series bucket (hourly/daily/weekly/monthly)."
       },
       "AnalyticsTimeSeriesResponse": {
         "properties": {
@@ -552,7 +556,8 @@
           }
         },
         "type": "object",
-        "title": "AnalyticsTimeSeriesResponse"
+        "title": "AnalyticsTimeSeriesResponse",
+        "description": "Time-series data grouped by granularity (hourly, daily, weekly, monthly)."
       },
       "ConversationContextAnalyticsResponse": {
         "properties": {
@@ -574,7 +579,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationContextAnalyticsResponse"
+        "title": "ConversationContextAnalyticsResponse",
+        "description": "Bucketed and step-level context usage analytics for a conversation."
       },
       "ConversationContextBucketResponse": {
         "properties": {
@@ -629,7 +635,8 @@
           "label",
           "category"
         ],
-        "title": "ConversationContextBucketResponse"
+        "title": "ConversationContextBucketResponse",
+        "description": "Aggregated token usage for a named context category (e.g. tool, mcp, subagent)."
       },
       "ConversationContextStepResponse": {
         "properties": {
@@ -700,7 +707,8 @@
           "category",
           "timestamp"
         ],
-        "title": "ConversationContextStepResponse"
+        "title": "ConversationContextStepResponse",
+        "description": "Per-message token usage entry in the context analytics step sequence."
       },
       "ConversationContextWindowResponse": {
         "properties": {
@@ -721,7 +729,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationContextWindowResponse"
+        "title": "ConversationContextWindowResponse",
+        "description": "Summary of context window utilisation across all API calls in a conversation."
       },
       "ConversationDagEdgeResponse": {
         "properties": {
@@ -744,7 +753,8 @@
           "source",
           "target"
         ],
-        "title": "ConversationDagEdgeResponse"
+        "title": "ConversationDagEdgeResponse",
+        "description": "A directed edge connecting two nodes in the conversation agent-tree DAG."
       },
       "ConversationDagNodeResponse": {
         "properties": {
@@ -970,7 +980,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationDagStatsResponse"
+        "title": "ConversationDagStatsResponse",
+        "description": "Aggregate structural statistics for a conversation agent-tree DAG."
       },
       "ConversationDagSummaryResponse": {
         "properties": {
@@ -1320,7 +1331,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -1417,7 +1430,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -1661,7 +1676,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -1785,7 +1802,8 @@
           "step",
           "status"
         ],
-        "title": "ConversationPlanStepResponse"
+        "title": "ConversationPlanStepResponse",
+        "description": "A single step within an embedded conversation plan."
       },
       "ConversationRefResolutionResponse": {
         "properties": {
@@ -1834,7 +1852,8 @@
           "session_id",
           "thread_type"
         ],
-        "title": "ConversationRefResolutionResponse"
+        "title": "ConversationRefResolutionResponse",
+        "description": "Resolved routing metadata for a conversation reference."
       },
       "ConversationSubagentResponse": {
         "properties": {
@@ -2117,7 +2136,7 @@
           "is_running"
         ],
         "title": "ConversationSummaryResponse",
-        "description": "Summary of a single Claude/Codex conversation session."
+        "description": "Summary of a single Claude, Codex, or OpenClaw conversation session."
       },
       "ConversationTaskResponse": {
         "properties": {
@@ -2292,7 +2311,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationUsageResponse"
+        "title": "ConversationUsageResponse",
+        "description": "Token usage counts for a single conversation or message."
       },
       "DailyUsageResponse": {
         "properties": {
@@ -2395,7 +2415,8 @@
         "required": [
           "date"
         ],
-        "title": "DailyUsageResponse"
+        "title": "DailyUsageResponse",
+        "description": "Token and conversation counts for a single calendar day, split by provider."
       },
       "DatabaseArtifactStatusResponse": {
         "properties": {
@@ -2587,7 +2608,8 @@
           "role",
           "availability"
         ],
-        "title": "DatabaseArtifactStatusResponse"
+        "title": "DatabaseArtifactStatusResponse",
+        "description": "Health, availability, and schema inventory for a single database artifact."
       },
       "DatabaseArtifactsResponse": {
         "properties": {
@@ -2611,7 +2633,8 @@
           "duckdb",
           "prefectPostgres"
         ],
-        "title": "DatabaseArtifactsResponse"
+        "title": "DatabaseArtifactsResponse",
+        "description": "Status snapshots for all managed database artifacts (cache, SQLite, DuckDB, Postgres)."
       },
       "DatabaseColumnSchemaResponse": {
         "properties": {
@@ -2661,7 +2684,8 @@
           "name",
           "type"
         ],
-        "title": "DatabaseColumnSchemaResponse"
+        "title": "DatabaseColumnSchemaResponse",
+        "description": "Schema metadata for a single database table column."
       },
       "DatabaseLoadMetricResponse": {
         "properties": {
@@ -2699,13 +2723,19 @@
         "required": [
           "label"
         ],
-        "title": "DatabaseLoadMetricResponse"
+        "title": "DatabaseLoadMetricResponse",
+        "description": "A labelled load or performance metric for a database artifact."
       },
       "DatabaseRefreshRequest": {
         "properties": {
           "force": {
             "type": "boolean",
             "title": "Force",
+            "default": false
+          },
+          "fullRebuild": {
+            "type": "boolean",
+            "title": "Fullrebuild",
             "default": false
           },
           "trigger": {
@@ -2722,7 +2752,8 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "DatabaseRefreshRequest"
+        "title": "DatabaseRefreshRequest",
+        "description": "Request body for triggering a database refresh operation."
       },
       "DatabaseRuntimeResponse": {
         "properties": {
@@ -2748,7 +2779,8 @@
           "analyticsReadBackend",
           "conversationSummaryReadBackend"
         ],
-        "title": "DatabaseRuntimeResponse"
+        "title": "DatabaseRuntimeResponse",
+        "description": "Active read-backend selections for analytics and conversation summary queries."
       },
       "DatabaseStatusResponse": {
         "properties": {
@@ -3001,7 +3033,8 @@
         "required": [
           "name"
         ],
-        "title": "DatabaseTableSchemaResponse"
+        "title": "DatabaseTableSchemaResponse",
+        "description": "Schema and serving metadata for a single database table."
       },
       "EvaluationPromptCreateRequest": {
         "properties": {
@@ -3142,7 +3175,8 @@
           }
         },
         "type": "object",
-        "title": "GatewayDirectionResponse"
+        "title": "GatewayDirectionResponse",
+        "description": "Overall gateway routing direction and registered API surfaces."
       },
       "GatewaySurfaceResponse": {
         "properties": {
@@ -3188,7 +3222,8 @@
           "integrationType",
           "note"
         ],
-        "title": "GatewaySurfaceResponse"
+        "title": "GatewaySurfaceResponse",
+        "description": "Descriptor for a single API surface registered with the platform gateway."
       },
       "HTTPValidationError": {
         "properties": {
@@ -3281,7 +3316,8 @@
           "source",
           "target"
         ],
-        "title": "OrchestrationDagEdgeResponse"
+        "title": "OrchestrationDagEdgeResponse",
+        "description": "A directed dependency edge between two nodes in the orchestration DAG."
       },
       "OrchestrationDagNodeResponse": {
         "properties": {
@@ -3320,7 +3356,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Agent"
           },
@@ -3444,7 +3482,8 @@
           "agent",
           "status"
         ],
-        "title": "OrchestrationDagNodeResponse"
+        "title": "OrchestrationDagNodeResponse",
+        "description": "A single node (planner or task) in the orchestration run DAG."
       },
       "OrchestrationDagResponse": {
         "properties": {
@@ -3472,7 +3511,8 @@
         "required": [
           "stats"
         ],
-        "title": "OrchestrationDagResponse"
+        "title": "OrchestrationDagResponse",
+        "description": "Complete DAG representation for an orchestration run, including nodes, edges, and stats."
       },
       "OrchestrationDagStatsResponse": {
         "properties": {
@@ -3508,7 +3548,9 @@
             "propertyNames": {
               "enum": [
                 "claude",
-                "codex"
+                "codex",
+                "openclaw",
+                "opencloud"
               ]
             },
             "type": "object",
@@ -3542,7 +3584,8 @@
           }
         },
         "type": "object",
-        "title": "OrchestrationDagStatsResponse"
+        "title": "OrchestrationDagStatsResponse",
+        "description": "Aggregate structural and status statistics for an orchestration run DAG."
       },
       "OrchestrationFactsResponse": {
         "properties": {
@@ -3572,7 +3615,8 @@
           }
         },
         "type": "object",
-        "title": "OrchestrationFactsResponse"
+        "title": "OrchestrationFactsResponse",
+        "description": "Canonical routing facts for all runs and task attempts across a project."
       },
       "OrchestrationFeatureBranchResponse": {
         "properties": {
@@ -3596,7 +3640,8 @@
         "required": [
           "name"
         ],
-        "title": "OrchestrationFeatureBranchResponse"
+        "title": "OrchestrationFeatureBranchResponse",
+        "description": "Feature branch associated with an orchestration run."
       },
       "OrchestrationFinalPullRequestResponse": {
         "properties": {
@@ -3691,7 +3736,8 @@
           "state",
           "reviewGateStatus"
         ],
-        "title": "OrchestrationFinalPullRequestResponse"
+        "title": "OrchestrationFinalPullRequestResponse",
+        "description": "Final integration pull request snapshot for a completed orchestration run."
       },
       "OrchestrationInvocationResponse": {
         "properties": {
@@ -3699,7 +3745,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Agent"
           },
@@ -3875,7 +3923,8 @@
           "status",
           "startedAt"
         ],
-        "title": "OrchestrationOperationHistoryResponse"
+        "title": "OrchestrationOperationHistoryResponse",
+        "description": "A single recorded operation event in an orchestration run or task history."
       },
       "OrchestrationReviewSummaryResponse": {
         "properties": {
@@ -3898,7 +3947,8 @@
         "required": [
           "blockingState"
         ],
-        "title": "OrchestrationReviewSummaryResponse"
+        "title": "OrchestrationReviewSummaryResponse",
+        "description": "Aggregated pull request review state for an orchestration task."
       },
       "OrchestrationRunFactResponse": {
         "properties": {
@@ -4021,7 +4071,8 @@
           "canonicalReason",
           "status"
         ],
-        "title": "OrchestrationRunFactResponse"
+        "title": "OrchestrationRunFactResponse",
+        "description": "Canonical fact record summarising the outcome of a single orchestration run."
       },
       "OrchestrationRunResponse": {
         "properties": {
@@ -4265,7 +4316,9 @@
                 "type": "string",
                 "enum": [
                   "claude",
-                  "codex"
+                  "codex",
+                  "openclaw",
+                  "opencloud"
                 ]
               },
               {
@@ -4311,7 +4364,8 @@
           "sourceKind",
           "status"
         ],
-        "title": "OrchestrationTaskAttemptFactResponse"
+        "title": "OrchestrationTaskAttemptFactResponse",
+        "description": "Canonical fact record for a single task attempt within an orchestration run."
       },
       "OrchestrationTaskPullRequestResponse": {
         "properties": {
@@ -4427,7 +4481,8 @@
           "state",
           "mergeGateStatus"
         ],
-        "title": "OrchestrationTaskPullRequestResponse"
+        "title": "OrchestrationTaskPullRequestResponse",
+        "description": "Pull request snapshot for an individual orchestration task branch."
       },
       "OrchestrationTaskResponse": {
         "properties": {
@@ -4536,7 +4591,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -4683,7 +4740,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -4871,7 +4930,8 @@
           "deploymentId",
           "deploymentName"
         ],
-        "title": "PrefectDeploymentResponse"
+        "title": "PrefectDeploymentResponse",
+        "description": "Prefect deployment record with optional OATS metadata."
       },
       "PrefectFlowRunAnalyticsResponse": {
         "properties": {
@@ -4920,7 +4980,8 @@
         "required": [
           "runStatus"
         ],
-        "title": "PrefectFlowRunAnalyticsResponse"
+        "title": "PrefectFlowRunAnalyticsResponse",
+        "description": "Task-level analytics summary for a Prefect flow run."
       },
       "PrefectFlowRunResponse": {
         "properties": {
@@ -5074,7 +5135,8 @@
         "required": [
           "flowRunId"
         ],
-        "title": "PrefectFlowRunResponse"
+        "title": "PrefectFlowRunResponse",
+        "description": "Prefect flow run record with state, deployment linkage, and optional OATS analytics."
       },
       "PrefectOatsMetadataResponse": {
         "properties": {
@@ -5146,7 +5208,8 @@
           }
         },
         "type": "object",
-        "title": "PrefectOatsMetadataResponse"
+        "title": "PrefectOatsMetadataResponse",
+        "description": "OATS-specific metadata attached to a Prefect deployment or flow run."
       },
       "PrefectWorkPoolResponse": {
         "properties": {
@@ -5202,7 +5265,8 @@
           "workPoolId",
           "workPoolName"
         ],
-        "title": "PrefectWorkPoolResponse"
+        "title": "PrefectWorkPoolResponse",
+        "description": "Prefect work pool record with type, status, and concurrency configuration."
       },
       "PrefectWorkerResponse": {
         "properties": {
@@ -5253,7 +5317,8 @@
           "workerId",
           "workerName"
         ],
-        "title": "PrefectWorkerResponse"
+        "title": "PrefectWorkerResponse",
+        "description": "Prefect worker record with heartbeat and work pool association."
       },
       "ProjectResponse": {
         "properties": {
@@ -5302,10 +5367,16 @@
             "type": "integer",
             "title": "Codex",
             "default": 0
+          },
+          "openclaw": {
+            "type": "integer",
+            "title": "Openclaw",
+            "default": 0
           }
         },
         "type": "object",
-        "title": "ProviderBreakdownResponse"
+        "title": "ProviderBreakdownResponse",
+        "description": "Per-provider count breakdown (Claude, Codex, OpenClaw) for a single metric."
       },
       "ProviderSubscriptionSettingResponse": {
         "properties": {
@@ -5313,7 +5384,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -5337,7 +5410,8 @@
           "provider",
           "updatedAt"
         ],
-        "title": "ProviderSubscriptionSettingResponse"
+        "title": "ProviderSubscriptionSettingResponse",
+        "description": "Current subscription configuration for a single provider."
       },
       "ProviderSubscriptionSettingUpdateRequest": {
         "properties": {
@@ -5370,7 +5444,9 @@
                 "type": "string",
                 "enum": [
                   "claude",
-                  "codex"
+                  "codex",
+                  "openclaw",
+                  "opencloud"
                 ]
               },
               {

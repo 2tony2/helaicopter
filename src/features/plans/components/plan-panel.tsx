@@ -16,13 +16,15 @@ type PlanLike = ConversationPlan | PlanDetail;
 function providerLabel(provider: FrontendProvider): string {
   if (provider === "claude") return "Claude";
   if (provider === "codex") return "Codex";
-  return "OpenClaw";
+  if (provider === "openclaw") return "OpenClaw";
+  return "OpenCloud";
 }
 
 function providerDotClass(provider: FrontendProvider): string {
   if (provider === "claude") return "bg-emerald-500";
   if (provider === "codex") return "bg-sky-500";
-  return "bg-amber-500";
+  if (provider === "openclaw") return "bg-amber-500";
+  return "bg-fuchsia-500";
 }
 
 function toFileHref(path: string): string {

@@ -407,10 +407,34 @@ test("provider filters render an OpenClaw option", () => {
   assert.match(markup, /OpenClaw/);
 });
 
+test("provider filters render an OpenCloud option", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(ProviderFilter, {
+      value: "opencloud",
+      onChange: () => {},
+    })
+  );
+
+  assert.equal(
+    providerFilterOptions.some((option) => option.value === "opencloud"),
+    true
+  );
+  assert.match(markup, /OpenCloud/);
+});
+
 test("OpenClaw conversation payloads are not mislabeled as Claude or Codex", () => {
   assert.equal(resolveConversationProvider("openclaw:agent:main"), "openclaw");
   assert.equal(resolveConversationProvider("openclaw:agent:main", "openclaw"), "openclaw");
   assert.equal(conversationProviderLabel("openclaw"), "OpenClaw");
+});
+
+test("OpenCloud conversation payloads are not mislabeled as Claude or Codex", () => {
+  assert.equal(resolveConversationProvider("opencloud:-Users-tony-Code-helaicopter"), "opencloud");
+  assert.equal(
+    resolveConversationProvider("opencloud:-Users-tony-Code-helaicopter", "opencloud"),
+    "opencloud"
+  );
+  assert.equal(conversationProviderLabel("opencloud"), "OpenCloud");
 });
 
 test("project provider filtering does not treat every non-codex namespace as Claude", () => {
@@ -423,6 +447,18 @@ test("project provider filtering does not treat every non-codex namespace as Cla
   assert.equal(matchesConversationProvider(openClawConversation, "openclaw"), true);
   assert.equal(matchesConversationProvider(openClawConversation, "claude"), false);
   assert.equal(matchesConversationProvider(openClawConversation, "codex"), false);
+});
+
+test("project provider filtering matches OpenCloud sessions by provider", () => {
+  const openCloudConversation = {
+    projectPath: "opencloud:-Users-tony-Code-helaicopter",
+    provider: "opencloud" as const,
+  };
+
+  assert.equal(matchesConversationProvider(openCloudConversation, "all"), true);
+  assert.equal(matchesConversationProvider(openCloudConversation, "opencloud"), true);
+  assert.equal(matchesConversationProvider(openCloudConversation, "claude"), false);
+  assert.equal(matchesConversationProvider(openCloudConversation, "codex"), false);
 });
 
 test("OpenClaw conversations still resolve into the raw conversation view", async () => {

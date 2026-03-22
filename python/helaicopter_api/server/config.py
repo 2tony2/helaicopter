@@ -15,6 +15,7 @@ class CliSettings(BaseModel):
     claude_dir: Path
     codex_dir: Path
     openclaw_dir: Path
+    opencloud_dir: Path
 
     @property
     def claude_projects_dir(self) -> Path:
@@ -51,6 +52,10 @@ class CliSettings(BaseModel):
     @property
     def openclaw_agent_sessions_glob(self) -> str:
         return str(self.openclaw_agents_dir / "*" / "sessions")
+
+    @property
+    def opencloud_sqlite_path(self) -> Path:
+        return self.opencloud_dir / "opencode.db"
 
 
 class DatabaseArtifactSettings(BaseModel):
@@ -135,6 +140,10 @@ class Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".openclaw",
         description="Root of the OpenClaw data directory (typically ~/.openclaw).",
     )
+    opencloud_dir: Path = Field(
+        default_factory=lambda: Path.home() / ".local" / "share" / "opencode",
+        description="Root of the OpenCode runtime data directory that backs the OpenCloud provider.",
+    )
     prefect_api_url: str = Field(
         default="http://127.0.0.1:4200/api",
         description="Base URL for the Prefect API proxied by the backend.",
@@ -151,6 +160,7 @@ class Settings(BaseSettings):
             claude_dir=self.claude_dir,
             codex_dir=self.codex_dir,
             openclaw_dir=self.openclaw_dir,
+            opencloud_dir=self.opencloud_dir,
         )
 
     @cached_property
@@ -248,6 +258,10 @@ class Settings(BaseSettings):
     @property
     def openclaw_agent_sessions_glob(self) -> str:
         return self.cli.openclaw_agent_sessions_glob
+
+    @property
+    def opencloud_sqlite_path(self) -> Path:
+        return self.cli.opencloud_sqlite_path
 
     @property
     def app_sqlite_path(self) -> Path:
