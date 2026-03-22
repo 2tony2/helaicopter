@@ -679,11 +679,9 @@ def _resolve_live_openclaw_conversation_identity(
     session_id: str,
 ) -> ConversationRefResolutionResponse | None:
     for artifact in _openclaw_session_artifacts(services):
-        if artifact.session_id != session_id:
-            continue
         summary = _summarize_openclaw_artifact(artifact)
-        if summary is None:
-            return None
+        if summary is None or summary.session_id != session_id:
+            continue
         return _conversation_ref_resolution(
             route_target=_conversation_route_target(
                 session_id=summary.session_id,
@@ -1107,8 +1105,7 @@ def _summarize_openclaw_artifact(
     if not lines:
         return None
 
-    session_id = artifact.session_id
-    agent_id = artifact.agent_id
+    session_id, agent_id = _openclaw_effective_identity(artifact, lines)
     first_message = ""
     message_count = 0
     model: str | None = None
@@ -1132,9 +1129,6 @@ def _summarize_openclaw_artifact(
 
         line_type = _string_or_none(line.get("type"))
         if line_type == "session":
-            session = _dict_or_none(line.get("session"))
-            session_id = _string_or_none(session.get("id")) or session_id
-            agent_id = _string_or_none(session.get("agentId")) or agent_id
             continue
         if line_type == "model_change":
             model = _string_or_none(line.get("model")) or model
@@ -1353,23 +1347,27 @@ def _get_openclaw_live_conversation(
     session_id: str,
     project_path: str,
 ) -> ConversationDetailResponse | None:
-    artifact = next(
-        (
-            item
-            for item in _openclaw_session_artifacts(services)
-            if item.session_id == session_id and f"openclaw:agent:{item.agent_id}" == project_path
-        ),
-        None,
-    )
-    if artifact is None:
-        return None
-
-    lines = parse_openclaw_session_lines(artifact.content)
-    if not lines:
+    artifact: OpenClawSessionArtifact | None = None
+    lines: list[dict[str, Any]] | None = None
+    effective_session_id = session_id
+    for item in _openclaw_session_artifacts(services):
+        candidate_lines = parse_openclaw_session_lines(item.content)
+        if not candidate_lines:
+            continue
+        candidate_session_id, candidate_agent_id = _openclaw_effective_identity(item, candidate_lines)
+        if candidate_session_id != session_id:
+            continue
+        if f"openclaw:agent:{candidate_agent_id}" != project_path:
+            continue
+        artifact = item
+        lines = candidate_lines
+        effective_session_id = candidate_session_id
+        break
+    if artifact is None or lines is None:
         return None
 
     route_target = _conversation_route_target_from_first_message(
-        session_id=session_id,
+        session_id=effective_session_id,
         first_message=_first_openclaw_user_message_from_lines(lines)[:200],
         project_path=project_path,
     )
@@ -1483,7 +1481,7 @@ def _get_openclaw_live_conversation(
         )
 
     return ConversationDetailResponse(
-        session_id=_session_id(session_id),
+        session_id=_session_id(effective_session_id),
         project_path=project_path,
         route_slug=route_target.route_slug,
         conversation_ref=route_target.conversation_ref,
@@ -2696,6 +2694,22 @@ def _openclaw_message_content(message: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(content, list):
         return []
     return [item for item in content if isinstance(item, dict)]
+
+
+def _openclaw_effective_identity(
+    artifact: OpenClawSessionArtifact,
+    lines: list[dict[str, Any]],
+) -> tuple[str, str]:
+    session_id = artifact.session_id
+    agent_id = artifact.agent_id
+    for line in lines:
+        if _string_or_none(line.get("type")) != "session":
+            continue
+        session = _dict_or_none(line.get("session"))
+        session_id = _string_or_none(session.get("id")) or session_id
+        agent_id = _string_or_none(session.get("agentId")) or agent_id
+        break
+    return session_id, agent_id
 
 
 def _openclaw_user_texts(message: dict[str, Any]) -> list[str]:

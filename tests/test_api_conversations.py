@@ -776,6 +776,8 @@ def _seed_sources(tmp_path: Path) -> Settings:
 
     openclaw_main_session_id = "openclaw-main-session"
     openclaw_secondary_session_id = "openclaw-secondary-session"
+    openclaw_alias_artifact_id = "artifact-session-id"
+    openclaw_alias_payload_id = "payload-session-id"
     openclaw_main_sessions_dir.joinpath("sessions.json").write_text(
         json.dumps(
             {
@@ -798,6 +800,11 @@ def _seed_sources(tmp_path: Path) -> Settings:
                         "id": openclaw_secondary_session_id,
                         "updatedAt": "2026-03-19T12:05:01Z",
                         "title": "Inspect secondary agent transcript",
+                    },
+                    {
+                        "id": openclaw_alias_artifact_id,
+                        "updatedAt": "2026-03-19T12:06:03Z",
+                        "title": "Alias session id transcript",
                     }
                 ]
             }
@@ -982,8 +989,53 @@ def _seed_sources(tmp_path: Path) -> Settings:
         ),
         encoding="utf-8",
     )
+    openclaw_alias_session = openclaw_secondary_sessions_dir / f"{openclaw_alias_artifact_id}.jsonl"
+    openclaw_alias_session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-19T12:06:00Z",
+                        "session": {
+                            "id": openclaw_alias_payload_id,
+                            "cwd": "/tmp/alias-session",
+                            "agentId": "secondary",
+                            "title": "Alias session id transcript",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:06:01Z",
+                        "message": {
+                            "id": "openclaw-alias-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Alias session id transcript"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:06:02Z",
+                        "message": {
+                            "id": "openclaw-alias-assistant-1",
+                            "role": "assistant",
+                            "model": "gpt-4.1",
+                            "usage": {"inputTokens": 9, "outputTokens": 4},
+                            "content": [{"type": "text", "text": "Payload session id should win."}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
     os.utime(openclaw_main_session, (1_763_585_608, 1_763_585_608))
     os.utime(openclaw_secondary_session, (1_763_585_902, 1_763_585_902))
+    os.utime(openclaw_alias_session, (1_763_585_963, 1_763_585_963))
     _write_app_db(tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite")
 
     return Settings(
@@ -1269,6 +1321,42 @@ class TestConversationEndpoints:
                 "is_error": True,
             }
         ]
+
+    def test_openclaw_uses_payload_session_id_for_detail_and_ref_resolution(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        list_response = conversations_client.get("/conversations")
+
+        assert list_response.status_code == 200
+        by_session = {item["session_id"]: item for item in list_response.json()}
+        alias_summary = by_session["payload-session-id"]
+        assert alias_summary["project_path"] == "openclaw:agent:secondary"
+        assert alias_summary["conversation_ref"] == (
+            "alias-session-id-transcript--openclaw-payload-session-id"
+        )
+
+        detail_response = conversations_client.get(
+            "/conversations/openclaw:agent:secondary/payload-session-id"
+        )
+        assert detail_response.status_code == 200
+        assert detail_response.json()["session_id"] == "payload-session-id"
+        assert detail_response.json()["conversation_ref"] == (
+            "alias-session-id-transcript--openclaw-payload-session-id"
+        )
+
+        by_ref_response = conversations_client.get(
+            "/conversations/by-ref/outdated--openclaw-payload-session-id"
+        )
+        assert by_ref_response.status_code == 200
+        assert by_ref_response.json() == {
+            "conversation_ref": "alias-session-id-transcript--openclaw-payload-session-id",
+            "route_slug": "alias-session-id-transcript",
+            "project_path": "openclaw:agent:secondary",
+            "session_id": "payload-session-id",
+            "thread_type": "main",
+            "parent_session_id": None,
+        }
 
     def test_subagent_detail_route_covers_claude_and_codex(self, conversations_client: TestClient) -> None:
         claude_subagent = conversations_client.get(
@@ -1686,7 +1774,7 @@ class TestProjectsHistoryAndTasks:
         ]
         assert payload[0]["display_name"] == "openclaw:agent:secondary"
         assert payload[0]["full_path"] == "openclaw:agent:secondary"
-        assert payload[0]["session_count"] == 1
+        assert payload[0]["session_count"] == 2
         assert payload[1]["display_name"] == "openclaw:agent:main"
         assert payload[1]["full_path"] == "openclaw:agent:main"
         assert payload[1]["session_count"] == 1
