@@ -20,6 +20,10 @@ const {
   conversationSummaryListSchema,
 } = await import(new URL("./schemas/conversations.ts", import.meta.url).href);
 const {
+  providerFilterSchema,
+  providerSchema,
+} = await import(new URL("./schemas/shared.ts", import.meta.url).href);
+const {
   databaseStatusSchema,
 } = await import(new URL("./schemas/database.ts", import.meta.url).href);
 const {
@@ -267,6 +271,8 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
       session_id: "session-123",
       project_path: "-Users-tony-Code-helaicopter",
       project_name: "helaicopter",
+      route_slug: "ship-the-patch",
+      conversation_ref: "ship-the-patch--claude-session-123",
       thread_type: "main",
       first_message: "Ship the patch",
       timestamp: 1763000002000,
@@ -294,6 +300,8 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
       sessionId: "session-456",
       projectPath: "codex:-Users-tony-Code-helaicopter",
       projectName: "Codex/helaicopter",
+      routeSlug: "investigate-the-failing-tests",
+      conversationRef: "investigate-the-failing-tests--codex-session-456",
       threadType: "subagent",
       firstMessage: "Investigate the failing tests",
       timestamp: 1763000003000,
@@ -358,6 +366,48 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
   );
 });
 
+test("provider schemas accept openclaw", () => {
+  assert.equal(providerSchema.parse("openclaw"), "openclaw");
+  assert.equal(providerFilterSchema.parse("openclaw"), "openclaw");
+});
+
+test("normalizeConversations preserves openclaw providers from summary payloads", () => {
+  const normalized = normalizeConversations([
+    {
+      session_id: "openclaw-session-1",
+      project_path: "-Users-tony-Code-helaicopter",
+      project_name: "helaicopter",
+      route_slug: "review-openclaw-rollout",
+      conversation_ref: "review-openclaw-rollout--openclaw-openclaw-session-1",
+      thread_type: "main",
+      provider: "openclaw",
+      first_message: "Validate OpenClaw provider handling",
+      timestamp: 1763000004000,
+      created_at: 1763000003000,
+      last_updated_at: 1763000003500,
+      is_running: false,
+      message_count: 2,
+      model: "openclaw-v1",
+      total_input_tokens: 10,
+      total_output_tokens: 20,
+      total_cache_creation_tokens: 0,
+      total_cache_read_tokens: 0,
+      tool_use_count: 0,
+      failed_tool_call_count: 0,
+      tool_breakdown: {},
+      subagent_count: 0,
+      subagent_type_breakdown: {},
+      task_count: 0,
+      git_branch: null,
+      reasoning_effort: null,
+      speed: null,
+      total_reasoning_tokens: null,
+    },
+  ]);
+
+  assert.equal(normalized[0].provider, "openclaw");
+});
+
 test("normalizeConversationDetail preserves token usage semantics expected by the viewer", () => {
   const normalized = normalizeConversationDetail({
     session_id: "session-123",
@@ -365,6 +415,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
     route_slug: "review-the-backend-rollout",
     conversation_ref: "review-the-backend-rollout--claude-session-123",
     thread_type: "main",
+    provider: "openclaw",
     created_at: 1763000000000,
     last_updated_at: 1763000001000,
     is_running: false,
@@ -399,7 +450,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
         title: "Rollout plan",
         preview: "Ship it",
         content: "# Rollout",
-        provider: "claude",
+        provider: "openclaw",
         timestamp: 1763000000000,
         session_id: "session-123",
         project_path: "-Users-tony-Code-helaicopter",
@@ -465,6 +516,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   });
 
   assert.equal(normalized.sessionId, "session-123");
+  assert.equal(normalized.provider, "openclaw");
   assert.equal(normalized.routeSlug, "review-the-backend-rollout");
   assert.equal(normalized.conversationRef, "review-the-backend-rollout--claude-session-123");
   assert.deepEqual(normalized.totalUsage, {
@@ -485,6 +537,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
     throw new Error("Expected the first block to be a tool call.");
   }
   assert.equal(firstBlock.toolUseId, "tool-1");
+  assert.equal(normalized.plans[0].provider, "openclaw");
   assert.equal(normalized.plans[0].sessionId, "session-123");
   assert.equal(normalized.plans[0].routeSlug, "review-the-backend-rollout");
   assert.equal(
@@ -542,7 +595,7 @@ test("normalizePlan preserves canonical conversation link fields", () => {
     slug: "claude-session-rollout",
     title: "Claude Session Rollout",
     content: "# Rollout",
-    provider: "claude",
+    provider: "openclaw",
     timestamp: 1763000000000,
     session_id: "claude-session-1",
     project_path: "-Users-tony-Code-helaicopter",
@@ -550,6 +603,7 @@ test("normalizePlan preserves canonical conversation link fields", () => {
     conversation_ref: "review-the-plan-panel--claude-claude-session-1",
   });
 
+  assert.equal(normalized.provider, "openclaw");
   assert.equal(normalized.routeSlug, "review-the-plan-panel");
   assert.equal(
     normalized.conversationRef,

@@ -48,6 +48,7 @@ import type {
   ProcessedConversation,
   ProcessedMessage,
   ProjectInfo,
+  FrontendProvider,
   ProviderBreakdown,
   SubagentInfo,
   SubscriptionSettings,
@@ -117,6 +118,25 @@ function asArray(value: unknown): unknown[] {
 
 function stringOr(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function normalizeProvider(value: unknown): FrontendProvider {
+  switch (value) {
+    case "codex":
+    case "openclaw":
+    case "claude":
+      return value;
+    default:
+      return "claude";
+  }
+}
+
+function normalizeOptionalProvider(value: unknown): FrontendProvider | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return normalizeProvider(value);
 }
 
 function nullableString(value: unknown): string | undefined {
@@ -266,7 +286,7 @@ function normalizeConversationPlan(value: unknown): ConversationPlan {
     title: stringOr(item.title),
     preview: stringOr(item.preview),
     content: stringOr(item.content),
-    provider: stringOr(item.provider) === "codex" ? "codex" : "claude",
+    provider: normalizeProvider(item.provider),
     timestamp: numberOr(item.timestamp),
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
@@ -429,6 +449,7 @@ export function normalizeConversationSummary(
     sessionId: isCamel ? value.sessionId : value.session_id,
     projectPath: isCamel ? value.projectPath : value.project_path,
     projectName: isCamel ? value.projectName : value.project_name,
+    provider: normalizeOptionalProvider((value as JsonRecord).provider),
     routeSlug: isCamel ? value.routeSlug : value.route_slug,
     conversationRef: isCamel ? value.conversationRef : value.conversation_ref,
     threadType: isCamel ? value.threadType : value.thread_type,
@@ -544,6 +565,7 @@ export function normalizeConversationDetail(value: unknown): ProcessedConversati
   return {
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
+    provider: normalizeOptionalProvider(item.provider),
     routeSlug: nullableString(item.route_slug),
     conversationRef: nullableString(item.conversation_ref),
     threadType:
@@ -575,7 +597,7 @@ function normalizePlanSummary(value: unknown): PlanSummary {
     slug: stringOr(item.slug),
     title: stringOr(item.title),
     preview: stringOr(item.preview),
-    provider: stringOr(item.provider) === "codex" ? "codex" : "claude",
+    provider: normalizeProvider(item.provider),
     timestamp: numberOr(item.timestamp),
     model: nullableString(item.model),
     sourcePath: nullableString(item.source_path),
@@ -595,7 +617,7 @@ export function normalizePlan(value: unknown): PlanDetail {
     slug: stringOr(item.slug),
     title: stringOr(item.title),
     content: stringOr(item.content),
-    provider: stringOr(item.provider) === "codex" ? "codex" : "claude",
+    provider: normalizeProvider(item.provider),
     timestamp: numberOr(item.timestamp),
     model: nullableString(item.model),
     sourcePath: nullableString(item.source_path),

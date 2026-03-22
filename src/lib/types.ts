@@ -95,6 +95,7 @@ export interface ConversationSummary {
   sessionId: string;
   projectPath: string;
   projectName: string;
+  provider?: FrontendProvider;
   routeSlug?: string;
   conversationRef?: string;
   threadType: "main" | "subagent";
@@ -530,7 +531,9 @@ export interface ContextWindowStats {
   cumulativeTokens: number;
 }
 
-export type PlanProvider = "claude" | "codex";
+export type FrontendProvider = "claude" | "codex" | "openclaw";
+
+export type PlanProvider = FrontendProvider;
 
 export interface CanonicalConversationLink {
   sessionId?: string;
@@ -572,6 +575,7 @@ export interface ConversationPlan extends CanonicalConversationLink {
 export interface ProcessedConversation {
   sessionId: string;
   projectPath: string;
+  provider?: FrontendProvider;
   routeSlug?: string;
   conversationRef?: string;
   threadType?: "main" | "subagent";
@@ -764,7 +768,7 @@ export interface AnalyticsTimeSeries {
   monthly: AnalyticsTimeSeriesPoint[];
 }
 
-export type SupportedProvider = "claude" | "codex";
+export type SupportedProvider = FrontendProvider;
 
 export interface ProviderSubscriptionSetting {
   provider: SupportedProvider;
@@ -919,7 +923,7 @@ export interface ConversationEvaluation {
   evaluationId: string;
   conversationId: string;
   promptId?: string | null;
-  provider: "claude" | "codex";
+  provider: FrontendProvider;
   model: string;
   status: "running" | "completed" | "failed";
   scope: "full" | "failed_tool_calls" | "guided_subset";
