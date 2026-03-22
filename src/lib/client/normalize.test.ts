@@ -291,8 +291,8 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
       sessionId: "session-456",
       projectPath: "codex:-Users-tony-Code-helaicopter",
       projectName: "Codex/helaicopter",
-      routeSlug: "investigate-failing-tests",
-      conversationRef: "investigate-failing-tests--codex-session-456",
+      routeSlug: "investigate-the-failing-tests",
+      conversationRef: "investigate-the-failing-tests--codex-session-456",
       threadType: "subagent",
       firstMessage: "Investigate the failing tests",
       timestamp: 1763000003000,
@@ -357,6 +357,106 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
   );
 });
 
+test("provider schemas accept openclaw", async () => {
+  const shared = await import(new URL("./schemas/shared.ts", import.meta.url).href);
+  assert.equal(shared.providerSchema.parse("openclaw"), "openclaw");
+  assert.equal(shared.providerFilterSchema.parse("openclaw"), "openclaw");
+});
+
+test("provider schemas accept opencloud", async () => {
+  const shared = await import(new URL("./schemas/shared.ts", import.meta.url).href);
+  assert.equal(shared.providerSchema.parse("opencloud"), "opencloud");
+  assert.equal(shared.providerFilterSchema.parse("opencloud"), "opencloud");
+});
+
+test("normalizeConversations preserves openclaw providers from summary payloads", async () => {
+  const { normalizeConversations } = await getNormalize();
+  const normalized = normalizeConversations([
+    {
+      session_id: "openclaw-session-1",
+      project_path: "-Users-tony-Code-helaicopter",
+      project_name: "helaicopter",
+      route_slug: "review-openclaw-rollout",
+      conversation_ref: "review-openclaw-rollout--openclaw-openclaw-session-1",
+      thread_type: "main",
+      provider: "openclaw",
+      first_message: "Validate OpenClaw provider handling",
+      timestamp: 1763000004000,
+      created_at: 1763000003000,
+      last_updated_at: 1763000003500,
+      is_running: false,
+      message_count: 2,
+      model: "openclaw-v1",
+      total_input_tokens: 10,
+      total_output_tokens: 20,
+      total_cache_creation_tokens: 0,
+      total_cache_read_tokens: 0,
+      tool_use_count: 0,
+      failed_tool_call_count: 0,
+      tool_breakdown: {},
+      subagent_count: 0,
+      subagent_type_breakdown: {},
+      task_count: 0,
+      git_branch: null,
+      reasoning_effort: null,
+      speed: null,
+      total_reasoning_tokens: null,
+    },
+  ]);
+
+  assert.equal(normalized[0].provider, "openclaw");
+});
+
+test("normalizeConversations preserves opencloud providers from summary payloads", async () => {
+  const { normalizeConversations } = await getNormalize();
+  const normalized = normalizeConversations([
+    {
+      session_id: "opencloud-session-1",
+      project_path: "opencloud:-Users-tony-Code-helaicopter",
+      project_name: "Code/helaicopter",
+      route_slug: "integrate-opencloud-data",
+      conversation_ref: "integrate-opencloud-data--opencloud-opencloud-session-1",
+      thread_type: "main",
+      first_message: "Integrate OpenCloud data",
+      timestamp: 1,
+      created_at: 1,
+      last_updated_at: 2,
+      is_running: false,
+      provider: "opencloud",
+      message_count: 3,
+      model: "gpt-5",
+      total_input_tokens: 130,
+      total_output_tokens: 90,
+      total_cache_creation_tokens: 2,
+      total_cache_read_tokens: 48,
+      tool_use_count: 2,
+      failed_tool_call_count: 1,
+      tool_breakdown: { bash: 1, patch: 1 },
+      subagent_count: 0,
+      subagent_type_breakdown: {},
+      task_count: 0,
+    },
+  ]);
+
+  assert.equal(normalized[0].provider, "opencloud");
+});
+
+test("normalizePlan rejects unknown providers instead of coercing them to claude", async () => {
+  const { normalizePlan } = await getNormalize();
+  assert.throws(
+    () =>
+      normalizePlan({
+        id: "plan-unknown-provider",
+        slug: "plan-unknown-provider",
+        title: "Unknown provider",
+        content: "content",
+        provider: "mystery",
+        timestamp: 1763000004000,
+      }),
+    /Invalid option/i
+  );
+});
+
 test("normalizeConversationDetail preserves token usage semantics expected by the viewer", async () => {
   const { normalizeConversationDetail } = await getNormalize();
   const normalized = normalizeConversationDetail({
@@ -365,6 +465,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
     route_slug: "review-the-backend-rollout",
     conversation_ref: "review-the-backend-rollout--claude-session-123",
     thread_type: "main",
+    provider: "openclaw",
     created_at: 1763000000000,
     last_updated_at: 1763000001000,
     is_running: false,
@@ -399,7 +500,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
         title: "Rollout plan",
         preview: "Ship it",
         content: "# Rollout",
-        provider: "claude",
+        provider: "openclaw",
         timestamp: 1763000000000,
         session_id: "session-123",
         project_path: "-Users-tony-Code-helaicopter",
@@ -465,6 +566,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   });
 
   assert.equal(normalized.sessionId, "session-123");
+  assert.equal(normalized.provider, "openclaw");
   assert.equal(normalized.routeSlug, "review-the-backend-rollout");
   assert.equal(normalized.conversationRef, "review-the-backend-rollout--claude-session-123");
   assert.deepEqual(normalized.totalUsage, {
@@ -485,6 +587,7 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
     throw new Error("Expected the first block to be a tool call.");
   }
   assert.equal(firstBlock.toolUseId, "tool-1");
+  assert.equal(normalized.plans[0].provider, "openclaw");
   assert.equal(normalized.plans[0].sessionId, "session-123");
   assert.equal(normalized.plans[0].routeSlug, "review-the-backend-rollout");
   assert.equal(
@@ -499,6 +602,47 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   );
   assert.equal(normalized.contextAnalytics.buckets[0].cacheWriteTokens, 3);
   assert.equal(normalized.contextWindow.peakContextWindow, 44);
+});
+
+test("normalizeConversationDetail preserves standalone tool roles", async () => {
+  const { normalizeConversationDetail } = await getNormalize();
+  const normalized = normalizeConversationDetail({
+    session_id: "tool-role-session",
+    project_path: "openclaw:agent:main",
+    created_at: 1763000000000,
+    last_updated_at: 1763000001000,
+    is_running: false,
+    messages: [
+      {
+        id: "tool-msg-1",
+        role: "tool",
+        timestamp: 1763000000000,
+        blocks: [
+          {
+            type: "tool_call",
+            tool_use_id: "tool-1",
+            tool_name: "Shell",
+            input: {},
+            result: "stdout",
+            is_error: false,
+          },
+        ],
+      },
+    ],
+    plans: [],
+    total_usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+    },
+    start_time: 1763000000000,
+    end_time: 1763000001000,
+    subagents: [],
+    context_analytics: { buckets: [], steps: [] },
+  });
+
+  assert.equal(normalized.messages[0].role, "tool");
 });
 
 test("normalizeConversationDag preserves null paths for unresolved child routes", async () => {
@@ -544,7 +688,7 @@ test("normalizePlan preserves canonical conversation link fields", async () => {
     slug: "claude-session-rollout",
     title: "Claude Session Rollout",
     content: "# Rollout",
-    provider: "claude",
+    provider: "openclaw",
     timestamp: 1763000000000,
     session_id: "claude-session-1",
     project_path: "-Users-tony-Code-helaicopter",
@@ -552,6 +696,7 @@ test("normalizePlan preserves canonical conversation link fields", async () => {
     conversation_ref: "review-the-plan-panel--claude-claude-session-1",
   });
 
+  assert.equal(normalized.provider, "openclaw");
   assert.equal(normalized.routeSlug, "review-the-plan-panel");
   assert.equal(
     normalized.conversationRef,

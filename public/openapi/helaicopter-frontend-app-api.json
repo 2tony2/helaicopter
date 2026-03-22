@@ -12,7 +12,7 @@
           "analytics"
         ],
         "summary": "Analytics Index",
-        "description": "Return aggregated analytics for persisted conversations.",
+        "description": "Return aggregated analytics for persisted conversations.\n\nArgs:\n    params: Query parameters controlling the analytics window. Supports\n        ``days`` to restrict to a trailing number of days, and ``provider``\n        to filter by a specific AI provider (e.g. ``\"claude\"``,\n        ``\"codex\"``, or ``\"all\"``).\n\nReturns:\n    Aggregated analytics payload including token counts, estimated costs,\n    model and tool breakdowns, daily usage time series, and spend rates.",
         "operationId": "analytics_index_analytics_get",
         "parameters": [
           {
@@ -44,7 +44,9 @@
                   "enum": [
                     "all",
                     "claude",
-                    "codex"
+                    "codex",
+                    "openclaw",
+                    "opencloud"
                   ],
                   "type": "string"
                 },
@@ -52,10 +54,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional provider filter. Use `all` or omit for combined analytics.",
+              "description": "Optional provider filter. Use `all` or omit for combined analytics across Claude, Codex, and OpenClaw.",
               "title": "Provider"
             },
-            "description": "Optional provider filter. Use `all` or omit for combined analytics."
+            "description": "Optional provider filter. Use `all` or omit for combined analytics across Claude, Codex, and OpenClaw."
           }
         ],
         "responses": {
@@ -88,7 +90,7 @@
           "conversation-dags"
         ],
         "summary": "Conversation Dags Index",
-        "description": "List main conversations with backend-built DAG stats.",
+        "description": "List main conversations with backend-built DAG stats.\n\nArgs:\n    params: Query parameters controlling the listing. Supports ``project``\n        (encoded project path) to filter to a single project, ``days`` to\n        restrict to a trailing number of days, and ``provider`` to filter\n        by AI provider (e.g. ``\"claude\"``, ``\"codex\"``, or ``\"all\"``).\n\nReturns:\n    List of conversation summary objects enriched with DAG statistics\n    (node count, edge count, max depth, subagent counts, etc.), ordered\n    by recency.",
         "operationId": "conversation_dags_index_conversation_dags_get",
         "parameters": [
           {
@@ -139,7 +141,9 @@
                   "enum": [
                     "all",
                     "claude",
-                    "codex"
+                    "codex",
+                    "openclaw",
+                    "opencloud"
                   ],
                   "type": "string"
                 },
@@ -147,10 +151,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional provider filter. Use `all` or omit for combined DAGs.",
+              "description": "Optional provider filter. Use `all` or omit for combined DAGs across Claude, Codex, and OpenClaw.",
               "title": "Provider"
             },
-            "description": "Optional provider filter. Use `all` or omit for combined DAGs."
+            "description": "Optional provider filter. Use `all` or omit for combined DAGs across Claude, Codex, and OpenClaw."
           }
         ],
         "responses": {
@@ -187,7 +191,7 @@
           "conversations"
         ],
         "summary": "Conversations Index",
-        "description": "List merged Claude and Codex conversation summaries.",
+        "description": "List merged Claude and Codex conversation summaries.\n\nArgs:\n    params: Query parameters for filtering results. Supports ``project``\n        (encoded project path) to scope results to a single project, and\n        ``days`` to restrict to the trailing number of days.\n\nReturns:\n    List of conversation summary objects ordered by recency, combining\n    Claude and Codex sessions with token usage and metadata.",
         "operationId": "conversations_index_conversations_get",
         "parameters": [
           {
@@ -263,7 +267,7 @@
           "conversations"
         ],
         "summary": "Conversation By Ref",
-        "description": "Resolve a stable conversation ref to the current canonical route target.",
+        "description": "Resolve a stable conversation ref to the current canonical route target.\n\nArgs:\n    conversation_ref: Stable identifier for the conversation, independent\n        of project path or session routing changes.\n\nReturns:\n    Resolution payload containing the canonical ``route_slug``,\n    ``project_path``, ``session_id``, and ``thread_type`` for the\n    conversation.\n\nRaises:\n    HTTPException: 404 if no conversation matches the given ref.",
         "operationId": "conversation_by_ref_conversations_by_ref__conversation_ref__get",
         "parameters": [
           {
@@ -306,7 +310,7 @@
           "conversations"
         ],
         "summary": "Conversations Detail",
-        "description": "Return one conversation detail from persisted or live data.",
+        "description": "Return one conversation detail from persisted or live data.\n\nArgs:\n    project_path: Encoded project key identifying the project the\n        conversation belongs to.\n    session_id: Unique session identifier for the conversation.\n    parent_session_id: Optional session ID of the parent conversation when\n        accessing a subagent thread directly.\n\nReturns:\n    Full conversation detail including all messages, tool calls, plans,\n    subagent references, token usage, and context analytics.\n\nRaises:\n    HTTPException: 404 if the conversation cannot be found.",
         "operationId": "conversations_detail_conversations__project_path___session_id__get",
         "parameters": [
           {
@@ -374,7 +378,7 @@
           "conversations"
         ],
         "summary": "Conversations Dag Detail",
-        "description": "Return one backend-built conversation DAG.",
+        "description": "Return one backend-built conversation DAG.\n\nArgs:\n    project_path: Encoded project key for the conversation.\n    session_id: Session identifier of the root conversation whose agent\n        tree should be returned.\n    parent_session_id: Optional parent session ID when the root is itself\n        a subagent thread.\n\nReturns:\n    DAG payload containing nodes (one per agent/subagent transcript),\n    directed edges, and aggregate graph statistics such as depth and\n    total token counts.\n\nRaises:\n    HTTPException: 404 if no DAG is found for the given session.",
         "operationId": "conversations_dag_detail_conversations__project_path___session_id__dag_get",
         "parameters": [
           {
@@ -442,7 +446,7 @@
           "databases"
         ],
         "summary": "Database Status",
-        "description": "Return database artifact status, bootstrapping refresh on first access.",
+        "description": "Return database artifact status, bootstrapping refresh on first access.\n\nReturns:\n    Status payload containing the current refresh state, timing metadata,\n    runtime read-backend configuration, and per-artifact health details\n    for SQLite, DuckDB, frontend cache, and Prefect Postgres.\n\nRaises:\n    HTTPException: 500 if a database operation error occurs without a\n        structured payload.",
         "operationId": "database_status_databases_status_get",
         "responses": {
           "200": {
@@ -474,7 +478,7 @@
           "databases"
         ],
         "summary": "Database Refresh",
-        "description": "Trigger a database refresh and invalidate backend read caches.",
+        "description": "Trigger a database refresh and invalidate backend read caches.\n\nArgs:\n    body: Refresh control options. ``force`` bypasses the staleness check\n        and triggers an immediate rebuild; ``trigger`` is a label recorded\n        in the refresh log (defaults to ``\"manual\"``);\n        ``stale_after_seconds`` sets the minimum age in seconds before a\n        refresh is considered necessary (defaults to 6 hours).\n\nReturns:\n    Updated database status payload reflecting the new refresh state,\n    including timing metadata and artifact health after the operation.\n\nRaises:\n    HTTPException: 500 if a database operation error occurs without a\n        structured payload.",
         "operationId": "database_refresh_databases_refresh_post",
         "requestBody": {
           "content": {
@@ -525,7 +529,7 @@
           "evaluations"
         ],
         "summary": "Conversation Evaluations Index",
-        "description": "List persisted evaluation jobs for one conversation.",
+        "description": "List persisted evaluation jobs for a specific conversation.\n\nArgs:\n    project_path: Path identifying the project that owns the conversation.\n    session_id: Unique identifier of the conversation session.\n    parent_session_id: Optional parent session ID to scope the lookup to a\n        sub-conversation. Defaults to None.\n\nReturns:\n    A list of evaluation job records associated with the conversation,\n    ordered by creation time.",
         "operationId": "conversation_evaluations_index_conversations__project_path___session_id__evaluations_get",
         "parameters": [
           {
@@ -595,7 +599,7 @@
           "evaluations"
         ],
         "summary": "Conversation Evaluations Create",
-        "description": "Create and submit a backend-owned evaluation job.",
+        "description": "Create and enqueue a backend-owned evaluation job for a conversation.\n\nArgs:\n    project_path: Path identifying the project that owns the conversation.\n    session_id: Unique identifier of the conversation session to evaluate.\n    body: Evaluation job creation request containing the evaluation prompt\n        reference and any additional configuration.\n    parent_session_id: Optional parent session ID to scope the evaluation\n        to a sub-conversation. Defaults to None.\n\nReturns:\n    The newly created evaluation job record in an accepted (pending) state.",
         "operationId": "conversation_evaluations_create_conversations__project_path___session_id__evaluations_post",
         "parameters": [
           {
@@ -673,7 +677,7 @@
           "evaluations"
         ],
         "summary": "Evaluation Prompts Index",
-        "description": "List saved evaluation prompts with the built-in default first.",
+        "description": "List saved evaluation prompts with the built-in default first.\n\nReturns:\n    Ordered list of evaluation prompt templates. The built-in default\n    prompt appears first, followed by user-managed prompts sorted by\n    creation time.",
         "operationId": "evaluation_prompts_index_evaluation_prompts_get",
         "responses": {
           "200": {
@@ -697,7 +701,7 @@
           "evaluations"
         ],
         "summary": "Evaluation Prompts Create",
-        "description": "Create a new user-managed evaluation prompt.",
+        "description": "Create a new user-managed evaluation prompt.\n\nArgs:\n    body: Prompt creation payload containing ``name``, ``prompt_text``\n        (both required and non-blank), and an optional ``description``.\n\nReturns:\n    The newly created evaluation prompt with its assigned ``prompt_id``\n    and timestamps.\n\nRaises:\n    HTTPException: 400 if the payload fails validation (e.g. blank fields).\n    HTTPException: 503 if the backing storage is unavailable.",
         "operationId": "evaluation_prompts_create_evaluation_prompts_post",
         "requestBody": {
           "content": {
@@ -739,7 +743,7 @@
           "evaluations"
         ],
         "summary": "Evaluation Prompts Delete",
-        "description": "Delete one stored user-managed evaluation prompt.",
+        "description": "Delete one stored user-managed evaluation prompt.\n\nArgs:\n    prompt_id: Unique identifier of the prompt to delete. Built-in default\n        prompts cannot be deleted.\n\nReturns:\n    Empty 204 No Content response on success.\n\nRaises:\n    HTTPException: 400 if the prompt ID refers to a protected built-in\n        prompt.\n    HTTPException: 404 if no prompt with the given ID exists.",
         "operationId": "evaluation_prompts_delete_evaluation_prompts__prompt_id__delete",
         "parameters": [
           {
@@ -773,7 +777,7 @@
           "evaluations"
         ],
         "summary": "Evaluation Prompts Update",
-        "description": "Update one stored evaluation prompt.",
+        "description": "Update one stored evaluation prompt.\n\nArgs:\n    prompt_id: Unique identifier of the prompt to update.\n    body: Update payload containing the revised ``name``, ``prompt_text``,\n        and optional ``description``. All write fields are validated as\n        non-blank.\n\nReturns:\n    The updated evaluation prompt reflecting the new field values and an\n    updated ``updated_at`` timestamp.\n\nRaises:\n    HTTPException: 400 if the payload fails validation.\n    HTTPException: 404 if no prompt with the given ID exists.\n    HTTPException: 503 if the backing storage is unavailable.",
         "operationId": "evaluation_prompts_update_evaluation_prompts__prompt_id__patch",
         "parameters": [
           {
@@ -826,7 +830,7 @@
           "history"
         ],
         "summary": "History Index",
-        "description": "Return combined CLI history from Claude and Codex sources.",
+        "description": "Return combined CLI command history from Claude and Codex sources.\n\nArgs:\n    params: Query parameters controlling the history lookup, including\n        an optional ``limit`` on the number of entries returned.\n\nReturns:\n    A list of history entries merged from Claude and Codex CLI sources,\n    ordered from most recent to oldest, up to the requested limit.",
         "operationId": "history_index_history_get",
         "parameters": [
           {
@@ -878,7 +882,7 @@
           "plans"
         ],
         "summary": "Plans Index",
-        "description": "List saved plans from Claude and Codex sources.",
+        "description": "List saved plans from Claude and Codex sources.\n\nReturns:\n    A list of plan summaries aggregated from all configured plan sources.",
         "operationId": "plans_index_plans_get",
         "responses": {
           "200": {
@@ -904,7 +908,7 @@
           "plans"
         ],
         "summary": "Plans Detail",
-        "description": "Return one plan by encoded id or legacy Claude slug.",
+        "description": "Return one plan by encoded id or legacy Claude slug.\n\nArgs:\n    slug: The encoded plan id or legacy Claude slug identifying the plan.\n\nReturns:\n    Full plan detail including content and metadata.\n\nRaises:\n    HTTPException: 404 if no plan matching the given slug is found.",
         "operationId": "plans_detail_plans__slug__get",
         "parameters": [
           {
@@ -947,7 +951,7 @@
           "projects"
         ],
         "summary": "Projects Index",
-        "description": "List projects aggregated from conversation summaries.",
+        "description": "List projects aggregated from conversation summaries.\n\nReturns:\n    A list of projects derived from stored conversation data.",
         "operationId": "projects_index_projects_get",
         "responses": {
           "200": {
@@ -973,7 +977,7 @@
           "conversations"
         ],
         "summary": "Subagents Detail",
-        "description": "Return one subagent transcript for the conversation viewer.",
+        "description": "Return one subagent transcript for the conversation viewer.\n\nArgs:\n    project_path: URL-encoded path of the project the conversation belongs to.\n    session_id: ID of the parent session that spawned the subagent.\n    agent_id: ID of the subagent whose conversation transcript is requested.\n\nReturns:\n    Full conversation detail including messages and metadata for the subagent.\n\nRaises:\n    HTTPException: 404 if no matching subagent conversation is found.",
         "operationId": "subagents_detail_subagents__project_path___session_id___agent_id__get",
         "parameters": [
           {
@@ -1034,7 +1038,7 @@
           "subscriptions"
         ],
         "summary": "Subscriptions Index",
-        "description": "Return the current provider subscription settings.",
+        "description": "Return the current provider subscription settings.\n\nReturns:\n    The active subscription settings including configured provider options.",
         "operationId": "subscriptions_index_subscription_settings_get",
         "responses": {
           "200": {
@@ -1054,7 +1058,7 @@
           "subscriptions"
         ],
         "summary": "Subscriptions Update",
-        "description": "Persist provider subscription settings and return the merged result.",
+        "description": "Persist provider subscription settings and return the merged result.\n\nArgs:\n    body: Partial or full subscription settings to apply. Unset fields are\n        merged with the existing configuration rather than overwritten.\n\nReturns:\n    The updated subscription settings after the patch has been applied.",
         "operationId": "subscriptions_update_subscription_settings_patch",
         "requestBody": {
           "content": {
@@ -1095,7 +1099,7 @@
           "tasks"
         ],
         "summary": "Tasks Detail",
-        "description": "Return tasks associated with a session.",
+        "description": "Return tasks associated with a session.\n\nArgs:\n    session_id: The session ID whose tasks should be retrieved.\n    parent_session_id: Optional parent session ID used to scope the lookup\n        when the session belongs to a subagent conversation.\n\nReturns:\n    A task list response containing all tasks found for the given session.",
         "operationId": "tasks_detail_tasks__session_id__get",
         "parameters": [
           {
@@ -1190,7 +1194,8 @@
           }
         },
         "type": "object",
-        "title": "AnalyticsCostBreakdownResponse"
+        "title": "AnalyticsCostBreakdownResponse",
+        "description": "Itemised cost breakdown across input, output, cache, and long-context charges."
       },
       "AnalyticsDataResponse": {
         "properties": {
@@ -1370,7 +1375,8 @@
           }
         },
         "type": "object",
-        "title": "AnalyticsRateValueResponse"
+        "title": "AnalyticsRateValueResponse",
+        "description": "Usage rate for a single metric expressed across multiple time horizons."
       },
       "AnalyticsRatesResponse": {
         "properties": {
@@ -1422,7 +1428,8 @@
           "failed_tool_calls",
           "subagents"
         ],
-        "title": "AnalyticsRatesResponse"
+        "title": "AnalyticsRatesResponse",
+        "description": "Aggregated usage rates for all tracked metrics over multiple time horizons."
       },
       "AnalyticsTimeSeriesPointResponse": {
         "properties": {
@@ -1630,7 +1637,8 @@
           "start",
           "end"
         ],
-        "title": "AnalyticsTimeSeriesPointResponse"
+        "title": "AnalyticsTimeSeriesPointResponse",
+        "description": "Token, cost, and activity metrics for a single time-series bucket (hourly/daily/weekly/monthly)."
       },
       "AnalyticsTimeSeriesResponse": {
         "properties": {
@@ -1668,7 +1676,8 @@
           }
         },
         "type": "object",
-        "title": "AnalyticsTimeSeriesResponse"
+        "title": "AnalyticsTimeSeriesResponse",
+        "description": "Time-series data grouped by granularity (hourly, daily, weekly, monthly)."
       },
       "ConversationContextAnalyticsResponse": {
         "properties": {
@@ -1690,7 +1699,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationContextAnalyticsResponse"
+        "title": "ConversationContextAnalyticsResponse",
+        "description": "Bucketed and step-level context usage analytics for a conversation."
       },
       "ConversationContextBucketResponse": {
         "properties": {
@@ -1745,7 +1755,8 @@
           "label",
           "category"
         ],
-        "title": "ConversationContextBucketResponse"
+        "title": "ConversationContextBucketResponse",
+        "description": "Aggregated token usage for a named context category (e.g. tool, mcp, subagent)."
       },
       "ConversationContextStepResponse": {
         "properties": {
@@ -1816,7 +1827,8 @@
           "category",
           "timestamp"
         ],
-        "title": "ConversationContextStepResponse"
+        "title": "ConversationContextStepResponse",
+        "description": "Per-message token usage entry in the context analytics step sequence."
       },
       "ConversationContextWindowResponse": {
         "properties": {
@@ -1837,7 +1849,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationContextWindowResponse"
+        "title": "ConversationContextWindowResponse",
+        "description": "Summary of context window utilisation across all API calls in a conversation."
       },
       "ConversationDagEdgeResponse": {
         "properties": {
@@ -1860,7 +1873,8 @@
           "source",
           "target"
         ],
-        "title": "ConversationDagEdgeResponse"
+        "title": "ConversationDagEdgeResponse",
+        "description": "A directed edge connecting two nodes in the conversation agent-tree DAG."
       },
       "ConversationDagNodeResponse": {
         "properties": {
@@ -2086,7 +2100,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationDagStatsResponse"
+        "title": "ConversationDagStatsResponse",
+        "description": "Aggregate structural statistics for a conversation agent-tree DAG."
       },
       "ConversationDagSummaryResponse": {
         "properties": {
@@ -2436,7 +2451,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -2533,7 +2550,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -2777,7 +2796,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -2901,7 +2922,8 @@
           "step",
           "status"
         ],
-        "title": "ConversationPlanStepResponse"
+        "title": "ConversationPlanStepResponse",
+        "description": "A single step within an embedded conversation plan."
       },
       "ConversationRefResolutionResponse": {
         "properties": {
@@ -2950,7 +2972,8 @@
           "session_id",
           "thread_type"
         ],
-        "title": "ConversationRefResolutionResponse"
+        "title": "ConversationRefResolutionResponse",
+        "description": "Resolved routing metadata for a conversation reference."
       },
       "ConversationSubagentResponse": {
         "properties": {
@@ -3233,7 +3256,7 @@
           "is_running"
         ],
         "title": "ConversationSummaryResponse",
-        "description": "Summary of a single Claude/Codex conversation session."
+        "description": "Summary of a single Claude, Codex, or OpenClaw conversation session."
       },
       "ConversationTaskResponse": {
         "properties": {
@@ -3408,7 +3431,8 @@
           }
         },
         "type": "object",
-        "title": "ConversationUsageResponse"
+        "title": "ConversationUsageResponse",
+        "description": "Token usage counts for a single conversation or message."
       },
       "DailyUsageResponse": {
         "properties": {
@@ -3511,7 +3535,8 @@
         "required": [
           "date"
         ],
-        "title": "DailyUsageResponse"
+        "title": "DailyUsageResponse",
+        "description": "Token and conversation counts for a single calendar day, split by provider."
       },
       "DatabaseArtifactStatusResponse": {
         "properties": {
@@ -3703,7 +3728,8 @@
           "role",
           "availability"
         ],
-        "title": "DatabaseArtifactStatusResponse"
+        "title": "DatabaseArtifactStatusResponse",
+        "description": "Health, availability, and schema inventory for a single database artifact."
       },
       "DatabaseArtifactsResponse": {
         "properties": {
@@ -3727,7 +3753,8 @@
           "duckdb",
           "prefectPostgres"
         ],
-        "title": "DatabaseArtifactsResponse"
+        "title": "DatabaseArtifactsResponse",
+        "description": "Status snapshots for all managed database artifacts (cache, SQLite, DuckDB, Postgres)."
       },
       "DatabaseColumnSchemaResponse": {
         "properties": {
@@ -3777,7 +3804,8 @@
           "name",
           "type"
         ],
-        "title": "DatabaseColumnSchemaResponse"
+        "title": "DatabaseColumnSchemaResponse",
+        "description": "Schema metadata for a single database table column."
       },
       "DatabaseLoadMetricResponse": {
         "properties": {
@@ -3815,13 +3843,19 @@
         "required": [
           "label"
         ],
-        "title": "DatabaseLoadMetricResponse"
+        "title": "DatabaseLoadMetricResponse",
+        "description": "A labelled load or performance metric for a database artifact."
       },
       "DatabaseRefreshRequest": {
         "properties": {
           "force": {
             "type": "boolean",
             "title": "Force",
+            "default": false
+          },
+          "fullRebuild": {
+            "type": "boolean",
+            "title": "Fullrebuild",
             "default": false
           },
           "trigger": {
@@ -3838,7 +3872,8 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "DatabaseRefreshRequest"
+        "title": "DatabaseRefreshRequest",
+        "description": "Request body for triggering a database refresh operation."
       },
       "DatabaseRuntimeResponse": {
         "properties": {
@@ -3864,7 +3899,8 @@
           "analyticsReadBackend",
           "conversationSummaryReadBackend"
         ],
-        "title": "DatabaseRuntimeResponse"
+        "title": "DatabaseRuntimeResponse",
+        "description": "Active read-backend selections for analytics and conversation summary queries."
       },
       "DatabaseStatusResponse": {
         "properties": {
@@ -4117,7 +4153,8 @@
         "required": [
           "name"
         ],
-        "title": "DatabaseTableSchemaResponse"
+        "title": "DatabaseTableSchemaResponse",
+        "description": "Schema and serving metadata for a single database table."
       },
       "EvaluationPromptCreateRequest": {
         "properties": {
@@ -4258,7 +4295,8 @@
           }
         },
         "type": "object",
-        "title": "GatewayDirectionResponse"
+        "title": "GatewayDirectionResponse",
+        "description": "Overall gateway routing direction and registered API surfaces."
       },
       "GatewaySurfaceResponse": {
         "properties": {
@@ -4304,7 +4342,8 @@
           "integrationType",
           "note"
         ],
-        "title": "GatewaySurfaceResponse"
+        "title": "GatewaySurfaceResponse",
+        "description": "Descriptor for a single API surface registered with the platform gateway."
       },
       "HTTPValidationError": {
         "properties": {
@@ -4397,7 +4436,8 @@
           "source",
           "target"
         ],
-        "title": "OrchestrationDagEdgeResponse"
+        "title": "OrchestrationDagEdgeResponse",
+        "description": "A directed dependency edge between two nodes in the orchestration DAG."
       },
       "OrchestrationDagNodeResponse": {
         "properties": {
@@ -4436,7 +4476,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Agent"
           },
@@ -4560,7 +4602,8 @@
           "agent",
           "status"
         ],
-        "title": "OrchestrationDagNodeResponse"
+        "title": "OrchestrationDagNodeResponse",
+        "description": "A single node (planner or task) in the orchestration run DAG."
       },
       "OrchestrationDagResponse": {
         "properties": {
@@ -4588,7 +4631,8 @@
         "required": [
           "stats"
         ],
-        "title": "OrchestrationDagResponse"
+        "title": "OrchestrationDagResponse",
+        "description": "Complete DAG representation for an orchestration run, including nodes, edges, and stats."
       },
       "OrchestrationDagStatsResponse": {
         "properties": {
@@ -4624,7 +4668,9 @@
             "propertyNames": {
               "enum": [
                 "claude",
-                "codex"
+                "codex",
+                "openclaw",
+                "opencloud"
               ]
             },
             "type": "object",
@@ -4658,7 +4704,8 @@
           }
         },
         "type": "object",
-        "title": "OrchestrationDagStatsResponse"
+        "title": "OrchestrationDagStatsResponse",
+        "description": "Aggregate structural and status statistics for an orchestration run DAG."
       },
       "OrchestrationFactsResponse": {
         "properties": {
@@ -4688,7 +4735,8 @@
           }
         },
         "type": "object",
-        "title": "OrchestrationFactsResponse"
+        "title": "OrchestrationFactsResponse",
+        "description": "Canonical routing facts for all runs and task attempts across a project."
       },
       "OrchestrationFeatureBranchResponse": {
         "properties": {
@@ -4712,7 +4760,8 @@
         "required": [
           "name"
         ],
-        "title": "OrchestrationFeatureBranchResponse"
+        "title": "OrchestrationFeatureBranchResponse",
+        "description": "Feature branch associated with an orchestration run."
       },
       "OrchestrationFinalPullRequestResponse": {
         "properties": {
@@ -4807,7 +4856,8 @@
           "state",
           "reviewGateStatus"
         ],
-        "title": "OrchestrationFinalPullRequestResponse"
+        "title": "OrchestrationFinalPullRequestResponse",
+        "description": "Final integration pull request snapshot for a completed orchestration run."
       },
       "OrchestrationInvocationResponse": {
         "properties": {
@@ -4815,7 +4865,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Agent"
           },
@@ -4991,7 +5043,8 @@
           "status",
           "startedAt"
         ],
-        "title": "OrchestrationOperationHistoryResponse"
+        "title": "OrchestrationOperationHistoryResponse",
+        "description": "A single recorded operation event in an orchestration run or task history."
       },
       "OrchestrationReviewSummaryResponse": {
         "properties": {
@@ -5014,7 +5067,8 @@
         "required": [
           "blockingState"
         ],
-        "title": "OrchestrationReviewSummaryResponse"
+        "title": "OrchestrationReviewSummaryResponse",
+        "description": "Aggregated pull request review state for an orchestration task."
       },
       "OrchestrationRunFactResponse": {
         "properties": {
@@ -5137,7 +5191,8 @@
           "canonicalReason",
           "status"
         ],
-        "title": "OrchestrationRunFactResponse"
+        "title": "OrchestrationRunFactResponse",
+        "description": "Canonical fact record summarising the outcome of a single orchestration run."
       },
       "OrchestrationRunResponse": {
         "properties": {
@@ -5381,7 +5436,9 @@
                 "type": "string",
                 "enum": [
                   "claude",
-                  "codex"
+                  "codex",
+                  "openclaw",
+                  "opencloud"
                 ]
               },
               {
@@ -5427,7 +5484,8 @@
           "sourceKind",
           "status"
         ],
-        "title": "OrchestrationTaskAttemptFactResponse"
+        "title": "OrchestrationTaskAttemptFactResponse",
+        "description": "Canonical fact record for a single task attempt within an orchestration run."
       },
       "OrchestrationTaskPullRequestResponse": {
         "properties": {
@@ -5543,7 +5601,8 @@
           "state",
           "mergeGateStatus"
         ],
-        "title": "OrchestrationTaskPullRequestResponse"
+        "title": "OrchestrationTaskPullRequestResponse",
+        "description": "Pull request snapshot for an individual orchestration task branch."
       },
       "OrchestrationTaskResponse": {
         "properties": {
@@ -5652,7 +5711,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -5799,7 +5860,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -5987,7 +6050,8 @@
           "deploymentId",
           "deploymentName"
         ],
-        "title": "PrefectDeploymentResponse"
+        "title": "PrefectDeploymentResponse",
+        "description": "Prefect deployment record with optional OATS metadata."
       },
       "PrefectFlowRunAnalyticsResponse": {
         "properties": {
@@ -6036,7 +6100,8 @@
         "required": [
           "runStatus"
         ],
-        "title": "PrefectFlowRunAnalyticsResponse"
+        "title": "PrefectFlowRunAnalyticsResponse",
+        "description": "Task-level analytics summary for a Prefect flow run."
       },
       "PrefectFlowRunResponse": {
         "properties": {
@@ -6190,7 +6255,8 @@
         "required": [
           "flowRunId"
         ],
-        "title": "PrefectFlowRunResponse"
+        "title": "PrefectFlowRunResponse",
+        "description": "Prefect flow run record with state, deployment linkage, and optional OATS analytics."
       },
       "PrefectOatsMetadataResponse": {
         "properties": {
@@ -6262,7 +6328,8 @@
           }
         },
         "type": "object",
-        "title": "PrefectOatsMetadataResponse"
+        "title": "PrefectOatsMetadataResponse",
+        "description": "OATS-specific metadata attached to a Prefect deployment or flow run."
       },
       "PrefectWorkPoolResponse": {
         "properties": {
@@ -6318,7 +6385,8 @@
           "workPoolId",
           "workPoolName"
         ],
-        "title": "PrefectWorkPoolResponse"
+        "title": "PrefectWorkPoolResponse",
+        "description": "Prefect work pool record with type, status, and concurrency configuration."
       },
       "PrefectWorkerResponse": {
         "properties": {
@@ -6369,7 +6437,8 @@
           "workerId",
           "workerName"
         ],
-        "title": "PrefectWorkerResponse"
+        "title": "PrefectWorkerResponse",
+        "description": "Prefect worker record with heartbeat and work pool association."
       },
       "ProjectResponse": {
         "properties": {
@@ -6418,10 +6487,16 @@
             "type": "integer",
             "title": "Codex",
             "default": 0
+          },
+          "openclaw": {
+            "type": "integer",
+            "title": "Openclaw",
+            "default": 0
           }
         },
         "type": "object",
-        "title": "ProviderBreakdownResponse"
+        "title": "ProviderBreakdownResponse",
+        "description": "Per-provider count breakdown (Claude, Codex, OpenClaw) for a single metric."
       },
       "ProviderSubscriptionSettingResponse": {
         "properties": {
@@ -6429,7 +6504,9 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "openclaw",
+              "opencloud"
             ],
             "title": "Provider"
           },
@@ -6453,7 +6530,8 @@
           "provider",
           "updatedAt"
         ],
-        "title": "ProviderSubscriptionSettingResponse"
+        "title": "ProviderSubscriptionSettingResponse",
+        "description": "Current subscription configuration for a single provider."
       },
       "ProviderSubscriptionSettingUpdateRequest": {
         "properties": {
@@ -6486,7 +6564,9 @@
                 "type": "string",
                 "enum": [
                   "claude",
-                  "codex"
+                  "codex",
+                  "openclaw",
+                  "opencloud"
                 ]
               },
               {

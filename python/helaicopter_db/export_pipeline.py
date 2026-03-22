@@ -10,7 +10,10 @@ from typing import Iterable
 
 from helaicopter_api.application.conversations import (
     _get_codex_live_conversation,
+    _get_openclaw_live_conversation,
+    _openclaw_session_artifacts,
     _shape_claude_live_conversation_detail,
+    _summarize_openclaw_artifact,
     _summarize_claude_session,
     _summarize_codex_artifact,
 )
@@ -25,7 +28,8 @@ from helaicopter_api.schema.conversations import (
     ConversationSummaryResponse,
 )
 from helaicopter_api.server.config import Settings, load_settings
-from helaicopter_semantics.pricing import calculate_cost
+from helaicopter_semantics import resolve_provider
+from helaicopter_semantics.pricing import CLAUDE_PRICING, OPENAI_PRICING, CostBreakdown, calculate_cost
 
 from .export_types import (
     ExportConversationEnvelope,
@@ -87,10 +91,12 @@ def _iter_historical_envelopes(settings: Settings | None = None) -> Iterable[Exp
     for iterator in (
         _iter_claude_historical_envelopes(backend_settings),
         _iter_codex_historical_envelopes(backend_settings),
+        _iter_openclaw_historical_envelopes(backend_settings),
     ):
         for envelope in iterator:
             parsed = parse_export_conversation_envelope(_drop_none_fields(envelope))
             if parsed is not None and parsed.get("type") == "conversation":
+                parsed["summary"]["provider"] = _summary_provider(parsed["summary"])
                 key = _conversation_key(parsed)
                 existing = deduped.get(key)
                 if existing is None or _envelope_rank(parsed) >= _envelope_rank(existing):
@@ -204,6 +210,33 @@ def _iter_codex_historical_envelopes(settings: Settings) -> Iterable[dict[str, o
         )
 
 
+def _iter_openclaw_historical_envelopes(settings: Settings) -> Iterable[dict[str, object]]:
+    services = build_services(settings)
+    cutoff_ms = _utc_now_ms() - MAX_WINDOW_DAYS * MILLIS_PER_DAY
+    start_of_today_ms = int(_start_of_today().timestamp() * 1000)
+    for artifact in _openclaw_session_artifacts(services):
+        modified_at_ms = int(artifact.modified_at * 1000)
+        if modified_at_ms < cutoff_ms:
+            continue
+        summary = _summarize_openclaw_artifact(artifact)
+        if summary is None or summary.timestamp >= start_of_today_ms or summary.last_updated_at < cutoff_ms:
+            continue
+        detail = _get_openclaw_live_conversation(
+            services,
+            session_id=summary.session_id,
+            project_path=summary.project_path,
+        )
+        if detail is None:
+            continue
+        yield _build_envelope(
+            summary=summary,
+            detail=detail,
+            tasks=[],
+            source_path=artifact.path,
+            source_file_modified_at=modified_at_ms,
+        )
+
+
 def _build_envelope(
     *,
     summary: ConversationSummaryResponse,
@@ -212,13 +245,8 @@ def _build_envelope(
     source_path: str,
     source_file_modified_at: int,
 ) -> dict[str, object]:
-    cost = calculate_cost(
-        input_tokens=summary.total_input_tokens,
-        output_tokens=summary.total_output_tokens,
-        cache_write_tokens=summary.total_cache_creation_tokens,
-        cache_read_tokens=summary.total_cache_read_tokens,
-        model=summary.model,
-    )
+    provider = resolve_provider(model=summary.model, project_path=summary.project_path)
+    cost = _export_cost_breakdown(summary, provider=provider)
     return {
         "type": "conversation",
         "summary": _summary_payload(summary, source_path=source_path, source_file_modified_at=source_file_modified_at),
@@ -234,14 +262,37 @@ def _build_envelope(
     }
 
 
+def _export_cost_breakdown(
+    summary: ConversationSummaryResponse,
+    *,
+    provider: str,
+) -> CostBreakdown:
+    if provider == "openclaw" and not _openclaw_has_known_cost_model(summary.model):
+        return CostBreakdown(
+            input_cost=0.0,
+            output_cost=0.0,
+            cache_write_cost=0.0,
+            cache_read_cost=0.0,
+        )
+    return calculate_cost(
+        input_tokens=summary.total_input_tokens,
+        output_tokens=summary.total_output_tokens,
+        cache_write_tokens=summary.total_cache_creation_tokens,
+        cache_read_tokens=summary.total_cache_read_tokens,
+        model=summary.model,
+    )
+
+
 def _summary_payload(
     summary: ConversationSummaryResponse,
     *,
     source_path: str,
     source_file_modified_at: int,
 ) -> dict[str, object]:
+    provider = resolve_provider(model=summary.model, project_path=summary.project_path)
     return {
         "sessionId": summary.session_id,
+        "provider": provider,
         "projectPath": summary.project_path,
         "projectName": summary.project_name,
         "threadType": summary.thread_type,
@@ -266,6 +317,36 @@ def _summary_payload(
         "sourcePath": source_path,
         "sourceFileModifiedAt": source_file_modified_at,
     }
+
+
+def _openclaw_has_known_cost_model(model: str | None) -> bool:
+    if not model:
+        return False
+    if model in CLAUDE_PRICING or model in OPENAI_PRICING:
+        return True
+    if any(model.startswith(key) for key in CLAUDE_PRICING):
+        return True
+    if any(model.startswith(key) for key in OPENAI_PRICING):
+        return True
+    if "gpt-5.4" in model or "gpt5.4" in model:
+        return True
+    if "gpt-5.2" in model or "gpt5.2" in model:
+        return True
+    if "gpt-5.1" in model or "gpt5.1" in model:
+        return True
+    if "gpt-5-mini" in model or "gpt5-mini" in model:
+        return True
+    if "gpt-5" in model or "gpt5" in model:
+        return True
+    if "o4-mini" in model or "o3" in model:
+        return True
+    if "opus-4-6" in model or "opus-4-5" in model:
+        return True
+    if "opus-4-1" in model or "opus-4" in model:
+        return True
+    if "sonnet" in model or "haiku" in model:
+        return True
+    return False
 
 
 def _detail_payload(detail: ConversationDetailResponse) -> dict[str, object]:
@@ -383,8 +464,18 @@ def _finite_number(value: object) -> bool:
 
 def _conversation_key(envelope: ExportConversationEnvelope) -> str:
     summary = envelope["summary"]
-    provider = provider_for_project_path(summary["projectPath"])
+    provider = _summary_provider(summary)
     return conversation_id(provider, summary["sessionId"])
+
+
+def _summary_provider(summary: dict[str, object]) -> str:
+    provider = summary.get("provider")
+    if isinstance(provider, str) and provider:
+        return provider
+    project_path = summary["projectPath"]
+    if isinstance(project_path, str) and project_path.startswith("openclaw:"):
+        return "openclaw"
+    return provider_for_project_path(project_path)
 
 
 def _envelope_rank(envelope: ExportConversationEnvelope) -> tuple[int, int]:

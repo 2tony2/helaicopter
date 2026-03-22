@@ -48,6 +48,7 @@ import type {
   ProcessedConversation,
   ProcessedMessage,
   ProjectInfo,
+  FrontendProvider,
   ProviderBreakdown,
   SubagentInfo,
   SubscriptionSettings,
@@ -62,6 +63,7 @@ import type {
   EvaluationPromptPayload,
 } from "./schemas/evaluations.ts";
 import type { SubscriptionSettingsPayload } from "./schemas/subscriptions.ts";
+import { providerSchema } from "./schemas/shared.ts";
 
 /**
  * Compatibility shim for the FastAPI rollout: frontend callers now target the
@@ -117,6 +119,18 @@ function asArray(value: unknown): unknown[] {
 
 function stringOr(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function normalizeProvider(value: unknown): FrontendProvider {
+  return providerSchema.parse(value);
+}
+
+function normalizeOptionalProvider(value: unknown): FrontendProvider | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return normalizeProvider(value);
 }
 
 function nullableString(value: unknown): string | undefined {
@@ -234,8 +248,11 @@ function normalizeThreadType(value: unknown): "main" | "subagent" {
   return value === "subagent" ? "subagent" : "main";
 }
 
-function normalizeMessageRole(value: unknown): "user" | "assistant" {
-  return value === "user" ? "user" : "assistant";
+function normalizeMessageRole(value: unknown): "user" | "assistant" | "tool" {
+  if (value === "user" || value === "tool") {
+    return value;
+  }
+  return "assistant";
 }
 
 function normalizeUsage(value: unknown): TokenUsage {
@@ -266,7 +283,7 @@ function normalizeConversationPlan(value: unknown): ConversationPlan {
     title: stringOr(item.title),
     preview: stringOr(item.preview),
     content: stringOr(item.content),
-    provider: stringOr(item.provider) === "codex" ? "codex" : "claude",
+    provider: normalizeProvider(item.provider),
     timestamp: numberOr(item.timestamp),
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
@@ -429,6 +446,7 @@ export function normalizeConversationSummary(
     sessionId: isCamel ? value.sessionId : value.session_id,
     projectPath: isCamel ? value.projectPath : value.project_path,
     projectName: isCamel ? value.projectName : value.project_name,
+    provider: normalizeOptionalProvider((value as JsonRecord).provider),
     routeSlug: isCamel ? value.routeSlug : value.route_slug,
     conversationRef: isCamel ? value.conversationRef : value.conversation_ref,
     threadType: isCamel ? value.threadType : value.thread_type,
@@ -544,6 +562,7 @@ export function normalizeConversationDetail(value: unknown): ProcessedConversati
   return {
     sessionId: stringOr(item.session_id),
     projectPath: stringOr(item.project_path),
+    provider: normalizeOptionalProvider(item.provider),
     routeSlug: nullableString(item.route_slug),
     conversationRef: nullableString(item.conversation_ref),
     threadType:
@@ -575,7 +594,7 @@ function normalizePlanSummary(value: unknown): PlanSummary {
     slug: stringOr(item.slug),
     title: stringOr(item.title),
     preview: stringOr(item.preview),
-    provider: stringOr(item.provider) === "codex" ? "codex" : "claude",
+    provider: normalizeProvider(item.provider),
     timestamp: numberOr(item.timestamp),
     model: nullableString(item.model),
     sourcePath: nullableString(item.source_path),
@@ -595,7 +614,7 @@ export function normalizePlan(value: unknown): PlanDetail {
     slug: stringOr(item.slug),
     title: stringOr(item.title),
     content: stringOr(item.content),
-    provider: stringOr(item.provider) === "codex" ? "codex" : "claude",
+    provider: normalizeProvider(item.provider),
     timestamp: numberOr(item.timestamp),
     model: nullableString(item.model),
     sourcePath: nullableString(item.source_path),
@@ -653,6 +672,8 @@ function normalizeProviderBreakdown(value: unknown): ProviderBreakdown {
   return {
     claude: numberOr(field(item, "claude")),
     codex: numberOr(field(item, "codex")),
+    openclaw: numberOr(field(item, "openclaw")),
+    opencloud: numberOr(field(item, "opencloud")),
   };
 }
 
@@ -695,6 +716,12 @@ function normalizeTimeSeriesPoint(value: unknown): AnalyticsTimeSeriesPoint {
       field(item, "claudeEstimatedCost", "claude_estimated_cost")
     ),
     codexEstimatedCost: numberOr(field(item, "codexEstimatedCost", "codex_estimated_cost")),
+    openclawEstimatedCost: numberOr(
+      field(item, "openclawEstimatedCost", "openclaw_estimated_cost")
+    ),
+    opencloudEstimatedCost: numberOr(
+      field(item, "opencloudEstimatedCost", "opencloud_estimated_cost")
+    ),
     inputTokens: numberOr(field(item, "inputTokens", "input_tokens")),
     outputTokens: numberOr(field(item, "outputTokens", "output_tokens")),
     cacheWriteTokens: numberOr(field(item, "cacheWriteTokens", "cache_write_tokens")),
@@ -731,6 +758,64 @@ function normalizeTimeSeriesPoint(value: unknown): AnalyticsTimeSeriesPoint {
       field(item, "claudeToolErrorRatePct", "claude_tool_error_rate_pct")
     ),
     claudeSubagents: numberOr(field(item, "claudeSubagents", "claude_subagents")),
+    openclawInputTokens: numberOr(
+      field(item, "openclawInputTokens", "openclaw_input_tokens")
+    ),
+    openclawOutputTokens: numberOr(
+      field(item, "openclawOutputTokens", "openclaw_output_tokens")
+    ),
+    openclawCacheWriteTokens: numberOr(
+      field(item, "openclawCacheWriteTokens", "openclaw_cache_write_tokens")
+    ),
+    openclawCacheReadTokens: numberOr(
+      field(item, "openclawCacheReadTokens", "openclaw_cache_read_tokens")
+    ),
+    openclawReasoningTokens: numberOr(
+      field(item, "openclawReasoningTokens", "openclaw_reasoning_tokens")
+    ),
+    openclawTotalTokens: numberOr(
+      field(item, "openclawTotalTokens", "openclaw_total_tokens")
+    ),
+    openclawConversations: numberOr(
+      field(item, "openclawConversations", "openclaw_conversations")
+    ),
+    openclawToolCalls: numberOr(field(item, "openclawToolCalls", "openclaw_tool_calls")),
+    openclawFailedToolCalls: numberOr(
+      field(item, "openclawFailedToolCalls", "openclaw_failed_tool_calls")
+    ),
+    openclawToolErrorRatePct: numberOr(
+      field(item, "openclawToolErrorRatePct", "openclaw_tool_error_rate_pct")
+    ),
+    openclawSubagents: numberOr(field(item, "openclawSubagents", "openclaw_subagents")),
+    opencloudInputTokens: numberOr(
+      field(item, "opencloudInputTokens", "opencloud_input_tokens")
+    ),
+    opencloudOutputTokens: numberOr(
+      field(item, "opencloudOutputTokens", "opencloud_output_tokens")
+    ),
+    opencloudCacheWriteTokens: numberOr(
+      field(item, "opencloudCacheWriteTokens", "opencloud_cache_write_tokens")
+    ),
+    opencloudCacheReadTokens: numberOr(
+      field(item, "opencloudCacheReadTokens", "opencloud_cache_read_tokens")
+    ),
+    opencloudReasoningTokens: numberOr(
+      field(item, "opencloudReasoningTokens", "opencloud_reasoning_tokens")
+    ),
+    opencloudTotalTokens: numberOr(
+      field(item, "opencloudTotalTokens", "opencloud_total_tokens")
+    ),
+    opencloudConversations: numberOr(
+      field(item, "opencloudConversations", "opencloud_conversations")
+    ),
+    opencloudToolCalls: numberOr(field(item, "opencloudToolCalls", "opencloud_tool_calls")),
+    opencloudFailedToolCalls: numberOr(
+      field(item, "opencloudFailedToolCalls", "opencloud_failed_tool_calls")
+    ),
+    opencloudToolErrorRatePct: numberOr(
+      field(item, "opencloudToolErrorRatePct", "opencloud_tool_error_rate_pct")
+    ),
+    opencloudSubagents: numberOr(field(item, "opencloudSubagents", "opencloud_subagents")),
     codexInputTokens: numberOr(field(item, "codexInputTokens", "codex_input_tokens")),
     codexOutputTokens: numberOr(field(item, "codexOutputTokens", "codex_output_tokens")),
     codexCacheWriteTokens: numberOr(
@@ -799,6 +884,38 @@ function normalizeDailyUsage(value: unknown): DailyUsage {
     codexConversations: numberOr(field(item, "codexConversations", "codex_conversations")),
     claudeSubagents: numberOr(field(item, "claudeSubagents", "claude_subagents")),
     codexSubagents: numberOr(field(item, "codexSubagents", "codex_subagents")),
+    openclawInputTokens: numberOr(
+      field(item, "openclawInputTokens", "openclaw_input_tokens")
+    ),
+    openclawOutputTokens: numberOr(
+      field(item, "openclawOutputTokens", "openclaw_output_tokens")
+    ),
+    openclawCacheWriteTokens: numberOr(
+      field(item, "openclawCacheWriteTokens", "openclaw_cache_write_tokens")
+    ),
+    openclawCacheReadTokens: numberOr(
+      field(item, "openclawCacheReadTokens", "openclaw_cache_read_tokens")
+    ),
+    openclawConversations: numberOr(
+      field(item, "openclawConversations", "openclaw_conversations")
+    ),
+    openclawSubagents: numberOr(field(item, "openclawSubagents", "openclaw_subagents")),
+    opencloudInputTokens: numberOr(
+      field(item, "opencloudInputTokens", "opencloud_input_tokens")
+    ),
+    opencloudOutputTokens: numberOr(
+      field(item, "opencloudOutputTokens", "opencloud_output_tokens")
+    ),
+    opencloudCacheWriteTokens: numberOr(
+      field(item, "opencloudCacheWriteTokens", "opencloud_cache_write_tokens")
+    ),
+    opencloudCacheReadTokens: numberOr(
+      field(item, "opencloudCacheReadTokens", "opencloud_cache_read_tokens")
+    ),
+    opencloudConversations: numberOr(
+      field(item, "opencloudConversations", "opencloud_conversations")
+    ),
+    opencloudSubagents: numberOr(field(item, "opencloudSubagents", "opencloud_subagents")),
   };
 }
 

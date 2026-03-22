@@ -32,6 +32,14 @@ function modelLabel(model: string): string {
   return model === "unknown" ? "Model: Unknown" : `Model: ${model}`;
 }
 
+function providerLabel(provider: string): string {
+  if (provider === "claude") return "Claude";
+  if (provider === "codex") return "Codex";
+  if (provider === "openclaw") return "OpenClaw";
+  if (provider === "opencloud") return "OpenCloud";
+  return provider;
+}
+
 function getBudgetForSelection(
   selectedKey: string,
   settings: SubscriptionSettings
@@ -41,14 +49,17 @@ function getBudgetForSelection(
     : null;
 
   if (providerFromKey) {
+    if (providerFromKey !== "claude" && providerFromKey !== "codex") {
+      return null;
+    }
     const setting = settings[providerFromKey];
-    if (!setting.hasSubscription || setting.monthlyCost <= 0) {
+    if (!setting || !setting.hasSubscription || setting.monthlyCost <= 0) {
       return null;
     }
 
     return {
       budget: setting.monthlyCost,
-      label: `${providerFromKey === "claude" ? "Claude" : "Codex"} subscription`,
+      label: `${providerLabel(providerFromKey)} subscription`,
     };
   }
 
@@ -89,7 +100,7 @@ export function CostBreakdownCard({
       .sort((a, b) => b[1].totalCost - a[1].totalCost)
       .map(([providerKey, breakdown]) => ({
         key: `provider:${providerKey}`,
-        label: `Provider: ${providerKey === "claude" ? "Claude" : "Codex"}`,
+        label: `Provider: ${providerLabel(providerKey)}`,
         breakdown,
       })),
     ...Object.entries(byModel)

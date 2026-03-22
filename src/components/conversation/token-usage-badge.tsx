@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { TokenUsage } from "@/lib/types";
+import type { FrontendProvider, TokenUsage } from "@/lib/types";
 import { calculateCost, formatCost } from "@/lib/pricing";
 import { ArrowDownToLine, ArrowUpFromLine, DatabaseZap, BookOpen, Brain } from "lucide-react";
 import { isOpenAIModel } from "@/lib/utils";
@@ -58,7 +58,7 @@ export function TokenUsageBadge({
   usage?: TokenUsage;
   model?: string;
   reasoningTokens?: number;
-  provider?: "claude" | "codex";
+  provider?: FrontendProvider;
 }) {
   if (!usage) return null;
 

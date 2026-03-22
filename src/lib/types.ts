@@ -95,6 +95,7 @@ export interface ConversationSummary {
   sessionId: string;
   projectPath: string;
   projectName: string;
+  provider?: FrontendProvider;
   routeSlug?: string;
   conversationRef?: string;
   threadType: "main" | "subagent";
@@ -505,7 +506,7 @@ export interface ContextBucket {
 export interface ContextStep {
   messageId: string;
   index: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   label: string;
   category: ContextBucket["category"];
   timestamp: number;
@@ -530,7 +531,9 @@ export interface ContextWindowStats {
   cumulativeTokens: number;
 }
 
-export type PlanProvider = "claude" | "codex";
+export type FrontendProvider = "claude" | "codex" | "openclaw" | "opencloud";
+
+export type PlanProvider = FrontendProvider;
 
 export interface CanonicalConversationLink {
   sessionId?: string;
@@ -572,6 +575,7 @@ export interface ConversationPlan extends CanonicalConversationLink {
 export interface ProcessedConversation {
   sessionId: string;
   projectPath: string;
+  provider?: FrontendProvider;
   routeSlug?: string;
   conversationRef?: string;
   threadType?: "main" | "subagent";
@@ -595,7 +599,7 @@ export interface ProcessedConversation {
 
 export interface ProcessedMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   timestamp: number;
   blocks: DisplayBlock[];
   usage?: TokenUsage;
@@ -691,6 +695,8 @@ export interface AnalyticsCostBreakdownMap {
 export interface ProviderBreakdown {
   claude: number;
   codex: number;
+  openclaw?: number;
+  opencloud?: number;
 }
 
 export interface AnalyticsRateValue {
@@ -744,6 +750,30 @@ export interface AnalyticsTimeSeriesPoint {
   claudeFailedToolCalls: number;
   claudeToolErrorRatePct: number;
   claudeSubagents: number;
+  openclawEstimatedCost?: number;
+  openclawInputTokens?: number;
+  openclawOutputTokens?: number;
+  openclawCacheWriteTokens?: number;
+  openclawCacheReadTokens?: number;
+  openclawReasoningTokens?: number;
+  openclawTotalTokens?: number;
+  openclawConversations?: number;
+  openclawToolCalls?: number;
+  openclawFailedToolCalls?: number;
+  openclawToolErrorRatePct?: number;
+  openclawSubagents?: number;
+  opencloudEstimatedCost?: number;
+  opencloudInputTokens?: number;
+  opencloudOutputTokens?: number;
+  opencloudCacheWriteTokens?: number;
+  opencloudCacheReadTokens?: number;
+  opencloudReasoningTokens?: number;
+  opencloudTotalTokens?: number;
+  opencloudConversations?: number;
+  opencloudToolCalls?: number;
+  opencloudFailedToolCalls?: number;
+  opencloudToolErrorRatePct?: number;
+  opencloudSubagents?: number;
   codexInputTokens: number;
   codexOutputTokens: number;
   codexCacheWriteTokens: number;
@@ -764,7 +794,7 @@ export interface AnalyticsTimeSeries {
   monthly: AnalyticsTimeSeriesPoint[];
 }
 
-export type SupportedProvider = "claude" | "codex";
+export type SupportedProvider = FrontendProvider;
 
 export interface ProviderSubscriptionSetting {
   provider: SupportedProvider;
@@ -822,6 +852,18 @@ export interface DailyUsage {
   codexConversations: number;
   claudeSubagents: number;
   codexSubagents: number;
+  openclawInputTokens?: number;
+  openclawOutputTokens?: number;
+  openclawCacheWriteTokens?: number;
+  openclawCacheReadTokens?: number;
+  openclawConversations?: number;
+  openclawSubagents?: number;
+  opencloudInputTokens?: number;
+  opencloudOutputTokens?: number;
+  opencloudCacheWriteTokens?: number;
+  opencloudCacheReadTokens?: number;
+  opencloudConversations?: number;
+  opencloudSubagents?: number;
 }
 
 export interface DatabaseColumnSchema {
@@ -919,7 +961,7 @@ export interface ConversationEvaluation {
   evaluationId: string;
   conversationId: string;
   promptId?: string | null;
-  provider: "claude" | "codex";
+  provider: FrontendProvider;
   model: string;
   status: "running" | "completed" | "failed";
   scope: "full" | "failed_tool_calls" | "guided_subset";

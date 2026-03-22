@@ -21,7 +21,13 @@ import { format } from "date-fns";
 import { Bot, Database, Gauge, Download, Brain, FileText, AlertTriangle } from "lucide-react";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import type { DisplayToolCallBlock, ProcessedMessage, SubagentInfo, TokenUsage } from "@/lib/types";
+import type {
+  DisplayToolCallBlock,
+  FrontendProvider,
+  ProcessedMessage,
+  SubagentInfo,
+  TokenUsage,
+} from "@/lib/types";
 import { ContextTab } from "./context-tab";
 import { PlanPanel } from "@/features/plans/components/plan-panel";
 import { ToolCallBlock } from "./tool-call-block";
@@ -34,12 +40,18 @@ import {
   type ConversationDetailTab,
 } from "@/lib/routes";
 
-function providerLabel(provider: "claude" | "codex"): string {
-  return provider === "claude" ? "Claude" : "Codex";
+export function providerLabel(provider: FrontendProvider): string {
+  if (provider === "claude") return "Claude";
+  if (provider === "codex") return "Codex";
+  if (provider === "openclaw") return "OpenClaw";
+  return "OpenCloud";
 }
 
-function providerDotClass(provider: "claude" | "codex"): string {
-  return provider === "claude" ? "bg-emerald-500" : "bg-sky-500";
+function providerDotClass(provider: FrontendProvider): string {
+  if (provider === "claude") return "bg-emerald-500";
+  if (provider === "codex") return "bg-sky-500";
+  if (provider === "openclaw") return "bg-amber-500";
+  return "bg-fuchsia-500";
 }
 
 function formatTokens(n: number): string {
@@ -57,8 +69,15 @@ function totalContext(usage: TokenUsage): number {
   );
 }
 
-function providerFromProjectPath(projectPath: string): "claude" | "codex" {
-  return projectPath.startsWith("codex:") ? "codex" : "claude";
+export function resolveConversationProvider(
+  projectPath: string,
+  provider?: FrontendProvider
+): FrontendProvider {
+  if (provider) return provider;
+  if (projectPath.startsWith("codex:")) return "codex";
+  if (projectPath.startsWith("openclaw:")) return "openclaw";
+  if (projectPath.startsWith("opencloud:")) return "opencloud";
+  return "claude";
 }
 
 interface FailedToolCallEntry {
@@ -131,7 +150,7 @@ function SubagentTranscriptCard({
     parentSessionId ?? sessionId,
     agent.agentId
   );
-  const provider = providerFromProjectPath(projectPath);
+  const provider = resolveConversationProvider(projectPath, conversation?.provider);
   const nestedSubagents = (conversation?.subagents ?? []).filter(
     (child) => child.agentId !== agent.agentId && !ancestry.includes(child.agentId)
   );
@@ -377,7 +396,7 @@ export function ConversationViewer({
   const activeTab = routeState.tab;
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
   const conversationEvaluations = evaluations ?? [];
-  const provider = providerFromProjectPath(projectPath);
+  const provider = resolveConversationProvider(projectPath, conversation.provider);
 
   function replaceRoute(next: {
     tab?: ConversationDetailTab;
@@ -411,6 +430,10 @@ export function ConversationViewer({
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
+          <Badge variant="secondary" className="gap-2">
+            <span className={`h-2 w-2 rounded-full ${providerDotClass(provider)}`} />
+            {providerLabel(provider)}
+          </Badge>
           {conversation.model && (
             <Badge className={`text-xs border-0 ${getModelBadgeClasses(conversation.model)}`}>
               {formatModelName(conversation.model)}

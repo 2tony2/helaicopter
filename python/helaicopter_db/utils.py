@@ -38,6 +38,10 @@ def date_key(value: date) -> int:
 
 
 def provider_for_project_path(project_path: EncodedProjectKey) -> ProviderName:
+    if project_path.startswith("opencloud:"):
+        return "opencloud"
+    if project_path.startswith("openclaw:"):
+        return "openclaw"
     return "codex" if project_path.startswith("codex:") else "claude"
 
 

@@ -7,18 +7,24 @@ import { Download, Sparkles } from "lucide-react";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { PlanViewer } from "./plan-viewer";
-import type { ConversationPlan, PlanDetail } from "@/lib/types";
+import type { ConversationPlan, FrontendProvider, PlanDetail } from "@/lib/types";
 import { cn, formatModelName, getModelBadgeClasses } from "@/lib/utils";
 import { buildConversationTabRoute } from "@/lib/routes";
 
 type PlanLike = ConversationPlan | PlanDetail;
 
-function providerLabel(provider: "claude" | "codex"): string {
-  return provider === "claude" ? "Claude" : "Codex";
+function providerLabel(provider: FrontendProvider): string {
+  if (provider === "claude") return "Claude";
+  if (provider === "codex") return "Codex";
+  if (provider === "openclaw") return "OpenClaw";
+  return "OpenCloud";
 }
 
-function providerDotClass(provider: "claude" | "codex"): string {
-  return provider === "claude" ? "bg-emerald-500" : "bg-sky-500";
+function providerDotClass(provider: FrontendProvider): string {
+  if (provider === "claude") return "bg-emerald-500";
+  if (provider === "codex") return "bg-sky-500";
+  if (provider === "openclaw") return "bg-amber-500";
+  return "bg-fuchsia-500";
 }
 
 function toFileHref(path: string): string {

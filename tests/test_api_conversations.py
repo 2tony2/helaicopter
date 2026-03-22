@@ -114,6 +114,121 @@ def _write_codex_thread_db(path: Path, rows: list[tuple[object, ...]]) -> None:
         connection.close()
 
 
+def _write_opencloud_db(
+    path: Path,
+    *,
+    sessions: list[tuple[object, ...]],
+    messages: list[tuple[object, ...]],
+    parts: list[tuple[object, ...]],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE project (
+              id TEXT PRIMARY KEY,
+              worktree TEXT NOT NULL,
+              vcs TEXT,
+              name TEXT,
+              icon_url TEXT,
+              icon_color TEXT,
+              time_created INTEGER NOT NULL,
+              time_updated INTEGER NOT NULL,
+              time_initialized INTEGER,
+              sandboxes TEXT NOT NULL,
+              commands TEXT
+            );
+
+            CREATE TABLE session (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              parent_id TEXT,
+              slug TEXT NOT NULL,
+              directory TEXT NOT NULL,
+              title TEXT NOT NULL,
+              version TEXT NOT NULL,
+              share_url TEXT,
+              summary_additions INTEGER,
+              summary_deletions INTEGER,
+              summary_files INTEGER,
+              summary_diffs TEXT,
+              revert TEXT,
+              permission TEXT,
+              time_created INTEGER NOT NULL,
+              time_updated INTEGER NOT NULL,
+              time_compacting INTEGER,
+              time_archived INTEGER
+            );
+
+            CREATE TABLE message (
+              id TEXT PRIMARY KEY,
+              session_id TEXT NOT NULL,
+              time_created INTEGER NOT NULL,
+              time_updated INTEGER NOT NULL,
+              data TEXT NOT NULL
+            );
+
+            CREATE TABLE part (
+              id TEXT PRIMARY KEY,
+              message_id TEXT NOT NULL,
+              session_id TEXT NOT NULL,
+              time_created INTEGER NOT NULL,
+              time_updated INTEGER NOT NULL,
+              data TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO project (
+              id, worktree, vcs, name, icon_url, icon_color, time_created, time_updated, time_initialized, sandboxes, commands
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "project-helicopter",
+                "/Users/tony/Code/helaicopter",
+                "git",
+                "helaicopter",
+                None,
+                None,
+                1_763_700_000_000,
+                1_763_700_000_000,
+                None,
+                json.dumps([]),
+                None,
+            ),
+        )
+        connection.executemany(
+            """
+            INSERT INTO session (
+              id, project_id, parent_id, slug, directory, title, version, share_url, summary_additions, summary_deletions,
+              summary_files, summary_diffs, revert, permission, time_created, time_updated, time_compacting, time_archived
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            sessions,
+        )
+        connection.executemany(
+            """
+            INSERT INTO message (
+              id, session_id, time_created, time_updated, data
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            messages,
+        )
+        connection.executemany(
+            """
+            INSERT INTO part (
+              id, message_id, session_id, time_created, time_updated, data
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            parts,
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def _write_app_db(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
@@ -319,6 +434,8 @@ def _insert_persisted_conversation_summary(
 def _seed_sources(tmp_path: Path) -> Settings:
     claude_dir = tmp_path / ".claude"
     codex_dir = tmp_path / ".codex"
+    openclaw_dir = tmp_path / ".openclaw"
+    opencloud_dir = tmp_path / ".local" / "share" / "opencode"
     project_path = "-Users-tony-Code-helaicopter"
     claude_project_dir = claude_dir / "projects" / project_path
     claude_project_dir.mkdir(parents=True)
@@ -768,9 +885,567 @@ def _seed_sources(tmp_path: Path) -> Settings:
             ),
         ],
     )
+    opencloud_main_session_id = "ses_opencloud_main"
+    opencloud_child_session_id = "ses_opencloud_child"
+    _write_opencloud_db(
+        opencloud_dir / "opencode.db",
+        sessions=[
+            (
+                opencloud_main_session_id,
+                "project-helicopter",
+                None,
+                "opencloud-rollout",
+                "/Users/tony/Code/helaicopter",
+                "Integrate OpenCloud conversation data",
+                "1.2.15",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                1_763_700_000_000,
+                1_763_700_010_000,
+                None,
+                None,
+            ),
+            (
+                opencloud_child_session_id,
+                "project-helicopter",
+                opencloud_main_session_id,
+                "opencloud-child-investigation",
+                "/Users/tony/Code/helaicopter",
+                "Inspect child session",
+                "1.2.15",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                1_763_700_001_000,
+                1_763_700_009_000,
+                None,
+                None,
+            ),
+        ],
+        messages=[
+            (
+                "msg-opencloud-user-1",
+                opencloud_main_session_id,
+                1_763_700_000_100,
+                1_763_700_000_100,
+                json.dumps(
+                    {
+                        "role": "user",
+                        "time": {"created": 1_763_700_000_100},
+                        "agent": "build",
+                        "model": {"providerID": "openai", "modelID": "gpt-5"},
+                    }
+                ),
+            ),
+            (
+                "msg-opencloud-assistant-1",
+                opencloud_main_session_id,
+                1_763_700_000_500,
+                1_763_700_002_000,
+                json.dumps(
+                    {
+                        "role": "assistant",
+                        "time": {"created": 1_763_700_000_500, "completed": 1_763_700_002_000},
+                        "parentID": "msg-opencloud-user-1",
+                        "modelID": "gpt-5",
+                        "providerID": "openai",
+                        "mode": "build",
+                        "agent": "build",
+                        "path": {"cwd": "/Users/tony/Code/helaicopter", "root": "/"},
+                        "cost": 0.0042,
+                        "tokens": {
+                            "total": 261,
+                            "input": 120,
+                            "output": 80,
+                            "reasoning": 21,
+                            "cache": {"read": 60, "write": 1},
+                        },
+                        "finish": "tool-calls",
+                    }
+                ),
+            ),
+            (
+                "msg-opencloud-assistant-2",
+                opencloud_main_session_id,
+                1_763_700_002_100,
+                1_763_700_003_000,
+                json.dumps(
+                    {
+                        "role": "assistant",
+                        "time": {"created": 1_763_700_002_100, "completed": 1_763_700_003_000},
+                        "parentID": "msg-opencloud-user-1",
+                        "modelID": "gpt-5",
+                        "providerID": "openai",
+                        "mode": "build",
+                        "agent": "build",
+                        "path": {"cwd": "/Users/tony/Code/helaicopter", "root": "/"},
+                        "cost": 0.0044,
+                        "tokens": {
+                            "total": 292,
+                            "input": 130,
+                            "output": 90,
+                            "reasoning": 22,
+                            "cache": {"read": 48, "write": 2},
+                        },
+                        "finish": "stop",
+                    }
+                ),
+            ),
+            (
+                "msg-opencloud-child-user-1",
+                opencloud_child_session_id,
+                1_763_700_001_100,
+                1_763_700_001_100,
+                json.dumps(
+                    {
+                        "role": "user",
+                        "time": {"created": 1_763_700_001_100},
+                        "agent": "task",
+                        "model": {"providerID": "openai", "modelID": "gpt-5-mini"},
+                    }
+                ),
+            ),
+        ],
+        parts=[
+            (
+                "prt-opencloud-user-text-1",
+                "msg-opencloud-user-1",
+                opencloud_main_session_id,
+                1_763_700_000_100,
+                1_763_700_000_100,
+                json.dumps({"type": "text", "text": "Integrate OpenCloud conversation data into the app"}),
+            ),
+            (
+                "prt-opencloud-step-start-1",
+                "msg-opencloud-assistant-1",
+                opencloud_main_session_id,
+                1_763_700_000_500,
+                1_763_700_000_500,
+                json.dumps({"type": "step-start"}),
+            ),
+            (
+                "prt-opencloud-thinking-1",
+                "msg-opencloud-assistant-1",
+                opencloud_main_session_id,
+                1_763_700_000_600,
+                1_763_700_000_900,
+                json.dumps(
+                    {
+                        "type": "reasoning",
+                        "text": "Need to inspect provider abstractions before changing contracts.",
+                        "time": {"start": 1_763_700_000_600, "end": 1_763_700_000_900},
+                    }
+                ),
+            ),
+            (
+                "prt-opencloud-text-1",
+                "msg-opencloud-assistant-1",
+                opencloud_main_session_id,
+                1_763_700_000_900,
+                1_763_700_001_000,
+                json.dumps({"type": "text", "text": "I will inspect the backend provider pipeline."}),
+            ),
+            (
+                "prt-opencloud-tool-1",
+                "msg-opencloud-assistant-1",
+                opencloud_main_session_id,
+                1_763_700_001_100,
+                1_763_700_001_800,
+                json.dumps(
+                    {
+                        "type": "tool",
+                        "callID": "call-opencloud-shell-1",
+                        "tool": "bash",
+                        "state": {
+                            "status": "completed",
+                            "input": {"command": "rg -n openclaw python src", "description": "Inspect provider wiring"},
+                            "output": "python/helaicopter_api/application/conversations.py:1101",
+                            "metadata": {"exit": 0},
+                            "time": {"start": 1_763_700_001_100, "end": 1_763_700_001_800},
+                        },
+                    }
+                ),
+            ),
+            (
+                "prt-opencloud-step-finish-1",
+                "msg-opencloud-assistant-1",
+                opencloud_main_session_id,
+                1_763_700_001_900,
+                1_763_700_002_000,
+                json.dumps(
+                    {
+                        "type": "step-finish",
+                        "reason": "tool-calls",
+                        "cost": 0.0042,
+                        "tokens": {
+                            "total": 261,
+                            "input": 120,
+                            "output": 80,
+                            "reasoning": 21,
+                            "cache": {"read": 60, "write": 1},
+                        },
+                    }
+                ),
+            ),
+            (
+                "prt-opencloud-text-2",
+                "msg-opencloud-assistant-2",
+                opencloud_main_session_id,
+                1_763_700_002_200,
+                1_763_700_002_400,
+                json.dumps({"type": "text", "text": "Provider integration is complete."}),
+            ),
+            (
+                "prt-opencloud-tool-2",
+                "msg-opencloud-assistant-2",
+                opencloud_main_session_id,
+                1_763_700_002_400,
+                1_763_700_002_700,
+                json.dumps(
+                    {
+                        "type": "tool",
+                        "callID": "call-opencloud-patch-1",
+                        "tool": "patch",
+                        "state": {
+                            "status": "error",
+                            "input": {"file": "src/lib/types.ts"},
+                            "error": "Patch failed",
+                            "metadata": {"exit": 1},
+                            "time": {"start": 1_763_700_002_400, "end": 1_763_700_002_700},
+                        },
+                    }
+                ),
+            ),
+            (
+                "prt-opencloud-step-finish-2",
+                "msg-opencloud-assistant-2",
+                opencloud_main_session_id,
+                1_763_700_002_900,
+                1_763_700_003_000,
+                json.dumps(
+                    {
+                        "type": "step-finish",
+                        "reason": "stop",
+                        "cost": 0.0044,
+                        "tokens": {
+                            "total": 292,
+                            "input": 130,
+                            "output": 90,
+                            "reasoning": 22,
+                            "cache": {"read": 48, "write": 2},
+                        },
+                    }
+                ),
+            ),
+            (
+                "prt-opencloud-child-user-text-1",
+                "msg-opencloud-child-user-1",
+                opencloud_child_session_id,
+                1_763_700_001_100,
+                1_763_700_001_100,
+                json.dumps({"type": "text", "text": "Inspect child session"}),
+            ),
+        ],
+    )
+    openclaw_main_sessions_dir = openclaw_dir / "agents" / "main" / "sessions"
+    openclaw_secondary_sessions_dir = openclaw_dir / "agents" / "secondary" / "sessions"
+    openclaw_main_sessions_dir.mkdir(parents=True)
+    openclaw_secondary_sessions_dir.mkdir(parents=True)
+
+    openclaw_main_session_id = "openclaw-main-session"
+    openclaw_secondary_session_id = "openclaw-secondary-session"
+    openclaw_alias_artifact_id = "artifact-session-id"
+    openclaw_alias_payload_id = "payload-session-id"
+    openclaw_main_sessions_dir.joinpath("sessions.json").write_text(
+        json.dumps(
+            {
+                "sessions": [
+                    {
+                        "id": openclaw_main_session_id,
+                        "updatedAt": "2026-03-19T12:00:06Z",
+                        "title": "Review OpenClaw backend rollout",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    openclaw_secondary_sessions_dir.joinpath("sessions.json").write_text(
+        json.dumps(
+            {
+                "sessions": [
+                    {
+                        "id": openclaw_secondary_session_id,
+                        "updatedAt": "2026-03-19T12:05:01Z",
+                        "title": "Inspect secondary agent transcript",
+                    },
+                    {
+                        "id": openclaw_alias_artifact_id,
+                        "updatedAt": "2026-03-19T12:06:03Z",
+                        "title": "Alias session id transcript",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    openclaw_main_session = openclaw_main_sessions_dir / f"{openclaw_main_session_id}.jsonl"
+    openclaw_main_session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-19T12:00:00Z",
+                        "session": {
+                            "id": openclaw_main_session_id,
+                            "cwd": "/tmp/not-the-grouping-key",
+                            "agentId": "main",
+                            "title": "Review OpenClaw backend rollout",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "model_change",
+                        "timestamp": "2026-03-19T12:00:01Z",
+                        "model": "gpt-5",
+                        "provider": "openai-codex",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "thinking_level_change",
+                        "timestamp": "2026-03-19T12:00:02Z",
+                        "thinkingLevel": "high",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:03Z",
+                        "message": {
+                            "id": "openclaw-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Review OpenClaw backend rollout"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:04Z",
+                        "message": {
+                            "id": "openclaw-assistant-1",
+                            "role": "assistant",
+                            "model": "gpt-5",
+                            "usage": {
+                                "inputTokens": 100,
+                                "outputTokens": 40,
+                                "cacheReadTokens": 5,
+                                "cacheCreationTokens": 2,
+                                "reasoningTokens": 12,
+                            },
+                            "content": [
+                                {"type": "text", "text": "Starting backend scan."},
+                                {"type": "thinking", "thinking": "Need to inspect all agent trees."},
+                                {
+                                    "type": "toolCall",
+                                    "toolCallId": "tool-oc-1",
+                                    "toolName": "Shell",
+                                    "input": {"cmd": "ls agents"},
+                                },
+                            ],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:05Z",
+                        "message": {
+                            "id": "openclaw-tool-result-1",
+                            "role": "toolResult",
+                            "toolCallId": "tool-oc-1",
+                            "toolName": "Shell",
+                            "isError": False,
+                            "content": [{"type": "text", "text": "agents/main\nagents/secondary"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:05.250000Z",
+                        "message": {
+                            "id": "openclaw-tool-result-1b",
+                            "role": "toolResult",
+                            "toolCallId": "tool-oc-1",
+                            "toolName": "Shell",
+                            "isError": False,
+                            "content": [{"type": "text", "text": "agents/main resolved"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "custom",
+                        "timestamp": "2026-03-19T12:00:05.500000Z",
+                        "data": {"note": "safe to ignore"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:06Z",
+                        "message": {
+                            "id": "openclaw-tool-result-2",
+                            "role": "tool",
+                            "toolCallId": "tool-oc-unmatched",
+                            "toolName": "Shell",
+                            "isError": True,
+                            "content": [{"type": "text", "text": "unmatched stderr"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "unknown_event",
+                        "timestamp": "2026-03-19T12:00:07Z",
+                        "payload": {"ignored": True},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:08Z",
+                        "message": {
+                            "id": "openclaw-assistant-2",
+                            "role": "assistant",
+                            "usage": {
+                                "inputTokens": 130,
+                                "outputTokens": 55,
+                                "cacheReadTokens": 8,
+                                "cacheCreationTokens": 4,
+                                "reasoningTokens": 18,
+                            },
+                            "content": [{"type": "text", "text": "Completed discovery."}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    openclaw_secondary_session = openclaw_secondary_sessions_dir / f"{openclaw_secondary_session_id}.jsonl"
+    openclaw_secondary_session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-19T12:05:00Z",
+                        "session": {
+                            "id": openclaw_secondary_session_id,
+                            "cwd": "/Users/tony/Code/helaicopter",
+                            "agentId": "secondary",
+                            "title": "Inspect secondary agent transcript",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:05:01Z",
+                        "message": {
+                            "id": "openclaw-secondary-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Inspect secondary agent transcript"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:05:02Z",
+                        "message": {
+                            "id": "openclaw-secondary-assistant-1",
+                            "role": "assistant",
+                            "model": "gpt-4.1",
+                            "usage": {"inputTokens": 20, "outputTokens": 10},
+                            "content": [{"type": "text", "text": "Secondary transcript loaded."}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    openclaw_alias_session = openclaw_secondary_sessions_dir / f"{openclaw_alias_artifact_id}.jsonl"
+    openclaw_alias_session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-19T12:06:00Z",
+                        "session": {
+                            "id": openclaw_alias_payload_id,
+                            "cwd": "/tmp/alias-session",
+                            "agentId": "secondary",
+                            "title": "Alias session id transcript",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:06:01Z",
+                        "message": {
+                            "id": "openclaw-alias-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Alias session id transcript"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:06:02Z",
+                        "message": {
+                            "id": "openclaw-alias-assistant-1",
+                            "role": "assistant",
+                            "model": "gpt-4.1",
+                            "usage": {"inputTokens": 9, "outputTokens": 4},
+                            "content": [{"type": "text", "text": "Payload session id should win."}],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    os.utime(openclaw_main_session, (1_763_585_608, 1_763_585_608))
+    os.utime(openclaw_secondary_session, (1_763_585_902, 1_763_585_902))
+    os.utime(openclaw_alias_session, (1_763_585_963, 1_763_585_963))
     _write_app_db(tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite")
 
-    return Settings(project_root=tmp_path, claude_dir=claude_dir, codex_dir=codex_dir)
+    return Settings(
+        project_root=tmp_path,
+        claude_dir=claude_dir,
+        codex_dir=codex_dir,
+        openclaw_dir=openclaw_dir,
+        opencloud_dir=opencloud_dir,
+    )
 
 
 @pytest.fixture()
@@ -953,6 +1628,267 @@ class TestConversationEndpoints:
         assert {item["session_id"] for item in filtered.json()} == {
             "019cdbff-dbb7-71d0-baaf-c669c55af628",
             "019cdbff-dbb7-71d0-baaf-c669c55af629",
+        }
+
+    def test_openclaw_list_discovers_all_agents_and_uses_agent_project_paths(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get("/conversations")
+
+        assert response.status_code == 200
+        payload = response.json()
+        by_session = {item["session_id"]: item for item in payload}
+
+        main_summary = by_session["openclaw-main-session"]
+        assert main_summary["project_path"] == "openclaw:agent:main"
+        assert main_summary["project_name"] == "openclaw:agent:main"
+        assert main_summary["route_slug"] == "review-openclaw-backend-rollout"
+        assert (
+            main_summary["conversation_ref"]
+            == "review-openclaw-backend-rollout--openclaw-openclaw-main-session"
+        )
+        assert main_summary["model"] == "gpt-5"
+        assert main_summary["reasoning_effort"] == "high"
+        assert main_summary["total_input_tokens"] == 130
+        assert main_summary["total_output_tokens"] == 55
+        assert main_summary["total_cache_creation_tokens"] == 4
+        assert main_summary["total_cache_read_tokens"] == 8
+        assert main_summary["total_reasoning_tokens"] == 18
+        assert main_summary["tool_breakdown"] == {"Shell": 2}
+        assert main_summary["failed_tool_call_count"] == 1
+        assert main_summary["message_count"] == 5
+
+        secondary_summary = by_session["openclaw-secondary-session"]
+        assert secondary_summary["project_path"] == "openclaw:agent:secondary"
+        assert secondary_summary["conversation_ref"] == (
+            "inspect-secondary-agent-transcript--openclaw-openclaw-secondary-session"
+        )
+
+        filtered = conversations_client.get("/conversations", params={"project": "openclaw:agent:main"})
+        assert filtered.status_code == 200
+        assert [item["session_id"] for item in filtered.json()] == ["openclaw-main-session"]
+
+    def test_openclaw_detail_shapes_tool_results_and_ignores_unknown_events(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get("/conversations/openclaw:agent:main/openclaw-main-session")
+
+        assert response.status_code == 200
+        payload = response.json()
+
+        assert payload["project_path"] == "openclaw:agent:main"
+        assert payload["route_slug"] == "review-openclaw-backend-rollout"
+        assert payload["conversation_ref"] == (
+            "review-openclaw-backend-rollout--openclaw-openclaw-main-session"
+        )
+        assert payload["model"] == "gpt-5"
+        assert payload["reasoning_effort"] == "high"
+        assert payload["total_reasoning_tokens"] == 18
+        assert payload["total_usage"] == {
+            "input_tokens": 130,
+            "output_tokens": 55,
+            "cache_creation_tokens": 4,
+            "cache_read_tokens": 8,
+        }
+        assert [message["id"] for message in payload["messages"]] == [
+            "openclaw-user-1",
+            "openclaw-assistant-1",
+            "openclaw-tool-result-1b",
+            "openclaw-tool-result-2",
+            "openclaw-assistant-2",
+        ]
+
+        assistant_blocks = payload["messages"][1]["blocks"]
+        assert assistant_blocks[0] == {"type": "text", "text": "Starting backend scan."}
+        assert assistant_blocks[1]["type"] == "thinking"
+        assert assistant_blocks[1]["thinking"] == "Need to inspect all agent trees."
+        assert assistant_blocks[2] == {
+            "type": "tool_call",
+            "tool_use_id": "tool-oc-1",
+            "tool_name": "Shell",
+            "input": {"cmd": "ls agents"},
+            "result": "agents/main\nagents/secondary",
+            "is_error": False,
+        }
+
+        repeated_tool_result = payload["messages"][2]
+        assert repeated_tool_result["role"] == "tool"
+        assert repeated_tool_result["blocks"] == [
+            {
+                "type": "tool_call",
+                "tool_use_id": "tool-oc-1",
+                "tool_name": "Shell",
+                "input": {},
+                "result": "agents/main resolved",
+                "is_error": False,
+            }
+        ]
+
+        unmatched_tool_result = payload["messages"][3]
+        assert unmatched_tool_result["role"] == "tool"
+        assert unmatched_tool_result["blocks"] == [
+            {
+                "type": "tool_call",
+                "tool_use_id": "tool-oc-unmatched",
+                "tool_name": "Shell",
+                "input": {},
+                "result": "unmatched stderr",
+                "is_error": True,
+            }
+        ]
+
+    def test_openclaw_uses_payload_session_id_for_detail_and_ref_resolution(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        list_response = conversations_client.get("/conversations")
+
+        assert list_response.status_code == 200
+        by_session = {item["session_id"]: item for item in list_response.json()}
+        alias_summary = by_session["payload-session-id"]
+        assert alias_summary["project_path"] == "openclaw:agent:secondary"
+        assert alias_summary["conversation_ref"] == (
+            "alias-session-id-transcript--openclaw-payload-session-id"
+        )
+
+        detail_response = conversations_client.get(
+            "/conversations/openclaw:agent:secondary/payload-session-id"
+        )
+        assert detail_response.status_code == 200
+        assert detail_response.json()["session_id"] == "payload-session-id"
+        assert detail_response.json()["conversation_ref"] == (
+            "alias-session-id-transcript--openclaw-payload-session-id"
+        )
+
+        by_ref_response = conversations_client.get(
+            "/conversations/by-ref/outdated--openclaw-payload-session-id"
+        )
+        assert by_ref_response.status_code == 200
+        assert by_ref_response.json() == {
+            "conversation_ref": "alias-session-id-transcript--openclaw-payload-session-id",
+            "route_slug": "alias-session-id-transcript",
+            "project_path": "openclaw:agent:secondary",
+            "session_id": "payload-session-id",
+            "thread_type": "main",
+            "parent_session_id": None,
+        }
+
+    def test_opencloud_list_discovers_sqlite_sessions_and_tracks_tool_usage(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get("/conversations")
+
+        assert response.status_code == 200
+        payload = response.json()
+        by_session = {item["session_id"]: item for item in payload}
+
+        summary = by_session["ses_opencloud_main"]
+        assert summary["project_path"] == "opencloud:-Users-tony-Code-helaicopter"
+        assert summary["project_name"] == "Code/helaicopter"
+        assert summary["route_slug"] == "integrate-opencloud-conversation-data-into-the-app"
+        assert (
+            summary["conversation_ref"]
+            == "integrate-opencloud-conversation-data-into-the-app--opencloud-ses_opencloud_main"
+        )
+        assert summary["model"] == "gpt-5"
+        assert summary["total_input_tokens"] == 130
+        assert summary["total_output_tokens"] == 90
+        assert summary["total_cache_creation_tokens"] == 2
+        assert summary["total_cache_read_tokens"] == 48
+        assert summary["total_reasoning_tokens"] == 22
+        assert summary["tool_breakdown"] == {"bash": 1, "patch": 1}
+        assert summary["tool_use_count"] == 2
+        assert summary["failed_tool_call_count"] == 1
+
+        filtered = conversations_client.get(
+            "/conversations",
+            params={"project": "opencloud:-Users-tony-Code-helaicopter"},
+        )
+        assert filtered.status_code == 200
+        assert {item["session_id"] for item in filtered.json()} == {
+            "ses_opencloud_main",
+            "ses_opencloud_child",
+        }
+
+    def test_opencloud_detail_shapes_reasoning_tool_calls_and_usage(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get(
+            "/conversations/opencloud:-Users-tony-Code-helaicopter/ses_opencloud_main"
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+
+        assert payload["project_path"] == "opencloud:-Users-tony-Code-helaicopter"
+        assert payload["model"] == "gpt-5"
+        assert payload["total_usage"] == {
+            "input_tokens": 130,
+            "output_tokens": 90,
+            "cache_creation_tokens": 2,
+            "cache_read_tokens": 48,
+        }
+        assert payload["total_reasoning_tokens"] == 22
+        assert [message["id"] for message in payload["messages"]] == [
+            "msg-opencloud-user-1",
+            "msg-opencloud-assistant-1",
+            "msg-opencloud-assistant-2",
+        ]
+
+        assistant_blocks = payload["messages"][1]["blocks"]
+        assert assistant_blocks[0] == {
+            "type": "thinking",
+            "thinking": "Need to inspect provider abstractions before changing contracts.",
+            "char_count": 64,
+        }
+        assert assistant_blocks[1] == {
+            "type": "text",
+            "text": "I will inspect the backend provider pipeline.",
+        }
+        assert assistant_blocks[2] == {
+            "type": "tool_call",
+            "tool_use_id": "call-opencloud-shell-1",
+            "tool_name": "bash",
+            "input": {"command": "rg -n openclaw python src", "description": "Inspect provider wiring"},
+            "result": "python/helaicopter_api/application/conversations.py:1101",
+            "is_error": False,
+        }
+        assert payload["messages"][1]["usage"] == {
+            "input_tokens": 120,
+            "output_tokens": 80,
+            "cache_creation_tokens": 1,
+            "cache_read_tokens": 60,
+        }
+
+        assert payload["messages"][2]["blocks"][1] == {
+            "type": "tool_call",
+            "tool_use_id": "call-opencloud-patch-1",
+            "tool_name": "patch",
+            "input": {"file": "src/lib/types.ts"},
+            "result": "Patch failed",
+            "is_error": True,
+        }
+
+    def test_opencloud_by_ref_resolves_canonical_live_session(
+        self,
+        conversations_client: TestClient,
+    ) -> None:
+        response = conversations_client.get(
+            "/conversations/by-ref/integrate-opencloud-conversation-data-into-the-app--opencloud-ses_opencloud_main"
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "conversation_ref": "integrate-opencloud-conversation-data-into-the-app--opencloud-ses_opencloud_main",
+            "route_slug": "integrate-opencloud-conversation-data-into-the-app",
+            "project_path": "opencloud:-Users-tony-Code-helaicopter",
+            "session_id": "ses_opencloud_main",
+            "thread_type": "main",
+            "parent_session_id": None,
         }
 
     def test_subagent_detail_route_covers_claude_and_codex(self, conversations_client: TestClient) -> None:
@@ -1364,16 +2300,34 @@ class TestProjectsHistoryAndTasks:
         assert projects.status_code == 200
         payload = projects.json()
         assert [item["encoded_path"] for item in payload] == [
+            "openclaw:agent:secondary",
+            "openclaw:agent:main",
             "codex:-Users-tony-Code-helaicopter",
             "-Users-tony-Code-helaicopter",
+            "opencloud:-Users-tony-Code-helaicopter",
         ]
-        assert payload[0]["display_name"] == "Codex/Code/helaicopter"
-        assert payload[0]["full_path"] == "codex:-Users-tony-Code-helaicopter"
+        assert payload[0]["display_name"] == "openclaw:agent:secondary"
+        assert payload[0]["full_path"] == "openclaw:agent:secondary"
         assert payload[0]["session_count"] == 2
-        assert payload[1]["display_name"] == "Code/helaicopter"
-        assert payload[1]["full_path"].endswith("/.claude/projects/-Users-tony-Code-helaicopter")
-        assert payload[1]["session_count"] == 2
-        assert payload[0]["last_activity"] >= payload[1]["last_activity"]
+        assert payload[1]["display_name"] == "openclaw:agent:main"
+        assert payload[1]["full_path"] == "openclaw:agent:main"
+        assert payload[1]["session_count"] == 1
+        assert payload[2]["display_name"] == "Codex/Code/helaicopter"
+        assert payload[2]["full_path"] == "codex:-Users-tony-Code-helaicopter"
+        assert payload[2]["session_count"] == 2
+        assert payload[3]["display_name"] == "Code/helaicopter"
+        assert payload[3]["full_path"].endswith("/.claude/projects/-Users-tony-Code-helaicopter")
+        assert payload[3]["session_count"] == 2
+        assert payload[4]["display_name"] == "Code/helaicopter"
+        assert payload[4]["full_path"] == "opencloud:-Users-tony-Code-helaicopter"
+        assert payload[4]["session_count"] == 2
+        assert (
+            payload[0]["last_activity"]
+            >= payload[1]["last_activity"]
+            >= payload[2]["last_activity"]
+            >= payload[3]["last_activity"]
+            >= payload[4]["last_activity"]
+        )
 
         history = conversations_client.get("/history", params={"limit": 2})
         assert history.status_code == 200

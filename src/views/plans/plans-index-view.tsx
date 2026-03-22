@@ -8,14 +8,21 @@ import { PageHeader } from "@/shared/layout/page-header";
 import { Badge } from "@/shared/ui/badge";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
+import type { FrontendProvider } from "@/lib/types";
 import { formatModelName, getModelBadgeClasses } from "@/lib/utils";
 
-function providerLabel(provider: "claude" | "codex"): string {
-  return provider === "claude" ? "Claude" : "Codex";
+function providerLabel(provider: FrontendProvider): string {
+  if (provider === "claude") return "Claude";
+  if (provider === "codex") return "Codex";
+  if (provider === "openclaw") return "OpenClaw";
+  return "OpenCloud";
 }
 
-function providerDotClass(provider: "claude" | "codex"): string {
-  return provider === "claude" ? "bg-emerald-500" : "bg-sky-500";
+function providerDotClass(provider: FrontendProvider): string {
+  if (provider === "claude") return "bg-emerald-500";
+  if (provider === "codex") return "bg-sky-500";
+  if (provider === "openclaw") return "bg-amber-500";
+  return "bg-fuchsia-500";
 }
 
 export function PlansIndexView() {

@@ -43,7 +43,10 @@ paths:
       tags:
       - health
       summary: Ops Ready
-      description: "Readiness probe \u2013 verifies that critical services are reachable."
+      description: "Readiness probe that verifies critical runtime dependencies are\
+        \ reachable.\n\nReturns:\n    A dict with a boolean ``ready`` field indicating\
+        \ overall readiness and a\n    ``checks`` mapping of individual dependency\
+        \ names to their pass/fail status."
       operationId: ops_ready__ops_ready_get
       responses:
         '200':
@@ -59,7 +62,10 @@ paths:
       tags:
       - health
       summary: Ops Info
-      description: Build / runtime information for dashboards and debugging.
+      description: "Return build and runtime metadata for dashboards and debugging.\n\
+        \nReturns:\n    A dict containing the API version string, Python version,\
+        \ debug flag,\n    server uptime in seconds, and the resolved project root\
+        \ path."
       operationId: ops_info__ops_info_get
       responses:
         '200':
@@ -75,7 +81,13 @@ paths:
       tags:
       - analytics
       summary: Analytics Index
-      description: Return aggregated analytics for persisted conversations.
+      description: "Return aggregated analytics for persisted conversations.\n\nArgs:\n\
+        \    params: Query parameters controlling the analytics window. Supports\n\
+        \        ``days`` to restrict to a trailing number of days, and ``provider``\n\
+        \        to filter by a specific AI provider (e.g. ``\"claude\"``,\n     \
+        \   ``\"codex\"``, or ``\"all\"``).\n\nReturns:\n    Aggregated analytics\
+        \ payload including token counts, estimated costs,\n    model and tool breakdowns,\
+        \ daily usage time series, and spend rates."
       operationId: analytics_index_analytics_get
       parameters:
       - name: days
@@ -98,11 +110,15 @@ paths:
             - all
             - claude
             - codex
+            - openclaw
+            - opencloud
             type: string
           - type: 'null'
-          description: Optional provider filter. Use `all` or omit for combined analytics.
+          description: Optional provider filter. Use `all` or omit for combined analytics
+            across Claude, Codex, and OpenClaw.
           title: Provider
-        description: Optional provider filter. Use `all` or omit for combined analytics.
+        description: Optional provider filter. Use `all` or omit for combined analytics
+          across Claude, Codex, and OpenClaw.
       responses:
         '200':
           description: Successful Response
@@ -121,7 +137,14 @@ paths:
       tags:
       - conversation-dags
       summary: Conversation Dags Index
-      description: List main conversations with backend-built DAG stats.
+      description: "List main conversations with backend-built DAG stats.\n\nArgs:\n\
+        \    params: Query parameters controlling the listing. Supports ``project``\n\
+        \        (encoded project path) to filter to a single project, ``days`` to\n\
+        \        restrict to a trailing number of days, and ``provider`` to filter\n\
+        \        by AI provider (e.g. ``\"claude\"``, ``\"codex\"``, or ``\"all\"\
+        ``).\n\nReturns:\n    List of conversation summary objects enriched with DAG\
+        \ statistics\n    (node count, edge count, max depth, subagent counts, etc.),\
+        \ ordered\n    by recency."
       operationId: conversation_dags_index_conversation_dags_get
       parameters:
       - name: project
@@ -155,11 +178,15 @@ paths:
             - all
             - claude
             - codex
+            - openclaw
+            - opencloud
             type: string
           - type: 'null'
-          description: Optional provider filter. Use `all` or omit for combined DAGs.
+          description: Optional provider filter. Use `all` or omit for combined DAGs
+            across Claude, Codex, and OpenClaw.
           title: Provider
-        description: Optional provider filter. Use `all` or omit for combined DAGs.
+        description: Optional provider filter. Use `all` or omit for combined DAGs
+          across Claude, Codex, and OpenClaw.
       responses:
         '200':
           description: Successful Response
@@ -181,7 +208,12 @@ paths:
       tags:
       - conversations
       summary: Conversations Index
-      description: List merged Claude and Codex conversation summaries.
+      description: "List merged Claude and Codex conversation summaries.\n\nArgs:\n\
+        \    params: Query parameters for filtering results. Supports ``project``\n\
+        \        (encoded project path) to scope results to a single project, and\n\
+        \        ``days`` to restrict to the trailing number of days.\n\nReturns:\n\
+        \    List of conversation summary objects ordered by recency, combining\n\
+        \    Claude and Codex sessions with token usage and metadata."
       operationId: conversations_index_conversations_get
       parameters:
       - name: project
@@ -227,8 +259,12 @@ paths:
       tags:
       - conversations
       summary: Conversation By Ref
-      description: Resolve a stable conversation ref to the current canonical route
-        target.
+      description: "Resolve a stable conversation ref to the current canonical route\
+        \ target.\n\nArgs:\n    conversation_ref: Stable identifier for the conversation,\
+        \ independent\n        of project path or session routing changes.\n\nReturns:\n\
+        \    Resolution payload containing the canonical ``route_slug``,\n    ``project_path``,\
+        \ ``session_id``, and ``thread_type`` for the\n    conversation.\n\nRaises:\n\
+        \    HTTPException: 404 if no conversation matches the given ref."
       operationId: conversation_by_ref_conversations_by_ref__conversation_ref__get
       parameters:
       - name: conversation_ref
@@ -255,7 +291,14 @@ paths:
       tags:
       - conversations
       summary: Conversations Detail
-      description: Return one conversation detail from persisted or live data.
+      description: "Return one conversation detail from persisted or live data.\n\n\
+        Args:\n    project_path: Encoded project key identifying the project the\n\
+        \        conversation belongs to.\n    session_id: Unique session identifier\
+        \ for the conversation.\n    parent_session_id: Optional session ID of the\
+        \ parent conversation when\n        accessing a subagent thread directly.\n\
+        \nReturns:\n    Full conversation detail including all messages, tool calls,\
+        \ plans,\n    subagent references, token usage, and context analytics.\n\n\
+        Raises:\n    HTTPException: 404 if the conversation cannot be found."
       operationId: conversations_detail_conversations__project_path___session_id__get
       parameters:
       - name: project_path
@@ -296,7 +339,14 @@ paths:
       tags:
       - conversations
       summary: Conversations Dag Detail
-      description: Return one backend-built conversation DAG.
+      description: "Return one backend-built conversation DAG.\n\nArgs:\n    project_path:\
+        \ Encoded project key for the conversation.\n    session_id: Session identifier\
+        \ of the root conversation whose agent\n        tree should be returned.\n\
+        \    parent_session_id: Optional parent session ID when the root is itself\n\
+        \        a subagent thread.\n\nReturns:\n    DAG payload containing nodes\
+        \ (one per agent/subagent transcript),\n    directed edges, and aggregate\
+        \ graph statistics such as depth and\n    total token counts.\n\nRaises:\n\
+        \    HTTPException: 404 if no DAG is found for the given session."
       operationId: conversations_dag_detail_conversations__project_path___session_id__dag_get
       parameters:
       - name: project_path
@@ -337,8 +387,14 @@ paths:
       tags:
       - conversations
       summary: Conversations Subagent Detail
-      description: Return one subagent transcript beneath its parent conversation
-        route.
+      description: "Return one subagent transcript beneath its parent conversation\
+        \ route.\n\nArgs:\n    project_path: Encoded project key for the parent conversation.\n\
+        \    session_id: Session ID of the parent (root) conversation that spawned\n\
+        \        the subagent.\n    agent_id: Identifier of the specific subagent\
+        \ whose transcript should\n        be returned.\n\nReturns:\n    Full conversation\
+        \ detail for the subagent, scoped to its transcript\n    with messages, usage,\
+        \ and context analytics.\n\nRaises:\n    HTTPException: 404 if the subagent\
+        \ conversation cannot be found."
       operationId: conversations_subagent_detail_conversations__project_path___session_id__subagents__agent_id__get
       parameters:
       - name: project_path
@@ -377,8 +433,12 @@ paths:
       tags:
       - databases
       summary: Database Status
-      description: Return database artifact status, bootstrapping refresh on first
-        access.
+      description: "Return database artifact status, bootstrapping refresh on first\
+        \ access.\n\nReturns:\n    Status payload containing the current refresh state,\
+        \ timing metadata,\n    runtime read-backend configuration, and per-artifact\
+        \ health details\n    for SQLite, DuckDB, frontend cache, and Prefect Postgres.\n\
+        \nRaises:\n    HTTPException: 500 if a database operation error occurs without\
+        \ a\n        structured payload."
       operationId: database_status_databases_status_get
       responses:
         '200':
@@ -398,7 +458,16 @@ paths:
       tags:
       - databases
       summary: Database Refresh
-      description: Trigger a database refresh and invalidate backend read caches.
+      description: "Trigger a database refresh and invalidate backend read caches.\n\
+        \nArgs:\n    body: Refresh control options. ``force`` bypasses the staleness\
+        \ check\n        and triggers an immediate rebuild; ``trigger`` is a label\
+        \ recorded\n        in the refresh log (defaults to ``\"manual\"``);\n   \
+        \     ``stale_after_seconds`` sets the minimum age in seconds before a\n \
+        \       refresh is considered necessary (defaults to 6 hours).\n\nReturns:\n\
+        \    Updated database status payload reflecting the new refresh state,\n \
+        \   including timing metadata and artifact health after the operation.\n\n\
+        Raises:\n    HTTPException: 500 if a database operation error occurs without\
+        \ a\n        structured payload."
       operationId: database_refresh_databases_refresh_post
       requestBody:
         content:
@@ -429,7 +498,12 @@ paths:
       tags:
       - evaluations
       summary: Conversation Evaluations Index
-      description: List persisted evaluation jobs for one conversation.
+      description: "List persisted evaluation jobs for a specific conversation.\n\n\
+        Args:\n    project_path: Path identifying the project that owns the conversation.\n\
+        \    session_id: Unique identifier of the conversation session.\n    parent_session_id:\
+        \ Optional parent session ID to scope the lookup to a\n        sub-conversation.\
+        \ Defaults to None.\n\nReturns:\n    A list of evaluation job records associated\
+        \ with the conversation,\n    ordered by creation time."
       operationId: conversation_evaluations_index_conversations__project_path___session_id__evaluations_get
       parameters:
       - name: project_path
@@ -473,7 +547,14 @@ paths:
       tags:
       - evaluations
       summary: Conversation Evaluations Create
-      description: Create and submit a backend-owned evaluation job.
+      description: "Create and enqueue a backend-owned evaluation job for a conversation.\n\
+        \nArgs:\n    project_path: Path identifying the project that owns the conversation.\n\
+        \    session_id: Unique identifier of the conversation session to evaluate.\n\
+        \    body: Evaluation job creation request containing the evaluation prompt\n\
+        \        reference and any additional configuration.\n    parent_session_id:\
+        \ Optional parent session ID to scope the evaluation\n        to a sub-conversation.\
+        \ Defaults to None.\n\nReturns:\n    The newly created evaluation job record\
+        \ in an accepted (pending) state."
       operationId: conversation_evaluations_create_conversations__project_path___session_id__evaluations_post
       parameters:
       - name: project_path
@@ -520,7 +601,10 @@ paths:
       tags:
       - evaluations
       summary: Evaluation Prompts Index
-      description: List saved evaluation prompts with the built-in default first.
+      description: "List saved evaluation prompts with the built-in default first.\n\
+        \nReturns:\n    Ordered list of evaluation prompt templates. The built-in\
+        \ default\n    prompt appears first, followed by user-managed prompts sorted\
+        \ by\n    creation time."
       operationId: evaluation_prompts_index_evaluation_prompts_get
       responses:
         '200':
@@ -536,7 +620,13 @@ paths:
       tags:
       - evaluations
       summary: Evaluation Prompts Create
-      description: Create a new user-managed evaluation prompt.
+      description: "Create a new user-managed evaluation prompt.\n\nArgs:\n    body:\
+        \ Prompt creation payload containing ``name``, ``prompt_text``\n        (both\
+        \ required and non-blank), and an optional ``description``.\n\nReturns:\n\
+        \    The newly created evaluation prompt with its assigned ``prompt_id``\n\
+        \    and timestamps.\n\nRaises:\n    HTTPException: 400 if the payload fails\
+        \ validation (e.g. blank fields).\n    HTTPException: 503 if the backing storage\
+        \ is unavailable."
       operationId: evaluation_prompts_create_evaluation_prompts_post
       requestBody:
         content:
@@ -562,7 +652,12 @@ paths:
       tags:
       - evaluations
       summary: Evaluation Prompts Delete
-      description: Delete one stored user-managed evaluation prompt.
+      description: "Delete one stored user-managed evaluation prompt.\n\nArgs:\n \
+        \   prompt_id: Unique identifier of the prompt to delete. Built-in default\n\
+        \        prompts cannot be deleted.\n\nReturns:\n    Empty 204 No Content\
+        \ response on success.\n\nRaises:\n    HTTPException: 400 if the prompt ID\
+        \ refers to a protected built-in\n        prompt.\n    HTTPException: 404\
+        \ if no prompt with the given ID exists."
       operationId: evaluation_prompts_delete_evaluation_prompts__prompt_id__delete
       parameters:
       - name: prompt_id
@@ -584,7 +679,14 @@ paths:
       tags:
       - evaluations
       summary: Evaluation Prompts Update
-      description: Update one stored evaluation prompt.
+      description: "Update one stored evaluation prompt.\n\nArgs:\n    prompt_id:\
+        \ Unique identifier of the prompt to update.\n    body: Update payload containing\
+        \ the revised ``name``, ``prompt_text``,\n        and optional ``description``.\
+        \ All write fields are validated as\n        non-blank.\n\nReturns:\n    The\
+        \ updated evaluation prompt reflecting the new field values and an\n    updated\
+        \ ``updated_at`` timestamp.\n\nRaises:\n    HTTPException: 400 if the payload\
+        \ fails validation.\n    HTTPException: 404 if no prompt with the given ID\
+        \ exists.\n    HTTPException: 503 if the backing storage is unavailable."
       operationId: evaluation_prompts_update_evaluation_prompts__prompt_id__patch
       parameters:
       - name: prompt_id
@@ -617,6 +719,9 @@ paths:
       tags:
       - gateway
       summary: Describe the primary backend gateway direction across platform surfaces.
+      description: "Return the primary backend gateway direction across platform surfaces.\n\
+        \nReturns:\n    Gateway direction metadata describing which backend surfaces\
+        \ are active\n    and how requests should be routed across them."
       operationId: gateway_direction_gateway_direction_get
       responses:
         '200':
@@ -630,7 +735,11 @@ paths:
       tags:
       - history
       summary: History Index
-      description: Return combined CLI history from Claude and Codex sources.
+      description: "Return combined CLI command history from Claude and Codex sources.\n\
+        \nArgs:\n    params: Query parameters controlling the history lookup, including\n\
+        \        an optional ``limit`` on the number of entries returned.\n\nReturns:\n\
+        \    A list of history entries merged from Claude and Codex CLI sources,\n\
+        \    ordered from most recent to oldest, up to the requested limit."
       operationId: history_index_history_get
       parameters:
       - name: limit
@@ -665,7 +774,10 @@ paths:
       tags:
       - orchestration
       summary: List OATS local-runtime records.
-      description: View over repo-local OATS runtime and record files.
+      description: "List all OATS run records found in the local runtime directory.\n\
+        \nReturns:\n    A list of OATS run records parsed from repo-local runtime\
+        \ and record\n    files, each describing the run ID, status, and associated\
+        \ task attempts."
       operationId: orchestration_oats_index_orchestration_oats_get
       responses:
         '200':
@@ -682,8 +794,10 @@ paths:
       tags:
       - orchestration
       summary: List canonical OATS orchestration analytics facts.
-      description: Canonical run and task-attempt facts derived from repo-local OATS
-        artifacts.
+      description: "Return canonical analytics facts derived from repo-local OATS\
+        \ artifacts.\n\nReturns:\n    Aggregated orchestration facts including run\
+        \ counts, task-attempt\n    outcomes, and timing metrics computed from all\
+        \ local OATS records."
       operationId: orchestration_oats_facts_orchestration_oats_facts_get
       responses:
         '200':
@@ -697,6 +811,9 @@ paths:
       tags:
       - orchestration
       summary: Refresh stacked PR state for a persisted OATS run.
+      description: "Refresh the stacked PR state for a persisted OATS run.\n\nArgs:\n\
+        \    run_id: Unique identifier of the OATS run to refresh.\n\nReturns:\n \
+        \   The updated OATS run record reflecting the latest stacked PR state."
       operationId: orchestration_oats_refresh_orchestration_oats__run_id__refresh_post
       parameters:
       - name: run_id
@@ -723,6 +840,10 @@ paths:
       tags:
       - orchestration
       summary: Resume stacked PR state for a persisted OATS run.
+      description: "Resume a stalled or paused OATS run, re-triggering stacked PR\
+        \ progression.\n\nArgs:\n    run_id: Unique identifier of the OATS run to\
+        \ resume.\n\nReturns:\n    The updated OATS run record after the resume action\
+        \ has been dispatched."
       operationId: orchestration_oats_resume_orchestration_oats__run_id__resume_post
       parameters:
       - name: run_id
@@ -749,6 +870,9 @@ paths:
       tags:
       - orchestration
       summary: List primary Prefect deployments for orchestration.
+      description: "List primary Prefect deployments available for orchestration.\n\
+        \nReturns:\n    A list of Prefect deployment records from the primary orchestration\
+        \ path."
       operationId: prefect_deployments_index_orchestration_prefect_deployments_get
       responses:
         '200':
@@ -766,6 +890,8 @@ paths:
       tags:
       - orchestration
       summary: List primary Prefect flow runs for orchestration.
+      description: "List primary Prefect flow runs for orchestration.\n\nReturns:\n\
+        \    A list of Prefect flow run records from the primary orchestration path."
       operationId: prefect_flow_runs_index_orchestration_prefect_flow_runs_get
       responses:
         '200':
@@ -783,6 +909,9 @@ paths:
       tags:
       - orchestration
       summary: Get a primary Prefect flow run for orchestration.
+      description: "Return a single Prefect flow run by its ID.\n\nArgs:\n    flow_run_id:\
+        \ The unique identifier of the Prefect flow run to retrieve.\n\nReturns:\n\
+        \    Prefect flow run record with status and metadata."
       operationId: prefect_flow_run_detail_orchestration_prefect_flow_runs__flow_run_id__get
       parameters:
       - name: flow_run_id
@@ -809,6 +938,9 @@ paths:
       tags:
       - orchestration
       summary: List Prefect workers serving the primary orchestration path.
+      description: "List Prefect workers serving the primary orchestration path.\n\
+        \nReturns:\n    A list of Prefect worker records currently registered for\
+        \ orchestration."
       operationId: prefect_workers_index_orchestration_prefect_workers_get
       responses:
         '200':
@@ -826,6 +958,9 @@ paths:
       tags:
       - orchestration
       summary: List Prefect work pools serving the primary orchestration path.
+      description: "List Prefect work pools serving the primary orchestration path.\n\
+        \nReturns:\n    A list of Prefect work pool records used by the orchestration\
+        \ infrastructure."
       operationId: prefect_work_pools_index_orchestration_prefect_work_pools_get
       responses:
         '200':
@@ -843,7 +978,8 @@ paths:
       tags:
       - plans
       summary: Plans Index
-      description: List saved plans from Claude and Codex sources.
+      description: "List saved plans from Claude and Codex sources.\n\nReturns:\n\
+        \    A list of plan summaries aggregated from all configured plan sources."
       operationId: plans_index_plans_get
       responses:
         '200':
@@ -860,7 +996,10 @@ paths:
       tags:
       - plans
       summary: Plans Detail
-      description: Return one plan by encoded id or legacy Claude slug.
+      description: "Return one plan by encoded id or legacy Claude slug.\n\nArgs:\n\
+        \    slug: The encoded plan id or legacy Claude slug identifying the plan.\n\
+        \nReturns:\n    Full plan detail including content and metadata.\n\nRaises:\n\
+        \    HTTPException: 404 if no plan matching the given slug is found."
       operationId: plans_detail_plans__slug__get
       parameters:
       - name: slug
@@ -887,7 +1026,8 @@ paths:
       tags:
       - projects
       summary: Projects Index
-      description: List projects aggregated from conversation summaries.
+      description: "List projects aggregated from conversation summaries.\n\nReturns:\n\
+        \    A list of projects derived from stored conversation data."
       operationId: projects_index_projects_get
       responses:
         '200':
@@ -904,7 +1044,13 @@ paths:
       tags:
       - conversations
       summary: Subagents Detail
-      description: Return one subagent transcript for the conversation viewer.
+      description: "Return one subagent transcript for the conversation viewer.\n\n\
+        Args:\n    project_path: URL-encoded path of the project the conversation\
+        \ belongs to.\n    session_id: ID of the parent session that spawned the subagent.\n\
+        \    agent_id: ID of the subagent whose conversation transcript is requested.\n\
+        \nReturns:\n    Full conversation detail including messages and metadata for\
+        \ the subagent.\n\nRaises:\n    HTTPException: 404 if no matching subagent\
+        \ conversation is found."
       operationId: subagents_detail_subagents__project_path___session_id___agent_id__get
       parameters:
       - name: project_path
@@ -943,7 +1089,8 @@ paths:
       tags:
       - subscriptions
       summary: Subscriptions Index
-      description: Return the current provider subscription settings.
+      description: "Return the current provider subscription settings.\n\nReturns:\n\
+        \    The active subscription settings including configured provider options."
       operationId: subscriptions_index_subscription_settings_get
       responses:
         '200':
@@ -956,7 +1103,11 @@ paths:
       tags:
       - subscriptions
       summary: Subscriptions Update
-      description: Persist provider subscription settings and return the merged result.
+      description: "Persist provider subscription settings and return the merged result.\n\
+        \nArgs:\n    body: Partial or full subscription settings to apply. Unset fields\
+        \ are\n        merged with the existing configuration rather than overwritten.\n\
+        \nReturns:\n    The updated subscription settings after the patch has been\
+        \ applied."
       operationId: subscriptions_update_subscription_settings_patch
       requestBody:
         content:
@@ -981,7 +1132,11 @@ paths:
       tags:
       - tasks
       summary: Tasks Detail
-      description: Return tasks associated with a session.
+      description: "Return tasks associated with a session.\n\nArgs:\n    session_id:\
+        \ The session ID whose tasks should be retrieved.\n    parent_session_id:\
+        \ Optional parent session ID used to scope the lookup\n        when the session\
+        \ belongs to a subagent conversation.\n\nReturns:\n    A task list response\
+        \ containing all tasks found for the given session."
       operationId: tasks_detail_tasks__session_id__get
       parameters:
       - name: session_id
@@ -1045,6 +1200,8 @@ components:
           default: 0.0
       type: object
       title: AnalyticsCostBreakdownResponse
+      description: Itemised cost breakdown across input, output, cache, and long-context
+        charges.
     AnalyticsDataResponse:
       properties:
         total_conversations:
@@ -1172,6 +1329,7 @@ components:
           default: 0.0
       type: object
       title: AnalyticsRateValueResponse
+      description: Usage rate for a single metric expressed across multiple time horizons.
     AnalyticsRatesResponse:
       properties:
         spend:
@@ -1210,6 +1368,8 @@ components:
       - failed_tool_calls
       - subagents
       title: AnalyticsRatesResponse
+      description: Aggregated usage rates for all tracked metrics over multiple time
+        horizons.
     AnalyticsTimeSeriesPointResponse:
       properties:
         key:
@@ -1375,6 +1535,8 @@ components:
       - start
       - end
       title: AnalyticsTimeSeriesPointResponse
+      description: Token, cost, and activity metrics for a single time-series bucket
+        (hourly/daily/weekly/monthly).
     AnalyticsTimeSeriesResponse:
       properties:
         hourly:
@@ -1403,6 +1565,8 @@ components:
           default: []
       type: object
       title: AnalyticsTimeSeriesResponse
+      description: Time-series data grouped by granularity (hourly, daily, weekly,
+        monthly).
     ConversationContextAnalyticsResponse:
       properties:
         buckets:
@@ -1419,6 +1583,7 @@ components:
           default: []
       type: object
       title: ConversationContextAnalyticsResponse
+      description: Bucketed and step-level context usage analytics for a conversation.
     ConversationContextBucketResponse:
       properties:
         label:
@@ -1462,6 +1627,8 @@ components:
       - label
       - category
       title: ConversationContextBucketResponse
+      description: Aggregated token usage for a named context category (e.g. tool,
+        mcp, subagent).
     ConversationContextStepResponse:
       properties:
         message_id:
@@ -1519,6 +1686,7 @@ components:
       - category
       - timestamp
       title: ConversationContextStepResponse
+      description: Per-message token usage entry in the context analytics step sequence.
     ConversationContextWindowResponse:
       properties:
         peak_context_window:
@@ -1535,6 +1703,8 @@ components:
           default: 0
       type: object
       title: ConversationContextWindowResponse
+      description: Summary of context window utilisation across all API calls in a
+        conversation.
     ConversationDagEdgeResponse:
       properties:
         id:
@@ -1552,6 +1722,8 @@ components:
       - source
       - target
       title: ConversationDagEdgeResponse
+      description: A directed edge connecting two nodes in the conversation agent-tree
+        DAG.
     ConversationDagNodeResponse:
       properties:
         id:
@@ -1706,6 +1878,7 @@ components:
           default: 0
       type: object
       title: ConversationDagStatsResponse
+      description: Aggregate structural statistics for a conversation agent-tree DAG.
     ConversationDagSummaryResponse:
       properties:
         session_id:
@@ -1943,6 +2116,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Provider
         model:
           type: string
@@ -2000,6 +2175,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Provider
         model:
           type: string
@@ -2148,6 +2325,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Provider
         timestamp:
           type: number
@@ -2218,6 +2397,7 @@ components:
       - step
       - status
       title: ConversationPlanStepResponse
+      description: A single step within an embedded conversation plan.
     ConversationRefResolutionResponse:
       properties:
         conversation_ref:
@@ -2252,6 +2432,7 @@ components:
       - session_id
       - thread_type
       title: ConversationRefResolutionResponse
+      description: Resolved routing metadata for a conversation reference.
     ConversationSubagentResponse:
       properties:
         agent_id:
@@ -2429,7 +2610,7 @@ components:
       - last_updated_at
       - is_running
       title: ConversationSummaryResponse
-      description: Summary of a single Claude/Codex conversation session.
+      description: Summary of a single Claude, Codex, or OpenClaw conversation session.
     ConversationTaskResponse:
       properties:
         taskId:
@@ -2539,6 +2720,7 @@ components:
           default: 0
       type: object
       title: ConversationUsageResponse
+      description: Token usage counts for a single conversation or message.
     DailyUsageResponse:
       properties:
         date:
@@ -2620,6 +2802,8 @@ components:
       required:
       - date
       title: DailyUsageResponse
+      description: Token and conversation counts for a single calendar day, split
+        by provider.
     DatabaseArtifactStatusResponse:
       properties:
         key:
@@ -2730,6 +2914,8 @@ components:
       - role
       - availability
       title: DatabaseArtifactStatusResponse
+      description: Health, availability, and schema inventory for a single database
+        artifact.
     DatabaseArtifactsResponse:
       properties:
         frontendCache:
@@ -2747,6 +2933,8 @@ components:
       - duckdb
       - prefectPostgres
       title: DatabaseArtifactsResponse
+      description: Status snapshots for all managed database artifacts (cache, SQLite,
+        DuckDB, Postgres).
     DatabaseColumnSchemaResponse:
       properties:
         name:
@@ -2778,6 +2966,7 @@ components:
       - name
       - type
       title: DatabaseColumnSchemaResponse
+      description: Schema metadata for a single database table column.
     DatabaseLoadMetricResponse:
       properties:
         label:
@@ -2798,11 +2987,16 @@ components:
       required:
       - label
       title: DatabaseLoadMetricResponse
+      description: A labelled load or performance metric for a database artifact.
     DatabaseRefreshRequest:
       properties:
         force:
           type: boolean
           title: Force
+          default: false
+        fullRebuild:
+          type: boolean
+          title: Fullrebuild
           default: false
         trigger:
           type: string
@@ -2816,6 +3010,7 @@ components:
       additionalProperties: false
       type: object
       title: DatabaseRefreshRequest
+      description: Request body for triggering a database refresh operation.
     DatabaseRuntimeResponse:
       properties:
         analyticsReadBackend:
@@ -2835,6 +3030,8 @@ components:
       - analyticsReadBackend
       - conversationSummaryReadBackend
       title: DatabaseRuntimeResponse
+      description: Active read-backend selections for analytics and conversation summary
+        queries.
     DatabaseStatusResponse:
       properties:
         status:
@@ -2973,6 +3170,7 @@ components:
       required:
       - name
       title: DatabaseTableSchemaResponse
+      description: Schema and serving metadata for a single database table.
     EvaluationPromptCreateRequest:
       properties:
         name:
@@ -3070,6 +3268,7 @@ components:
           default: []
       type: object
       title: GatewayDirectionResponse
+      description: Overall gateway routing direction and registered API surfaces.
     GatewaySurfaceResponse:
       properties:
         key:
@@ -3105,6 +3304,8 @@ components:
       - integrationType
       - note
       title: GatewaySurfaceResponse
+      description: Descriptor for a single API surface registered with the platform
+        gateway.
     HTTPValidationError:
       properties:
         detail:
@@ -3164,6 +3365,8 @@ components:
       - source
       - target
       title: OrchestrationDagEdgeResponse
+      description: A directed dependency edge between two nodes in the orchestration
+        DAG.
     OrchestrationDagNodeResponse:
       properties:
         id:
@@ -3191,6 +3394,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Agent
         sessionId:
           anyOf:
@@ -3264,6 +3469,7 @@ components:
       - agent
       - status
       title: OrchestrationDagNodeResponse
+      description: A single node (planner or task) in the orchestration run DAG.
     OrchestrationDagResponse:
       properties:
         nodes:
@@ -3284,6 +3490,8 @@ components:
       required:
       - stats
       title: OrchestrationDagResponse
+      description: Complete DAG representation for an orchestration run, including
+        nodes, edges, and stats.
     OrchestrationDagStatsResponse:
       properties:
         totalNodes:
@@ -3313,6 +3521,8 @@ components:
             enum:
             - claude
             - codex
+            - openclaw
+            - opencloud
           type: object
           title: Providerbreakdown
           default: {}
@@ -3338,6 +3548,8 @@ components:
           default: 0
       type: object
       title: OrchestrationDagStatsResponse
+      description: Aggregate structural and status statistics for an orchestration
+        run DAG.
     OrchestrationFactsResponse:
       properties:
         canonicalRules:
@@ -3360,6 +3572,8 @@ components:
           default: []
       type: object
       title: OrchestrationFactsResponse
+      description: Canonical routing facts for all runs and task attempts across a
+        project.
     OrchestrationFeatureBranchResponse:
       properties:
         name:
@@ -3374,6 +3588,7 @@ components:
       required:
       - name
       title: OrchestrationFeatureBranchResponse
+      description: Feature branch associated with an orchestration run.
     OrchestrationFinalPullRequestResponse:
       properties:
         number:
@@ -3426,6 +3641,8 @@ components:
       - state
       - reviewGateStatus
       title: OrchestrationFinalPullRequestResponse
+      description: Final integration pull request snapshot for a completed orchestration
+        run.
     OrchestrationInvocationResponse:
       properties:
         agent:
@@ -3433,6 +3650,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Agent
         role:
           type: string
@@ -3540,6 +3759,8 @@ components:
       - status
       - startedAt
       title: OrchestrationOperationHistoryResponse
+      description: A single recorded operation event in an orchestration run or task
+        history.
     OrchestrationReviewSummaryResponse:
       properties:
         blockingState:
@@ -3557,6 +3778,7 @@ components:
       required:
       - blockingState
       title: OrchestrationReviewSummaryResponse
+      description: Aggregated pull request review state for an orchestration task.
     OrchestrationRunFactResponse:
       properties:
         runId:
@@ -3643,6 +3865,8 @@ components:
       - canonicalReason
       - status
       title: OrchestrationRunFactResponse
+      description: Canonical fact record summarising the outcome of a single orchestration
+        run.
     OrchestrationRunResponse:
       properties:
         source:
@@ -3809,6 +4033,8 @@ components:
             enum:
             - claude
             - codex
+            - openclaw
+            - opencloud
           - type: 'null'
           title: Agent
         sessionId:
@@ -3834,6 +4060,8 @@ components:
       - sourceKind
       - status
       title: OrchestrationTaskAttemptFactResponse
+      description: Canonical fact record for a single task attempt within an orchestration
+        run.
     OrchestrationTaskPullRequestResponse:
       properties:
         number:
@@ -3895,6 +4123,7 @@ components:
       - state
       - mergeGateStatus
       title: OrchestrationTaskPullRequestResponse
+      description: Pull request snapshot for an individual orchestration task branch.
     OrchestrationTaskResponse:
       properties:
         taskId:
@@ -3969,6 +4198,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Provider
         timestamp:
           type: number
@@ -4057,6 +4288,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Provider
         timestamp:
           type: number
@@ -4155,6 +4388,7 @@ components:
       - deploymentId
       - deploymentName
       title: PrefectDeploymentResponse
+      description: Prefect deployment record with optional OATS metadata.
     PrefectFlowRunAnalyticsResponse:
       properties:
         runStatus:
@@ -4189,6 +4423,7 @@ components:
       required:
       - runStatus
       title: PrefectFlowRunAnalyticsResponse
+      description: Task-level analytics summary for a Prefect flow run.
     PrefectFlowRunResponse:
       properties:
         flowRunId:
@@ -4261,6 +4496,8 @@ components:
       required:
       - flowRunId
       title: PrefectFlowRunResponse
+      description: Prefect flow run record with state, deployment linkage, and optional
+        OATS analytics.
     PrefectOatsMetadataResponse:
       properties:
         runTitle:
@@ -4295,6 +4532,8 @@ components:
           title: Artifactroot
       type: object
       title: PrefectOatsMetadataResponse
+      description: OATS-specific metadata attached to a Prefect deployment or flow
+        run.
     PrefectWorkPoolResponse:
       properties:
         workPoolId:
@@ -4327,6 +4566,7 @@ components:
       - workPoolId
       - workPoolName
       title: PrefectWorkPoolResponse
+      description: Prefect work pool record with type, status, and concurrency configuration.
     PrefectWorkerResponse:
       properties:
         workerId:
@@ -4355,6 +4595,7 @@ components:
       - workerId
       - workerName
       title: PrefectWorkerResponse
+      description: Prefect worker record with heartbeat and work pool association.
     ProjectResponse:
       properties:
         encoded_path:
@@ -4393,8 +4634,14 @@ components:
           type: integer
           title: Codex
           default: 0
+        openclaw:
+          type: integer
+          title: Openclaw
+          default: 0
       type: object
       title: ProviderBreakdownResponse
+      description: Per-provider count breakdown (Claude, Codex, OpenClaw) for a single
+        metric.
     ProviderSubscriptionSettingResponse:
       properties:
         provider:
@@ -4402,6 +4649,8 @@ components:
           enum:
           - claude
           - codex
+          - openclaw
+          - opencloud
           title: Provider
         hasSubscription:
           type: boolean
@@ -4419,6 +4668,7 @@ components:
       - provider
       - updatedAt
       title: ProviderSubscriptionSettingResponse
+      description: Current subscription configuration for a single provider.
     ProviderSubscriptionSettingUpdateRequest:
       properties:
         hasSubscription:
@@ -4438,6 +4688,8 @@ components:
             enum:
             - claude
             - codex
+            - openclaw
+            - opencloud
           - type: 'null'
           title: Provider
         updatedAt:

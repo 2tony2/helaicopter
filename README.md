@@ -1,6 +1,6 @@
 # Helaicopter
 
-A local Next.js app for browsing your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [Codex](https://developers.openai.com/codex/) conversations, plans, and token/cost analytics. Reads directly from `~/.claude/` and `~/.codex/` — no data leaves your machine.
+A local Next.js app for browsing your [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://developers.openai.com/codex/), and OpenClaw conversations, plans, and token/cost analytics. Reads directly from `~/.claude/`, `~/.codex/`, and `~/.openclaw/` — no data leaves your machine.
 
 ## Quick Start
 
@@ -42,7 +42,7 @@ Use `docs/prefect-local-ops.md` for local control-plane setup and `docs/oats-pre
 - **npm** 10+
 - **Python** 3.13+
 - **uv** 0.6+
-- **Claude Code** and/or **Codex** installed (the app reads from `~/.claude/` and `~/.codex/`)
+- **Claude Code**, **Codex**, and/or **OpenClaw** installed (the app reads from `~/.claude/`, `~/.codex/`, and `~/.openclaw/`)
 
 ## Local Development
 
@@ -102,13 +102,14 @@ For live local inspection during development, compare those generated snapshots 
 ## Features
 
 ### Analytics (Homepage)
-The homepage shows a full analytics dashboard with stats cards, cost breakdown, daily usage charts, tool usage, model breakdown, and conversations per day — all scoped to a selectable date range (7d / 14d / 30d / 90d / All). A **provider filter** (All / Claude / Codex) lets you scope analytics to a single provider.
+The homepage shows a full analytics dashboard with stats cards, cost breakdown, daily usage charts, tool usage, model breakdown, and conversations per day — all scoped to a selectable date range (7d / 14d / 30d / 90d / All). A **provider filter** (All / Claude / Codex / OpenClaw) lets you scope analytics to a single provider.
 
 ### Provider Filter
 A toggle on both the analytics page and conversations list lets you switch between:
-- **All** — shows both Claude and Codex data
+- **All** — shows Claude, Codex, and OpenClaw data
 - **Claude** — Claude Code conversations only
 - **Codex** — OpenAI Codex conversations only
+- **OpenClaw** — OpenClaw conversations only
 
 ### Conversations
 
@@ -205,7 +206,7 @@ Helaicopter reads from two local directories:
 └── history.jsonl       # Command history
 ```
 
-Codex conversations are identified by a `codex:` prefix on the project path and integrated seamlessly alongside Claude conversations in all views.
+Codex conversations are identified by a `codex:` prefix on the project path, OpenClaw conversations by an `openclaw:` prefix, and both are integrated seamlessly alongside Claude conversations in all views.
 
 ### Performance
 

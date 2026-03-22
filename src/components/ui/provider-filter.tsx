@@ -1,8 +1,17 @@
 "use client";
 
+import type { FrontendProvider } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-export type Provider = "all" | "claude" | "codex";
+export type Provider = "all" | FrontendProvider;
+
+export const providerFilterOptions: { value: Provider; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "claude", label: "Claude" },
+  { value: "codex", label: "Codex" },
+  { value: "openclaw", label: "OpenClaw" },
+  { value: "opencloud", label: "OpenCloud" },
+];
 
 export function ProviderFilter({
   value,
@@ -11,15 +20,9 @@ export function ProviderFilter({
   value: Provider;
   onChange: (v: Provider) => void;
 }) {
-  const options: { value: Provider; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "claude", label: "Claude" },
-    { value: "codex", label: "Codex" },
-  ];
-
   return (
     <div className="inline-flex items-center rounded-md border bg-muted/50 p-0.5">
-      {options.map((opt) => (
+      {providerFilterOptions.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}

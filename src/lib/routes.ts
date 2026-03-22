@@ -16,7 +16,7 @@ export {
 };
 export type { ConversationDetailTab, OrchestrationTab };
 
-export type ConversationRouteProvider = "claude" | "codex";
+export type ConversationRouteProvider = "claude" | "codex" | "openclaw" | "opencloud";
 
 export type ConversationCanonicalTarget =
   | {
@@ -76,7 +76,7 @@ export type ConversationRouteDecision =
     };
 export const PREFECT_UI_URL = "http://127.0.0.1:4200";
 
-const canonicalConversationProviders = ["claude", "codex"] as const;
+const canonicalConversationProviders = ["claude", "codex", "openclaw", "opencloud"] as const;
 
 type ParsedConversationRef = {
   conversationRef: string;

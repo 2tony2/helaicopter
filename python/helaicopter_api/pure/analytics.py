@@ -7,9 +7,15 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
-from helaicopter_semantics import calculate_cost, supports_long_context_premium, resolve_provider
+from helaicopter_semantics import (
+    CLAUDE_PRICING,
+    OPENAI_PRICING,
+    calculate_cost,
+    resolve_provider,
+    supports_long_context_premium,
+)
 
-AnalyticsProvider = Literal["claude", "codex"]
+AnalyticsProvider = Literal["claude", "codex", "openclaw"]
 TimeSeriesKey = Literal["hourly", "daily", "weekly", "monthly"]
 TIME_SERIES_KEYS: tuple[TimeSeriesKey, TimeSeriesKey, TimeSeriesKey, TimeSeriesKey] = (
     "hourly",
@@ -23,6 +29,7 @@ TIME_SERIES_KEYS: tuple[TimeSeriesKey, TimeSeriesKey, TimeSeriesKey, TimeSeriesK
 class ProviderBreakdown:
     claude: int = 0
     codex: int = 0
+    openclaw: int = 0
 
 
 @dataclass(slots=True)
@@ -75,6 +82,18 @@ class AnalyticsTimeSeriesPoint:
     claude_failed_tool_calls: int = 0
     claude_tool_error_rate_pct: float = 0.0
     claude_subagents: int = 0
+    openclaw_estimated_cost: float = 0.0
+    openclaw_input_tokens: int = 0
+    openclaw_output_tokens: int = 0
+    openclaw_cache_write_tokens: int = 0
+    openclaw_cache_read_tokens: int = 0
+    openclaw_reasoning_tokens: int = 0
+    openclaw_total_tokens: int = 0
+    openclaw_conversations: int = 0
+    openclaw_tool_calls: int = 0
+    openclaw_failed_tool_calls: int = 0
+    openclaw_tool_error_rate_pct: float = 0.0
+    openclaw_subagents: int = 0
     codex_input_tokens: int = 0
     codex_output_tokens: int = 0
     codex_cache_write_tokens: int = 0
@@ -115,8 +134,14 @@ class DailyUsage:
     codex_cache_read_tokens: int = 0
     claude_conversations: int = 0
     codex_conversations: int = 0
+    openclaw_input_tokens: int = 0
+    openclaw_output_tokens: int = 0
+    openclaw_cache_write_tokens: int = 0
+    openclaw_cache_read_tokens: int = 0
+    openclaw_conversations: int = 0
     claude_subagents: int = 0
     codex_subagents: int = 0
+    openclaw_subagents: int = 0
 
 
 @dataclass(slots=True)
@@ -232,30 +257,7 @@ def build_analytics(
     for conversation in conversations:
         provider = provider_for_summary(conversation)
         reasoning_tokens = conversation.total_reasoning_tokens or 0
-        cost = calculate_cost(
-            input_tokens=conversation.total_input_tokens,
-            output_tokens=conversation.total_output_tokens,
-            cache_write_tokens=conversation.total_cache_write_tokens,
-            cache_read_tokens=conversation.total_cache_read_tokens,
-            model=conversation.model,
-        )
-        long_context_premium = 0.0
-        long_context_conversations = 0
-        if conversation.total_input_tokens > 200_000 and supports_long_context_premium(conversation.model):
-            long_context_premium = (
-                cost.input_cost + (cost.output_cost * 0.5) + cost.cache_write_cost + cost.cache_read_cost
-            )
-            long_context_conversations = 1
-
-        conversation_cost = AnalyticsCostBreakdown(
-            input_cost=cost.input_cost,
-            output_cost=cost.output_cost,
-            cache_write_cost=cost.cache_write_cost,
-            cache_read_cost=cost.cache_read_cost,
-            long_context_premium=long_context_premium,
-            long_context_conversations=long_context_conversations,
-            total_cost=cost.total_cost + long_context_premium,
-        )
+        conversation_cost = _conversation_cost_breakdown(conversation, provider=provider)
         total_tokens = (
             conversation.total_input_tokens
             + conversation.total_output_tokens
@@ -324,13 +326,20 @@ def build_analytics(
             daily_usage.claude_cache_read_tokens += conversation.total_cache_read_tokens
             daily_usage.claude_conversations += 1
             daily_usage.claude_subagents += conversation.subagent_count
-        else:
+        elif provider == "codex":
             daily_usage.codex_input_tokens += conversation.total_input_tokens
             daily_usage.codex_output_tokens += conversation.total_output_tokens
             daily_usage.codex_cache_write_tokens += conversation.total_cache_write_tokens
             daily_usage.codex_cache_read_tokens += conversation.total_cache_read_tokens
             daily_usage.codex_conversations += 1
             daily_usage.codex_subagents += conversation.subagent_count
+        else:
+            daily_usage.openclaw_input_tokens += conversation.total_input_tokens
+            daily_usage.openclaw_output_tokens += conversation.total_output_tokens
+            daily_usage.openclaw_cache_write_tokens += conversation.total_cache_write_tokens
+            daily_usage.openclaw_cache_read_tokens += conversation.total_cache_read_tokens
+            daily_usage.openclaw_conversations += 1
+            daily_usage.openclaw_subagents += conversation.subagent_count
 
         for key in TIME_SERIES_KEYS:
             bucket_start = _bucket_start(started_at, key)
@@ -359,7 +368,7 @@ def build_analytics(
                 bucket.claude_tool_calls += conversation.tool_use_count
                 bucket.claude_failed_tool_calls += conversation.failed_tool_call_count
                 bucket.claude_subagents += conversation.subagent_count
-            else:
+            elif provider == "codex":
                 bucket.codex_estimated_cost += conversation_cost.total_cost
                 bucket.codex_input_tokens += conversation.total_input_tokens
                 bucket.codex_output_tokens += conversation.total_output_tokens
@@ -371,6 +380,18 @@ def build_analytics(
                 bucket.codex_tool_calls += conversation.tool_use_count
                 bucket.codex_failed_tool_calls += conversation.failed_tool_call_count
                 bucket.codex_subagents += conversation.subagent_count
+            else:
+                bucket.openclaw_estimated_cost += conversation_cost.total_cost
+                bucket.openclaw_input_tokens += conversation.total_input_tokens
+                bucket.openclaw_output_tokens += conversation.total_output_tokens
+                bucket.openclaw_cache_write_tokens += conversation.total_cache_write_tokens
+                bucket.openclaw_cache_read_tokens += conversation.total_cache_read_tokens
+                bucket.openclaw_reasoning_tokens += reasoning_tokens
+                bucket.openclaw_total_tokens += total_tokens
+                bucket.openclaw_conversations += 1
+                bucket.openclaw_tool_calls += conversation.tool_use_count
+                bucket.openclaw_failed_tool_calls += conversation.failed_tool_call_count
+                bucket.openclaw_subagents += conversation.subagent_count
 
     total_tokens = (
         data.total_input_tokens
@@ -411,6 +432,68 @@ def provider_for_summary(conversation: HistoricalConversationSummary) -> Analyti
         provider=conversation.provider,
         project_path=conversation.project_path,
     )
+
+
+def _conversation_cost_breakdown(
+    conversation: HistoricalConversationSummary,
+    *,
+    provider: AnalyticsProvider,
+) -> AnalyticsCostBreakdown:
+    if provider == "openclaw" and not _openclaw_has_known_cost_model(conversation.model):
+        return AnalyticsCostBreakdown()
+
+    cost = calculate_cost(
+        input_tokens=conversation.total_input_tokens,
+        output_tokens=conversation.total_output_tokens,
+        cache_write_tokens=conversation.total_cache_write_tokens,
+        cache_read_tokens=conversation.total_cache_read_tokens,
+        model=conversation.model,
+    )
+    long_context_premium = 0.0
+    long_context_conversations = 0
+    if conversation.total_input_tokens > 200_000 and supports_long_context_premium(conversation.model):
+        long_context_premium = cost.input_cost + (cost.output_cost * 0.5) + cost.cache_write_cost + cost.cache_read_cost
+        long_context_conversations = 1
+
+    return AnalyticsCostBreakdown(
+        input_cost=cost.input_cost,
+        output_cost=cost.output_cost,
+        cache_write_cost=cost.cache_write_cost,
+        cache_read_cost=cost.cache_read_cost,
+        long_context_premium=long_context_premium,
+        long_context_conversations=long_context_conversations,
+        total_cost=cost.total_cost + long_context_premium,
+    )
+
+
+def _openclaw_has_known_cost_model(model: str | None) -> bool:
+    if not model:
+        return False
+    if model in CLAUDE_PRICING or model in OPENAI_PRICING:
+        return True
+    if any(model.startswith(key) for key in CLAUDE_PRICING):
+        return True
+    if any(model.startswith(key) for key in OPENAI_PRICING):
+        return True
+    if "gpt-5.4" in model or "gpt5.4" in model:
+        return True
+    if "gpt-5.2" in model or "gpt5.2" in model:
+        return True
+    if "gpt-5.1" in model or "gpt5.1" in model:
+        return True
+    if "gpt-5-mini" in model or "gpt5-mini" in model:
+        return True
+    if "gpt-5" in model or "gpt5" in model:
+        return True
+    if "o4-mini" in model or "o3" in model:
+        return True
+    if "opus-4-6" in model or "opus-4-5" in model:
+        return True
+    if "opus-4-1" in model or "opus-4" in model:
+        return True
+    if "sonnet" in model or "haiku" in model:
+        return True
+    return False
 
 
 def _ensure_utc(value: datetime | None) -> datetime:
@@ -514,6 +597,9 @@ def _apply_tool_error_rates(point: AnalyticsTimeSeriesPoint) -> None:
     point.codex_tool_error_rate_pct = (
         (point.codex_failed_tool_calls / point.codex_tool_calls) * 100 if point.codex_tool_calls else 0.0
     )
+    point.openclaw_tool_error_rate_pct = (
+        (point.openclaw_failed_tool_calls / point.openclaw_tool_calls) * 100 if point.openclaw_tool_calls else 0.0
+    )
 
 
 def _increment_provider_breakdown(
@@ -525,8 +611,10 @@ def _increment_provider_breakdown(
     entry = mapping.setdefault(key, ProviderBreakdown())
     if provider == "claude":
         entry.claude += count
-    else:
+    elif provider == "codex":
         entry.codex += count
+    else:
+        entry.openclaw += count
 
 
 def _add_cost_breakdown(target: AnalyticsCostBreakdown, source: AnalyticsCostBreakdown) -> None:
