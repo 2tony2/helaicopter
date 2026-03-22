@@ -29,7 +29,7 @@ from helaicopter_api.schema.conversations import (
 )
 from helaicopter_api.server.config import Settings, load_settings
 from helaicopter_semantics import resolve_provider
-from helaicopter_semantics.pricing import calculate_cost
+from helaicopter_semantics.pricing import CLAUDE_PRICING, OPENAI_PRICING, CostBreakdown, calculate_cost
 
 from .export_types import (
     ExportConversationEnvelope,
@@ -245,13 +245,8 @@ def _build_envelope(
     source_path: str,
     source_file_modified_at: int,
 ) -> dict[str, object]:
-    cost = calculate_cost(
-        input_tokens=summary.total_input_tokens,
-        output_tokens=summary.total_output_tokens,
-        cache_write_tokens=summary.total_cache_creation_tokens,
-        cache_read_tokens=summary.total_cache_read_tokens,
-        model=summary.model,
-    )
+    provider = resolve_provider(model=summary.model, project_path=summary.project_path)
+    cost = _export_cost_breakdown(summary, provider=provider)
     return {
         "type": "conversation",
         "summary": _summary_payload(summary, source_path=source_path, source_file_modified_at=source_file_modified_at),
@@ -265,6 +260,27 @@ def _build_envelope(
             "totalCost": cost.total_cost,
         },
     }
+
+
+def _export_cost_breakdown(
+    summary: ConversationSummaryResponse,
+    *,
+    provider: str,
+) -> CostBreakdown:
+    if provider == "openclaw" and not _openclaw_has_known_cost_model(summary.model):
+        return CostBreakdown(
+            input_cost=0.0,
+            output_cost=0.0,
+            cache_write_cost=0.0,
+            cache_read_cost=0.0,
+        )
+    return calculate_cost(
+        input_tokens=summary.total_input_tokens,
+        output_tokens=summary.total_output_tokens,
+        cache_write_tokens=summary.total_cache_creation_tokens,
+        cache_read_tokens=summary.total_cache_read_tokens,
+        model=summary.model,
+    )
 
 
 def _summary_payload(
@@ -301,6 +317,36 @@ def _summary_payload(
         "sourcePath": source_path,
         "sourceFileModifiedAt": source_file_modified_at,
     }
+
+
+def _openclaw_has_known_cost_model(model: str | None) -> bool:
+    if not model:
+        return False
+    if model in CLAUDE_PRICING or model in OPENAI_PRICING:
+        return True
+    if any(model.startswith(key) for key in CLAUDE_PRICING):
+        return True
+    if any(model.startswith(key) for key in OPENAI_PRICING):
+        return True
+    if "gpt-5.4" in model or "gpt5.4" in model:
+        return True
+    if "gpt-5.2" in model or "gpt5.2" in model:
+        return True
+    if "gpt-5.1" in model or "gpt5.1" in model:
+        return True
+    if "gpt-5-mini" in model or "gpt5-mini" in model:
+        return True
+    if "gpt-5" in model or "gpt5" in model:
+        return True
+    if "o4-mini" in model or "o3" in model:
+        return True
+    if "opus-4-6" in model or "opus-4-5" in model:
+        return True
+    if "opus-4-1" in model or "opus-4" in model:
+        return True
+    if "sonnet" in model or "haiku" in model:
+        return True
+    return False
 
 
 def _detail_payload(detail: ConversationDetailResponse) -> dict[str, object]:

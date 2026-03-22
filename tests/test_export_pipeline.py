@@ -330,3 +330,71 @@ def test_iter_export_rows_preserves_openclaw_provider_provenance(
     by_provider = {row["summary"]["provider"]: row for row in rows}
     assert by_provider["claude"]["summary"]["projectPath"] == "-Users-tony-Code-helaicopter"
     assert by_provider["openclaw"]["summary"]["projectPath"] == "openclaw:agent:secondary"
+
+
+def test_build_envelope_omits_unknown_openclaw_costs() -> None:
+    summary = export_pipeline.ConversationSummaryResponse(
+        session_id="session-openclaw",
+        project_path="openclaw:agent:main",
+        project_name="openclaw:agent:main",
+        route_slug="unknown-openclaw-pricing",
+        conversation_ref="unknown-openclaw-pricing--openclaw-session-openclaw",
+        thread_type="main",
+        first_message="Unknown OpenClaw pricing",
+        timestamp=1_710_000_600_000,
+        created_at=1_710_000_600_000,
+        last_updated_at=1_710_000_660_000,
+        is_running=False,
+        message_count=1,
+        model="openclaw-internal-preview",
+        total_input_tokens=50_000,
+        total_output_tokens=5_000,
+        total_cache_creation_tokens=1_000,
+        total_cache_read_tokens=2_000,
+        tool_use_count=0,
+        failed_tool_call_count=0,
+        tool_breakdown={},
+        subagent_count=0,
+        subagent_type_breakdown={},
+        task_count=0,
+    )
+    detail = {
+        "session_id": "session-openclaw",
+        "project_path": "openclaw:agent:main",
+        "route_slug": "unknown-openclaw-pricing",
+        "conversation_ref": "unknown-openclaw-pricing--openclaw-session-openclaw",
+        "thread_type": "main",
+        "created_at": 1_710_000_600_000,
+        "last_updated_at": 1_710_000_660_000,
+        "is_running": False,
+        "messages": [],
+        "plans": [],
+        "total_usage": {
+            "input_tokens": 50_000,
+            "output_tokens": 5_000,
+            "cache_creation_tokens": 1_000,
+            "cache_read_tokens": 2_000,
+        },
+        "model": "openclaw-internal-preview",
+        "start_time": 1_710_000_600_000,
+        "end_time": 1_710_000_660_000,
+        "subagents": [],
+        "context_analytics": {"buckets": [], "steps": []},
+    }
+
+    row = export_pipeline._build_envelope(
+        summary=summary,
+        detail=export_pipeline.ConversationDetailResponse.model_validate(detail),
+        tasks=[],
+        source_path="/tmp/openclaw-session.jsonl",
+        source_file_modified_at=1_710_000_661_000,
+    )
+
+    assert row["summary"]["provider"] == "openclaw"
+    assert row["cost"] == {
+        "inputCost": pytest.approx(0.0),
+        "outputCost": pytest.approx(0.0),
+        "cacheWriteCost": pytest.approx(0.0),
+        "cacheReadCost": pytest.approx(0.0),
+        "totalCost": pytest.approx(0.0),
+    }
