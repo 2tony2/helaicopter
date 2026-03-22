@@ -1118,6 +1118,7 @@ def _summarize_openclaw_artifact(
     created_at = 0.0
     end_timestamp = 0.0
     pending_tool_names: dict[str, str] = {}
+    resolved_tool_results: set[str] = set()
 
     for line in lines:
         ts = _to_epoch_ms(line.get("timestamp"))
@@ -1141,7 +1142,7 @@ def _summarize_openclaw_artifact(
 
         message = _dict_or_none(line.get("message"))
         role = _string_or_none(message.get("role"))
-        if role in {"user", "assistant", "tool"}:
+        if role in {"user", "assistant"}:
             message_count += 1
         if role == "user" and not first_message:
             first_message = _first_openclaw_user_message(message)[:200]
@@ -1162,12 +1163,16 @@ def _summarize_openclaw_artifact(
                 if tool_call_id:
                     pending_tool_names[tool_call_id] = tool_name
             continue
-        if role == "tool":
+        if _is_openclaw_tool_role(role):
             tool_name = _string_or_none(message.get("toolName")) or pending_tool_names.get(
                 _string_or_none(message.get("toolCallId")) or "",
                 "unknown",
             )
             tool_call_id = _string_or_none(message.get("toolCallId")) or ""
+            if tool_call_id in pending_tool_names and tool_call_id not in resolved_tool_results:
+                resolved_tool_results.add(tool_call_id)
+            else:
+                message_count += 1
             if tool_call_id not in pending_tool_names:
                 tool_use_count += 1
                 tool_breakdown[tool_name] = tool_breakdown.get(tool_name, 0) + 1
@@ -1452,13 +1457,13 @@ def _get_openclaw_live_conversation(
                 )
             continue
 
-        if role != "tool":
+        if not _is_openclaw_tool_role(role):
             continue
 
         tool_call_id = _string_or_none(message.get("toolCallId")) or ""
         result = _tool_result_text(message.get("content"))[:_MAX_RESULT_LENGTH]
         pending = pending_tool_calls.get(tool_call_id)
-        if pending is not None:
+        if pending is not None and pending.result is None:
             pending.result = result
             pending.is_error = bool(message.get("isError"))
             continue
@@ -2694,6 +2699,10 @@ def _openclaw_message_content(message: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(content, list):
         return []
     return [item for item in content if isinstance(item, dict)]
+
+
+def _is_openclaw_tool_role(role: str | None) -> bool:
+    return role in {"tool", "toolResult"}
 
 
 def _openclaw_effective_identity(

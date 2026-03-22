@@ -248,8 +248,11 @@ function normalizeThreadType(value: unknown): "main" | "subagent" {
   return value === "subagent" ? "subagent" : "main";
 }
 
-function normalizeMessageRole(value: unknown): "user" | "assistant" {
-  return value === "user" ? "user" : "assistant";
+function normalizeMessageRole(value: unknown): "user" | "assistant" | "tool" {
+  if (value === "user" || value === "tool") {
+    return value;
+  }
+  return "assistant";
 }
 
 function normalizeUsage(value: unknown): TokenUsage {

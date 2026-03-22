@@ -887,11 +887,25 @@ def _seed_sources(tmp_path: Path) -> Settings:
                         "timestamp": "2026-03-19T12:00:05Z",
                         "message": {
                             "id": "openclaw-tool-result-1",
-                            "role": "tool",
+                            "role": "toolResult",
                             "toolCallId": "tool-oc-1",
                             "toolName": "Shell",
                             "isError": False,
                             "content": [{"type": "text", "text": "agents/main\nagents/secondary"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-19T12:00:05.250000Z",
+                        "message": {
+                            "id": "openclaw-tool-result-1b",
+                            "role": "toolResult",
+                            "toolCallId": "tool-oc-1",
+                            "toolName": "Shell",
+                            "isError": False,
+                            "content": [{"type": "text", "text": "agents/main resolved"}],
                         },
                     }
                 ),
@@ -1255,6 +1269,7 @@ class TestConversationEndpoints:
         assert main_summary["total_reasoning_tokens"] == 18
         assert main_summary["tool_breakdown"] == {"Shell": 2}
         assert main_summary["failed_tool_call_count"] == 1
+        assert main_summary["message_count"] == 5
 
         secondary_summary = by_session["openclaw-secondary-session"]
         assert secondary_summary["project_path"] == "openclaw:agent:secondary"
@@ -1292,6 +1307,7 @@ class TestConversationEndpoints:
         assert [message["id"] for message in payload["messages"]] == [
             "openclaw-user-1",
             "openclaw-assistant-1",
+            "openclaw-tool-result-1b",
             "openclaw-tool-result-2",
             "openclaw-assistant-2",
         ]
@@ -1309,7 +1325,20 @@ class TestConversationEndpoints:
             "is_error": False,
         }
 
-        unmatched_tool_result = payload["messages"][2]
+        repeated_tool_result = payload["messages"][2]
+        assert repeated_tool_result["role"] == "tool"
+        assert repeated_tool_result["blocks"] == [
+            {
+                "type": "tool_call",
+                "tool_use_id": "tool-oc-1",
+                "tool_name": "Shell",
+                "input": {},
+                "result": "agents/main resolved",
+                "is_error": False,
+            }
+        ]
+
+        unmatched_tool_result = payload["messages"][3]
         assert unmatched_tool_result["role"] == "tool"
         assert unmatched_tool_result["blocks"] == [
             {

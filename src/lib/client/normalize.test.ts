@@ -569,6 +569,46 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   assert.equal(normalized.contextWindow.peakContextWindow, 44);
 });
 
+test("normalizeConversationDetail preserves standalone tool roles", () => {
+  const normalized = normalizeConversationDetail({
+    session_id: "tool-role-session",
+    project_path: "openclaw:agent:main",
+    created_at: 1763000000000,
+    last_updated_at: 1763000001000,
+    is_running: false,
+    messages: [
+      {
+        id: "tool-msg-1",
+        role: "tool",
+        timestamp: 1763000000000,
+        blocks: [
+          {
+            type: "tool_call",
+            tool_use_id: "tool-1",
+            tool_name: "Shell",
+            input: {},
+            result: "stdout",
+            is_error: false,
+          },
+        ],
+      },
+    ],
+    plans: [],
+    total_usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+    },
+    start_time: 1763000000000,
+    end_time: 1763000001000,
+    subagents: [],
+    context_analytics: { buckets: [], steps: [] },
+  });
+
+  assert.equal(normalized.messages[0].role, "tool");
+});
+
 test("normalizeConversationDag preserves null paths for unresolved child routes", () => {
   const normalized = normalizeConversationDag({
     project_path: "-Users-tony-Code-helaicopter",

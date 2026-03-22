@@ -599,7 +599,7 @@ export interface ProcessedConversation {
 
 export interface ProcessedMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   timestamp: number;
   blocks: DisplayBlock[];
   usage?: TokenUsage;
