@@ -54,6 +54,10 @@ class CliSettings(BaseModel):
         return str(self.openclaw_agents_dir / "*" / "sessions")
 
     @property
+    def openclaw_memory_sqlite_path(self) -> Path:
+        return self.openclaw_dir / "memory" / "main.sqlite"
+
+    @property
     def opencloud_sqlite_path(self) -> Path:
         return self.opencloud_dir / "opencode.db"
 
@@ -258,6 +262,10 @@ class Settings(BaseSettings):
     @property
     def openclaw_agent_sessions_glob(self) -> str:
         return self.cli.openclaw_agent_sessions_glob
+
+    @property
+    def openclaw_memory_sqlite_path(self) -> Path:
+        return self.cli.openclaw_memory_sqlite_path
 
     @property
     def opencloud_sqlite_path(self) -> Path:

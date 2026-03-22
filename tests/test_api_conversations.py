@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from helaicopter_api.application import conversations as conversations_application
 from helaicopter_api.application.conversations import _compact_dict, _shape_conversation_task
-from helaicopter_api.bootstrap.services import build_services
+from helaicopter_api.bootstrap.services import build_services, invalidate_backend_read_caches
 from helaicopter_api.ports.app_sqlite import HistoricalConversationTask
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
@@ -1448,6 +1448,79 @@ def _seed_sources(tmp_path: Path) -> Settings:
     )
 
 
+def _seed_openclaw_archive_family(settings: Settings) -> None:
+    sessions_dir = settings.openclaw_agents_dir / "main" / "sessions"
+    sessions_json_path = sessions_dir / "sessions.json"
+    sessions_json = json.loads(sessions_json_path.read_text(encoding="utf-8"))
+    sessions = list(sessions_json.get("sessions", []))
+    sessions.append(
+        {
+            "id": "primary",
+            "updatedAt": "2026-03-22T03:00:11.497Z",
+            "title": "Primary stitched family",
+        }
+    )
+    sessions_json["sessions"] = sessions
+    sessions_json["entries"] = {
+        "agent:main:main": {
+            "sessionId": "primary",
+            "title": "Primary stitched family",
+        }
+    }
+    sessions_json_path.write_text(json.dumps(sessions_json), encoding="utf-8")
+
+    primary_live = sessions_dir / "primary.jsonl"
+    primary_live.write_text(
+        json.dumps(
+            {
+                "type": "session",
+                "timestamp": "2026-03-22T03:00:00Z",
+                "session": {
+                    "id": "primary",
+                    "agentId": "main",
+                    "title": "Primary live transcript",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    reset_archive = sessions_dir / "primary.jsonl.reset.2026-03-22T03-00-11.497Z"
+    reset_archive.write_text(
+        json.dumps(
+            {
+                "type": "session",
+                "timestamp": "2026-03-22T03:00:11.497Z",
+                "session": {
+                    "id": "primary",
+                    "agentId": "main",
+                    "title": "Primary archive reset",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    deleted_archive = sessions_dir / "secondary.jsonl.deleted.2026-03-21T08-39-54.467Z"
+    deleted_archive.write_text(
+        json.dumps(
+            {
+                "type": "session",
+                "timestamp": "2026-03-21T08:39:54.467Z",
+                "session": {
+                    "id": "secondary",
+                    "agentId": "main",
+                    "title": "Secondary archive deleted",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(primary_live, (1_763_805_600, 1_763_805_600))
+    os.utime(reset_archive, (1_763_805_611, 1_763_805_611))
+    os.utime(deleted_archive, (1_763_719_194, 1_763_719_194))
+    settings.openclaw_memory_sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    sqlite3.connect(settings.openclaw_memory_sqlite_path).close()
+
+
 @pytest.fixture()
 def conversations_client(tmp_path: Path):
     settings = _seed_sources(tmp_path)
@@ -1668,6 +1741,93 @@ class TestConversationEndpoints:
         filtered = conversations_client.get("/conversations", params={"project": "openclaw:agent:main"})
         assert filtered.status_code == 200
         assert [item["session_id"] for item in filtered.json()] == ["openclaw-main-session"]
+
+    def test_openclaw_archive_discovery_exposes_live_archive_session_and_memory_metadata(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        services = build_services(settings)
+
+        transcripts = services.openclaw_store.list_transcript_artifacts()
+        by_name = {Path(item.path).name: item for item in transcripts}
+        live_artifact = by_name["primary.jsonl"]
+        reset_archive = by_name["primary.jsonl.reset.2026-03-22T03-00-11.497Z"]
+        deleted_archive = by_name["secondary.jsonl.deleted.2026-03-21T08-39-54.467Z"]
+        session_store = services.openclaw_store.read_session_store(agent_id="main")
+        memory_meta = services.openclaw_store.read_memory_store_metadata()
+        snapshot = services.openclaw_store.read_discovery_snapshot()
+
+        assert live_artifact.kind == "live_transcript"
+        assert reset_archive.kind == "reset_archive"
+        assert deleted_archive.kind == "deleted_archive"
+        assert session_store is not None
+        assert session_store.entries["agent:main:main"]["sessionId"] == "primary"
+        assert memory_meta.exists is True
+        assert memory_meta.path.endswith("/.openclaw/memory/main.sqlite")
+        assert str(settings.openclaw_agents_dir / "main" / "sessions") in snapshot.sessions_dir_mtimes
+        assert str(settings.openclaw_agents_dir / "main" / "sessions" / "sessions.json") in snapshot.session_store_mtimes
+        assert snapshot.signature
+
+    def test_openclaw_archive_discovery_skips_unreadable_transcript_and_session_store_files(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        services = build_services(settings)
+
+        broken_transcript = settings.openclaw_agents_dir / "main" / "sessions" / "broken.jsonl"
+        broken_transcript.write_bytes(b"\x80not-utf8")
+        broken_store = settings.openclaw_agents_dir / "secondary" / "sessions" / "sessions.json"
+        broken_store.write_bytes(b"\x80not-utf8")
+
+        transcripts = services.openclaw_store.list_transcript_artifacts()
+
+        assert "broken.jsonl" not in {Path(item.path).name for item in transcripts}
+        assert services.openclaw_store.read_session_store(agent_id="secondary") is None
+
+    def test_openclaw_archive_discovery_skips_permission_denied_sessions_dir(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        services = build_services(settings)
+        original_iterdir = Path.iterdir
+        blocked_dir = settings.openclaw_agents_dir / "secondary" / "sessions"
+
+        def _guarded_iterdir(path: Path):
+            if path == blocked_dir:
+                raise PermissionError("permission denied")
+            return original_iterdir(path)
+
+        monkeypatch.setattr(Path, "iterdir", _guarded_iterdir)
+
+        transcripts = services.openclaw_store.list_transcript_artifacts()
+
+        assert {item.agent_id for item in transcripts} == {"main"}
+
+    def test_invalidate_backend_read_caches_clears_openclaw_cache_entries(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        services = build_services(settings)
+        services.cache.set("openclaw_session_artifacts", ["stale"])
+        services.cache.set("openclaw_transcript_artifacts", ["stale"])
+        services.cache.set("openclaw_discovery_snapshot", "stale")
+        services.cache.set("openclaw_memory_store_metadata", "stale")
+        services.cache.set("openclaw_session_store:main", {"stale": True})
+
+        invalidate_backend_read_caches(services)
+
+        assert services.cache.get("openclaw_session_artifacts") is None
+        assert services.cache.get("openclaw_transcript_artifacts") is None
+        assert services.cache.get("openclaw_discovery_snapshot") is None
+        assert services.cache.get("openclaw_memory_store_metadata") is None
+        assert services.cache.get("openclaw_session_store:main") is None
 
     def test_openclaw_detail_shapes_tool_results_and_ignores_unknown_events(
         self,
