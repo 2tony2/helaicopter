@@ -103,10 +103,11 @@ export function loadAppDoc(slug: string[] = []): AppDocPage | null {
   }
   const raw = fs.readFileSync(match.absolutePath, "utf-8");
   const parsed = parseFrontmatter(raw);
+  const isIndex = normalized.length === 1 && normalized[0] === "index";
   return {
     slug: match.slug,
     href: match.href,
-    title: parsed.title ?? match.title,
+    title: isIndex ? "Helaicopter Platform Documentation" : (parsed.title ?? match.title),
     description: parsed.description ?? match.description,
     body: parsed.body,
   };

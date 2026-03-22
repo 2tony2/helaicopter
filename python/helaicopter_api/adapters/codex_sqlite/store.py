@@ -184,7 +184,11 @@ class FileCodexStore(CodexStore):
         if not self._db_path.exists():
             return None
         uri = f"file:{quote(str(self._db_path))}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True)
+        try:
+            connection = sqlite3.connect(uri, uri=True)
+        except sqlite3.Error:
+            # Corrupt or unreadable SQLite file – treat as unavailable.
+            return None
         connection.row_factory = sqlite3.Row
         return connection
 
