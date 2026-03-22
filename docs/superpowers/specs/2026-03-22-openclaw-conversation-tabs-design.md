@@ -130,7 +130,13 @@ This is not conversation history. It should be used for:
 - chunk counts
 - source/path coverage
 - embedding cache counts
-- likely workspace linkage to the conversation
+- exact, confidence-labeled workspace linkage only when an indexed file path shares a stable prefix with transcript `cwd` or `systemPromptReport.workspaceDir`
+
+First-pass restriction:
+
+- do not claim per-conversation memory attribution from heuristics alone
+- do not compute inferred per-conversation chunk totals unless an exact file/path join exists
+- if no exact join exists, render the memory store as global OpenClaw memory metadata only
 
 ### 4. Auxiliary Provenance
 
@@ -150,8 +156,31 @@ The first pass should move from a one-file-one-conversation model to a session-f
 ### Canonical identity
 
 - project path: `openclaw:agent:<agentId>`
-- session id: effective transcript/session id
+- session id: deterministic canonical session id
 - provider: `openclaw`
+
+### Canonical session-id algorithm
+
+The first pass must produce exactly one stable `(project_path, session_id)` identity for each routed OpenClaw conversation.
+
+Tie-breaker order:
+
+1. use the `session.id` from the transcript header when present
+2. otherwise use the live transcript filename stem
+3. otherwise use the `sessionId` from the matched `sessions.json` entry
+4. otherwise treat the artifact as unroutable and exclude it from conversation detail/list routes
+
+Agent tie-breaker order:
+
+1. use `session.agentId` from the transcript header when present
+2. otherwise use the agent directory name
+
+Family-building rules:
+
+- the canonical route is always anchored to one primary live transcript artifact
+- `sessions.json` rows and archived transcript siblings may enrich that route
+- enrichment artifacts never create alternate routed identities for the same primary conversation
+- if an archive cannot be attached confidently to a routed conversation, it does not become a second route for the same family in the first pass
 
 ### Matching rules
 
@@ -163,14 +192,22 @@ The first pass should move from a one-file-one-conversation model to a session-f
 - build a stitched OpenClaw session family containing:
   - the active transcript
   - related archived transcript variants
-  - matching `sessions.json` entry or entries
+  - at most one canonical `sessions.json` entry chosen by deterministic precedence:
+    - exact `sessionFile` match
+    - exact `sessionId` match
+    - same agent plus strongest session-key/path evidence
   - a summarized memory-store snapshot
 
 ### Archive handling
 
 - attach `*.reset.*` and `*.deleted.*` artifacts to the active family when linkage is confident via filename, explicit session file path, or matching session id
-- when linkage is not confident, preserve them as unattached OpenClaw artifacts rather than dropping them
+- when linkage is not confident, preserve them in discovery but defer them from routed conversation APIs in the first pass
 - expose attached archives in the OpenClaw tab as lineage and artifact inventory, not as merged message history by default
+
+First-pass scope rule:
+
+- unattached archives are discovery-time preserved only
+- they are not exposed as synthetic conversation rows and do not require a separate UI surface in this phase
 
 ## Contract Design
 
@@ -188,7 +225,18 @@ Keep the shared `ConversationDetailResponse` as the portable baseline and add a 
 
 ### Provider-specific field
 
-Add an optional provider-specific payload on conversation detail responses, discriminated by provider. For OpenClaw, expose a typed `openclaw` object.
+Make `provider` explicit on conversation detail responses and add an optional `provider_detail` object.
+
+Wire shape:
+
+- `provider`: required on detail and summary responses
+- `provider_detail`: optional discriminated union, omitted entirely when absent
+- non-OpenClaw providers omit `provider_detail`
+- OpenClaw detail returns:
+  - `provider_detail.kind = "openclaw"`
+  - `provider_detail.openclaw = { ...typed payload... }`
+
+This avoids adding a top-level `openclaw` field to every provider payload while keeping the backend and frontend type boundaries explicit.
 
 ### Recommended OpenClaw provider detail sections
 
@@ -275,7 +323,7 @@ Add an optional provider-specific payload on conversation detail responses, disc
 - row counts where cheap to compute
 - chunk/file/source counts
 - embedding cache counts
-- likely workspace linkage to transcript `cwd` or `systemPromptReport.workspaceDir`
+- exact workspace linkage with confidence labels only
 
 #### `raw`
 
@@ -289,6 +337,12 @@ Add an optional provider-specific payload on conversation detail responses, disc
 ### First-pass tab strategy
 
 Add an `OpenClaw` tab first, then promote concepts into shared tabs when the mapping is clean.
+
+Tab gating rules:
+
+- the `OpenClaw` tab is rendered only when `provider === "openclaw"` and `provider_detail.kind === "openclaw"`
+- non-OpenClaw providers do not render an empty placeholder tab
+- canonical conversation URLs remain unchanged except for permitting the new tab value
 
 ### OpenClaw tab section order
 
@@ -342,11 +396,45 @@ The adapter should expose enough metadata to build stitched session families wit
 
 Expand OpenClaw payload parsing to preserve more event types and more fields from known events.
 
+First-pass event matrix:
+
+- `session`
+  - retain `id`, `cwd`, `timestamp`, `parentSession`, `agentId`, title-like metadata, and unknown extras in raw
+- `message`
+  - retain role, content blocks, usage, cost, model/provider/api metadata, stop reason, tool linkage, and unknown extras in raw
+  - OpenClaw tool results are derived from `message` events whose role is `tool` or `toolResult`; there is no separate first-pass top-level tool-result event type
+  - retain `toolCallId`, `toolName`, `isError`, result content, and ordering information needed to classify matched, unmatched, and repeated tool results
+- `model_change`
+  - retain provider, model id, timestamp
+- `thinking_level_change`
+  - retain thinking level, timestamp
+- `custom`
+  - retain custom type, data payload, timestamp
+- `custom_message`
+  - retain payload in provider detail/raw even if not promoted into normalized messages in the first pass
+- `compaction`
+  - retain compaction summary fields and timestamp
+- `branch_summary`
+  - retain branch linkage/summary fields and timestamp
+
 Requirements:
 
-- parse all known event types currently seen locally and documented upstream
+- parse the explicit event matrix above in the first pass
 - preserve unknown/custom events in provider detail
 - do not silently discard structured fields such as `cost`, `api`, nested metadata, or custom payload objects
+- treat everything outside the event matrix as opaque unknown events captured in raw/provider detail rather than as required normalized behavior
+
+### Discovery and polling limits
+
+First-pass performance rules:
+
+- normal conversation-list polling reuses cached OpenClaw discovery results
+- polling may rescan known `sessions/` directories and `sessions.json` files by mtime only
+- normal polling does not rewalk archive trees beyond known `sessions/` directories
+- normal polling does not open `memory/main.sqlite`
+- `memory/main.sqlite` may be inspected only when:
+  - an OpenClaw conversation detail view is requested
+- attached archive metadata should be cached off discovery results so detail views do not trigger full rediscovery unless source mtimes changed
 
 ### Conversation shaping
 
@@ -355,6 +443,12 @@ Summary shaping should continue to derive portable fields from transcript data, 
 ### Schema and client types
 
 Add corresponding typed backend schema and frontend client/schema/normalize support for the provider-specific OpenClaw detail object.
+
+Frontend implications to make explicit:
+
+- extend the detail schema, normalized types, and tab enum to include the new provider detail and `openclaw` tab value
+- preserve backward compatibility for existing detail consumers by making `provider_detail` optional
+- require route handling tests for the new tab value on canonical conversation routes
 
 ## Testing Strategy
 
@@ -374,8 +468,14 @@ Add fixtures and tests for:
 UI/client tests should verify:
 
 - `OpenClaw` tab appears for OpenClaw conversations
+- `OpenClaw` tab does not appear for non-OpenClaw providers
 - provider detail survives normalization
 - raw and provider-specific sections render without crashing when some subsections are missing
+- canonical conversation routes accept the new tab without regressing existing tabs
+- list/detail refresh follows the first-pass polling rules:
+  - polling reuses cached discovery results
+  - polling rescans only known session directories and `sessions.json` by mtime
+  - polling does not open `memory/main.sqlite`
 
 ## Risks And Mitigations
 
@@ -384,7 +484,7 @@ UI/client tests should verify:
 Mitigation:
 
 - attach only when confidence is high
-- otherwise preserve as unattached provider artifacts
+- otherwise preserve in discovery only and defer from routed conversation APIs in the first pass
 
 ### Risk: session-store and transcript totals disagree
 
@@ -409,10 +509,17 @@ Mitigation:
 
 ## Acceptance Criteria
 
+- conversation summaries and details expose `provider` explicitly for OpenClaw routes
+- OpenClaw detail responses expose a typed `provider_detail.kind = "openclaw"` payload
 - OpenClaw conversations expose a dedicated `OpenClaw` tab
+- the `OpenClaw` tab is rendered only for OpenClaw conversations
 - the OpenClaw tab shows stitched data from transcripts, `sessions.json`, archives, and `memory/main.sqlite` when available
 - shared conversation headers and messages continue to work for OpenClaw
-- archived transcript artifacts are discovered and surfaced in provider detail
+- attached archived transcript artifacts are surfaced in provider detail
+- unattached archives are preserved in discovery state only and are not exposed through routed conversation detail in the first pass
 - `skillsSnapshot` and `systemPromptReport` are visible in the UI
 - transcript/store usage mismatches are surfaced explicitly
+- canonical routing for `(project_path, session_id)` remains deterministic and stable for OpenClaw conversations
+- first-pass memory-store rendering uses only exact or explicitly confidence-labeled joins
+- normal polling reuses cached discovery results, rescans only known session directories plus `sessions.json` by mtime, and does not open `memory/main.sqlite`
 - missing optional artifacts degrade safely without breaking conversation detail rendering
