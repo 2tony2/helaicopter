@@ -76,7 +76,7 @@ export type ConversationRouteDecision =
     };
 export const PREFECT_UI_URL = "http://127.0.0.1:4200";
 
-const canonicalConversationProviders = ["claude", "codex"] as const;
+const canonicalConversationProviders = ["claude", "codex", "openclaw"] as const;
 
 type ParsedConversationRef = {
   conversationRef: string;

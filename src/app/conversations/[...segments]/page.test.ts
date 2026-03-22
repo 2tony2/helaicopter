@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import React from "react";
 
 import {
   createConversationPageHandler,
   type ConversationPageDependencies,
-} from "./page";
+} from "./page.tsx";
+import {
+  ProviderFilter,
+  providerFilterOptions,
+} from "../../../components/ui/provider-filter.tsx";
+import {
+  providerLabel as conversationProviderLabel,
+  resolveConversationProvider,
+} from "../../../components/conversation/conversation-viewer.tsx";
+import { matchesConversationProvider } from "../../../components/conversation/conversation-list.tsx";
 
 const canonicalRef = "review-the-backend-rollout--claude-claude-session-1";
 const wrongSlugRef = "stale-slug--claude-claude-session-1";
@@ -134,8 +145,11 @@ function createTestDependencies(
 }
 
 class RedirectSignal extends Error {
-  constructor(readonly href: string) {
+  readonly href: string;
+
+  constructor(href: string) {
     super(`redirect:${href}`);
+    this.href = href;
   }
 }
 
@@ -374,6 +388,98 @@ test("child-thread canonical routes use the resolved parent session for detail f
     [
       `/conversations/by-ref/${encodeURIComponent(canonicalRef)}`,
       `/conversations/${encodeURIComponent(projectPath)}/${sessionId}?parent_session_id=parent-session-1`,
+    ]
+  );
+});
+
+test("provider filters render an OpenClaw option", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(ProviderFilter, {
+      value: "openclaw",
+      onChange: () => {},
+    })
+  );
+
+  assert.equal(
+    providerFilterOptions.some((option) => option.value === "openclaw"),
+    true
+  );
+  assert.match(markup, /OpenClaw/);
+});
+
+test("OpenClaw conversation payloads are not mislabeled as Claude or Codex", () => {
+  assert.equal(resolveConversationProvider("openclaw:agent:main"), "openclaw");
+  assert.equal(resolveConversationProvider("openclaw:agent:main", "openclaw"), "openclaw");
+  assert.equal(conversationProviderLabel("openclaw"), "OpenClaw");
+});
+
+test("project provider filtering does not treat every non-codex namespace as Claude", () => {
+  const openClawConversation = {
+    projectPath: "openclaw:agent:main",
+    provider: "openclaw" as const,
+  };
+
+  assert.equal(matchesConversationProvider(openClawConversation, "all"), true);
+  assert.equal(matchesConversationProvider(openClawConversation, "openclaw"), true);
+  assert.equal(matchesConversationProvider(openClawConversation, "claude"), false);
+  assert.equal(matchesConversationProvider(openClawConversation, "codex"), false);
+});
+
+test("OpenClaw conversations still resolve into the raw conversation view", async () => {
+  const openClawRef = "review-openclaw-rollout--openclaw-openclaw-session-1";
+  const openClawProjectPath = "openclaw:agent:main";
+  const openClawSessionId = "openclaw-session-1";
+  const deps = createTestDependencies({
+    [`/conversations/by-ref/${encodeURIComponent(openClawRef)}`]: {
+      body: makeResolution({
+        conversation_ref: openClawRef,
+        route_slug: "review-openclaw-rollout",
+        project_path: openClawProjectPath,
+        session_id: openClawSessionId,
+      }),
+    },
+    [`/conversations/${encodeURIComponent(openClawProjectPath)}/${openClawSessionId}`]: {
+      body: makeConversationDetail({
+        session_id: openClawSessionId,
+        project_path: openClawProjectPath,
+        route_slug: "review-openclaw-rollout",
+        conversation_ref: openClawRef,
+        provider: "openclaw",
+        model: "openclaw-v1",
+        plans: [
+          {
+            id: "plan-openclaw-1",
+            slug: "plan-openclaw-1",
+            title: "OpenClaw plan",
+            preview: "Preview",
+            content: "Content",
+            provider: "openclaw",
+            timestamp: 1,
+            session_id: openClawSessionId,
+            project_path: openClawProjectPath,
+            conversation_ref: openClawRef,
+          },
+        ],
+      }),
+    },
+  });
+
+  const handlePage = createConversationPageHandler(deps);
+  const result = await handlePage({
+    segments: [openClawRef, "messages", "assistant-uuid-1"],
+    searchParams: new URLSearchParams(),
+  });
+
+  assert.equal(result.kind, "render");
+  assert.equal(result.viewer.projectPath, openClawProjectPath);
+  assert.equal(result.viewer.sessionId, openClawSessionId);
+  assert.equal(result.viewer.conversationRef, openClawRef);
+  assert.equal(result.viewer.initialTab, "messages");
+  assert.deepEqual(
+    deps.fetchCalls.map((call) => call.path),
+    [
+      `/conversations/by-ref/${encodeURIComponent(openClawRef)}`,
+      `/conversations/${encodeURIComponent(openClawProjectPath)}/${openClawSessionId}`,
     ]
   );
 });

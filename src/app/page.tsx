@@ -45,6 +45,13 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+function hasSubscriptionBudget(
+  settings: SubscriptionSettings,
+  provider: Exclude<Provider, "all">
+): provider is "claude" | "codex" {
+  return provider === "claude" || provider === "codex";
+}
+
 export default function AnalyticsPage() {
   const [days, setDays] = useState<number | undefined>(7);
   const [provider, setProvider] = useState<Provider>("all");
@@ -86,7 +93,8 @@ export default function AnalyticsPage() {
           (subscriptionSettings.codex.hasSubscription
             ? subscriptionSettings.codex.monthlyCost
             : 0)
-        : subscriptionSettings[provider].hasSubscription
+        : hasSubscriptionBudget(subscriptionSettings, provider) &&
+            subscriptionSettings[provider].hasSubscription
           ? subscriptionSettings[provider].monthlyCost
           : 0)
     : 0;

@@ -14,11 +14,29 @@ import { MessageSquare, Wrench, Bot, ListChecks, Database, DollarSign } from "lu
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { calculateCost, formatCost } from "@/lib/pricing";
 import { buildConversationTabRoute, buildConversationRoute } from "@/lib/routes";
+import type { ConversationSummary, FrontendProvider } from "@/lib/types";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+function inferProviderFromProjectPath(projectPath: string): FrontendProvider {
+  if (projectPath.startsWith("codex:")) return "codex";
+  if (projectPath.startsWith("openclaw:")) return "openclaw";
+  return "claude";
+}
+
+export function matchesConversationProvider(
+  conversation: Pick<ConversationSummary, "projectPath" | "provider">,
+  provider: Provider
+): boolean {
+  if (provider === "all") {
+    return true;
+  }
+
+  return (conversation.provider ?? inferProviderFromProjectPath(conversation.projectPath)) === provider;
 }
 
 export function ConversationList() {
@@ -31,9 +49,7 @@ export function ConversationList() {
   const { data: projects } = useProjects();
 
   const filtered = conversations?.filter((c) => {
-    // Provider filter
-    if (provider === "codex" && !c.projectPath.startsWith("codex:")) return false;
-    if (provider === "claude" && c.projectPath.startsWith("codex:")) return false;
+    if (!matchesConversationProvider(c, provider)) return false;
     if (threadTypeFilter !== "all" && c.threadType !== threadTypeFilter) return false;
 
     if (!search) return true;
@@ -199,7 +215,7 @@ export function ConversationList() {
                         <span
                           className="flex items-center gap-1 font-mono"
                           title={
-                            conv.projectPath.startsWith("codex:")
+                            (conv.provider ?? inferProviderFromProjectPath(conv.projectPath)) === "codex"
                               ? `Input: ${conv.totalInputTokens.toLocaleString()} / Output: ${conv.totalOutputTokens.toLocaleString()} / Cached input: ${conv.totalCacheReadTokens.toLocaleString()}`
                               : `Input: ${conv.totalInputTokens.toLocaleString()} / Output: ${conv.totalOutputTokens.toLocaleString()} / Cache write: ${conv.totalCacheCreationTokens.toLocaleString()} / Cache read: ${conv.totalCacheReadTokens.toLocaleString()}`
                           }
