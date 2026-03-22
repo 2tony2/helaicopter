@@ -44,7 +44,11 @@ from helaicopter_api.ports.opencloud_sqlite import (
     OpenCloudPartRecord,
     OpenCloudSessionRecord,
 )
-from helaicopter_api.ports.openclaw_fs import OpenClawSessionArtifact
+from helaicopter_api.ports.openclaw_fs import (
+    OpenClawSessionArtifact,
+    OpenClawSessionStoreArtifact,
+    OpenClawTranscriptArtifact,
+)
 from helaicopter_api.pure.conversation_dag import build_conversation_dag
 from helaicopter_api.schema.conversations import (
     ContextCategory,
@@ -60,6 +64,7 @@ from helaicopter_api.schema.conversations import (
     ConversationMessageResponse,
     ConversationPlanResponse,
     ConversationPlanStepResponse,
+    ConversationProviderDetailResponse,
     ConversationRefResolutionResponse,
     ConversationSubagentResponse,
     ConversationSummaryResponse,
@@ -72,6 +77,7 @@ from helaicopter_api.schema.conversations import (
     ConversationUsageResponse,
     HistoryEntryResponse,
     HistoryPastedContentsResponse,
+    OpenClawConversationDetailResponse,
     ProjectResponse,
     TaskListResponse,
 )
@@ -83,6 +89,16 @@ _ACTIVE_WINDOW = timedelta(minutes=1)
 _MAX_RESULT_LENGTH = 20_000
 _CACHE_MISS = object()
 _LIVE_CONVERSATION_CACHE_TTL_SECONDS = 5.0
+_OPENCLAW_PROVIDER_EVENT_TYPES = {
+    "session",
+    "message",
+    "model_change",
+    "thinking_level_change",
+    "custom",
+    "custom_message",
+    "compaction",
+    "branch_summary",
+}
 
 
 def _cache_key(prefix: str, *parts: object) -> str:
@@ -698,7 +714,10 @@ def _resolve_live_openclaw_conversation_identity(
     session_id: str,
 ) -> ConversationRefResolutionResponse | None:
     for artifact in _openclaw_session_artifacts(services):
-        summary = _summarize_openclaw_artifact(artifact)
+        summary = _summarize_openclaw_artifact(
+            artifact,
+            session_store=_openclaw_session_store(services, agent_id=artifact.agent_id),
+        )
         if summary is None or summary.session_id != session_id:
             continue
         return _conversation_ref_resolution(
@@ -828,6 +847,7 @@ def _shape_historical_summary(summary: HistoricalConversationSummary) -> Convers
     )
     return ConversationSummaryResponse(
         session_id=summary.session_id,
+        provider=summary.provider,
         project_path=summary.project_path,
         project_name=summary.project_name,
         route_slug=route_target.route_slug,
@@ -923,6 +943,7 @@ def _shape_historical_detail(
         )
     return ConversationDetailResponse(
         session_id=record.session_id,
+        provider=record.provider,
         project_path=record.project_path,
         route_slug=route_target.route_slug,
         conversation_ref=route_target.conversation_ref,
@@ -1206,6 +1227,7 @@ def _summarize_opencloud_session(
     last_updated_at = max(end_timestamp, *(float(message.time_updated) for message in messages), float(session.time_updated))
     return ConversationSummaryResponse(
         session_id=_session_id(session.id),
+        provider="opencloud",
         project_path=project_path,
         project_name=_project_display_name(project_path),
         route_slug=route_target.route_slug,
@@ -1243,7 +1265,10 @@ def _list_openclaw_live_summaries(
     for artifact in _openclaw_session_artifacts(services):
         if cutoff_ms and artifact.modified_at * 1000 < cutoff_ms:
             continue
-        summary = _summarize_openclaw_artifact(artifact)
+        summary = _summarize_openclaw_artifact(
+            artifact,
+            session_store=_openclaw_session_store(services, agent_id=artifact.agent_id),
+        )
         if summary is None:
             continue
         if project is not None and summary.project_path != project:
@@ -1256,12 +1281,18 @@ def _list_openclaw_live_summaries(
 
 def _summarize_openclaw_artifact(
     artifact: OpenClawSessionArtifact,
+    *,
+    session_store: OpenClawSessionStoreArtifact | None = None,
 ) -> ConversationSummaryResponse | None:
     lines = parse_openclaw_session_lines(artifact.content)
     if not lines:
         return None
 
-    session_id, agent_id = _openclaw_effective_identity(artifact, lines)
+    project_path, session_id = _openclaw_canonical_identity(
+        artifact,
+        lines,
+        session_store=session_store,
+    )
     first_message = ""
     message_count = 0
     model: str | None = None
@@ -1335,7 +1366,6 @@ def _summarize_openclaw_artifact(
             if bool(message.get("isError")):
                 failed_tool_call_count += 1
 
-    project_path = f"openclaw:agent:{agent_id or artifact.agent_id}"
     route_target = _conversation_route_target_from_first_message(
         session_id=session_id,
         first_message=(first_message or session_id)[:200],
@@ -1344,6 +1374,7 @@ def _summarize_openclaw_artifact(
     last_updated_at = max(end_timestamp, artifact.modified_at * 1000)
     return ConversationSummaryResponse(
         session_id=_session_id(session_id),
+        provider="openclaw",
         project_path=project_path,
         project_name=_project_display_name(project_path),
         route_slug=route_target.route_slug,
@@ -1448,6 +1479,7 @@ def _summarize_claude_session(
     )
     return ConversationSummaryResponse(
         session_id=_session_id(session_id),
+        provider="claude",
         project_path=project_path,
         project_name=_project_display_name(project_path),
         route_slug=route_target.route_slug,
@@ -1607,6 +1639,7 @@ def _get_opencloud_live_conversation(
     )
     return ConversationDetailResponse(
         session_id=_session_id(session.id),
+        provider="opencloud",
         project_path=project_path,
         route_slug=route_target.route_slug,
         conversation_ref=route_target.conversation_ref,
@@ -1638,10 +1671,14 @@ def _get_openclaw_live_conversation(
         candidate_lines = parse_openclaw_session_lines(item.content)
         if not candidate_lines:
             continue
-        candidate_session_id, candidate_agent_id = _openclaw_effective_identity(item, candidate_lines)
+        candidate_project_path, candidate_session_id = _openclaw_canonical_identity(
+            item,
+            candidate_lines,
+            session_store=_openclaw_session_store(services, agent_id=item.agent_id),
+        )
         if candidate_session_id != session_id:
             continue
-        if f"openclaw:agent:{candidate_agent_id}" != project_path:
+        if candidate_project_path != project_path:
             continue
         artifact = item
         lines = candidate_lines
@@ -1766,6 +1803,7 @@ def _get_openclaw_live_conversation(
 
     return ConversationDetailResponse(
         session_id=_session_id(effective_session_id),
+        provider="openclaw",
         project_path=project_path,
         route_slug=route_target.route_slug,
         conversation_ref=route_target.conversation_ref,
@@ -1780,6 +1818,14 @@ def _get_openclaw_live_conversation(
         start_time=created_at,
         end_time=end_time,
         subagents=[],
+        provider_detail=_openclaw_provider_detail(
+            services,
+            live_artifact=artifact,
+            lines=lines,
+            project_path=project_path,
+            canonical_session_id=effective_session_id,
+            total_usage=total_usage,
+        ),
         reasoning_effort=reasoning_effort,
         total_reasoning_tokens=_openclaw_total_reasoning_tokens(lines),
     )
@@ -1984,6 +2030,7 @@ def _shape_claude_live_conversation_detail(
     )
     return ConversationDetailResponse(
         session_id=_session_id(session_id),
+        provider="claude",
         project_path=project_path,
         route_slug=route_target.route_slug,
         conversation_ref=route_target.conversation_ref,
@@ -2412,6 +2459,7 @@ def _summarize_codex_artifact(
     )
     summary = ConversationSummaryResponse(
         session_id=_session_id(session_id),
+        provider="codex",
         project_path=project_path,
         project_name=project_name,
         route_slug=route_target.route_slug,
@@ -2702,6 +2750,7 @@ def _get_codex_live_conversation(
     )
     return ConversationDetailResponse(
         session_id=_session_id(session_id),
+        provider="codex",
         project_path=project_path,
         route_slug=route_target.route_slug,
         conversation_ref=route_target.conversation_ref,
@@ -2914,6 +2963,46 @@ def _openclaw_session_artifacts(services: BackendServices) -> list[OpenClawSessi
     return artifacts
 
 
+def _openclaw_transcript_artifacts(services: BackendServices) -> list[OpenClawTranscriptArtifact]:
+    cached = services.cache.get("openclaw_transcript_artifacts")
+    if isinstance(cached, list):
+        return cached
+    artifacts = services.openclaw_store.list_transcript_artifacts()
+    services.cache.set(
+        "openclaw_transcript_artifacts",
+        artifacts,
+        ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+    )
+    return artifacts
+
+
+def _openclaw_session_store(
+    services: BackendServices,
+    *,
+    agent_id: str,
+) -> OpenClawSessionStoreArtifact | None:
+    cache_key = _cache_key("openclaw_session_store", agent_id)
+    cached = services.cache.get(cache_key, _CACHE_MISS)
+    if cached is None or isinstance(cached, OpenClawSessionStoreArtifact):
+        return cached
+    artifact = services.openclaw_store.read_session_store(agent_id=agent_id)
+    services.cache.set(cache_key, artifact, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
+    return artifact
+
+
+def _openclaw_memory_store_metadata(services: BackendServices) -> dict[str, Any]:
+    cached = services.cache.get("openclaw_memory_store_metadata", _CACHE_MISS)
+    if isinstance(cached, dict):
+        return cached
+    metadata = services.openclaw_store.read_memory_store_metadata().model_dump(mode="python")
+    services.cache.set(
+        "openclaw_memory_store_metadata",
+        metadata,
+        ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+    )
+    return metadata
+
+
 def _opencloud_sessions(services: BackendServices) -> list[OpenCloudSessionRecord]:
     cached = services.cache.get("opencloud_sessions")
     if isinstance(cached, list):
@@ -3057,20 +3146,155 @@ def _is_openclaw_tool_role(role: str | None) -> bool:
     return role in {"tool", "toolResult"}
 
 
-def _openclaw_effective_identity(
-    artifact: OpenClawSessionArtifact,
+def _openclaw_header_session(
     lines: list[dict[str, Any]],
-) -> tuple[str, str]:
-    session_id = artifact.session_id
-    agent_id = artifact.agent_id
+) -> dict[str, Any]:
     for line in lines:
         if _string_or_none(line.get("type")) != "session":
             continue
         session = _dict_or_none(line.get("session"))
-        session_id = _string_or_none(session.get("id")) or session_id
-        agent_id = _string_or_none(session.get("agentId")) or agent_id
-        break
-    return session_id, agent_id
+        if session:
+            return session
+    return {}
+
+
+def _openclaw_header_workspace_dir(lines: list[dict[str, Any]]) -> str | None:
+    for line in lines:
+        if _string_or_none(line.get("type")) != "session":
+            continue
+        workspace_dir = _string_or_none(line.get("workspaceDir"))
+        if workspace_dir:
+            return workspace_dir
+        raw = _dict_or_none(line.get("raw"))
+        workspace_dir = _string_or_none(raw.get("workspaceDir"))
+        if workspace_dir:
+            return workspace_dir
+        unknown_fields = _dict_or_none(line.get("unknown_fields"))
+        workspace_dir = _string_or_none(unknown_fields.get("workspaceDir"))
+        if workspace_dir:
+            return workspace_dir
+    return None
+
+
+def _same_openclaw_path(left: str | None, right: str | None) -> bool:
+    if not left or not right:
+        return False
+    try:
+        return Path(left).resolve(strict=False) == Path(right).resolve(strict=False)
+    except OSError:
+        return left == right
+
+
+def _match_openclaw_session_store_entry(
+    artifact: OpenClawTranscriptArtifact,
+    *,
+    lines: list[dict[str, Any]],
+    session_store: OpenClawSessionStoreArtifact | None,
+) -> tuple[str, dict[str, Any], str] | None:
+    if session_store is None:
+        return None
+
+    header_session = _openclaw_header_session(lines)
+    header_session_id = _string_or_none(header_session.get("id"))
+    header_title = _string_or_none(header_session.get("title"))
+    artifact_path = artifact.path
+    artifact_name = Path(artifact.path).name
+    artifact_stem = Path(artifact.path).stem if artifact.kind == "live_transcript" else artifact.session_id
+
+    best_key: str | None = None
+    best_entry: dict[str, Any] | None = None
+    best_match_kind: str | None = None
+    best_score = -1
+    for key, raw_entry in session_store.entries.items():
+        entry = _dict_or_none(raw_entry)
+        if not entry:
+            continue
+        session_file = _string_or_none(entry.get("sessionFile"))
+        entry_session_id = _string_or_none(entry.get("sessionId"))
+        score = 0
+        match_kind: str | None = None
+        if _same_openclaw_path(session_file, artifact_path):
+            score = 50
+            match_kind = "session_file"
+        elif header_session_id and entry_session_id == header_session_id:
+            score = 40
+            match_kind = "header_session_id"
+        elif entry_session_id == artifact_stem:
+            score = 30
+            match_kind = "artifact_session_id"
+        elif (
+            key.startswith(f"agent:{artifact.agent_id}:")
+            and session_file
+            and (
+                Path(session_file).name == artifact_name
+                or Path(session_file).stem == artifact_stem
+            )
+        ):
+            score = 20
+            match_kind = "same_agent_path"
+        elif (
+            header_title
+            and key.startswith(f"agent:{artifact.agent_id}:")
+            and _string_or_none(entry.get("title")) == header_title
+        ):
+            score = 10
+            match_kind = "same_agent_title"
+        if score > best_score or (score == best_score and best_key is not None and key < best_key):
+            best_key = key
+            best_entry = entry
+            best_match_kind = match_kind
+            best_score = score
+
+    if best_key is None or best_entry is None or best_score <= 0 or best_match_kind is None:
+        return None
+    return best_key, best_entry, best_match_kind
+
+
+def _openclaw_canonical_identity(
+    artifact: OpenClawSessionArtifact,
+    lines: list[dict[str, Any]],
+    session_store: OpenClawSessionStoreArtifact | None = None,
+) -> tuple[str, str]:
+    header_session = _openclaw_header_session(lines)
+    matched_store = _match_openclaw_session_store_entry(
+        artifact,
+        lines=lines,
+        session_store=session_store,
+    )
+    matched_store_session_id = (
+        _string_or_none(matched_store[1].get("sessionId"))
+        if matched_store is not None
+        else None
+    )
+    session_id = (
+        _string_or_none(header_session.get("id"))
+        or (artifact.session_id if artifact.kind == "live_transcript" else None)
+        or matched_store_session_id
+        or artifact.session_id
+    )
+    agent_id = _string_or_none(header_session.get("agentId")) or artifact.agent_id
+    return f"openclaw:agent:{agent_id}", session_id
+
+
+def _attached_openclaw_archives(
+    transcript_artifacts: list[OpenClawTranscriptArtifact],
+    *,
+    live_artifact: OpenClawTranscriptArtifact,
+    canonical_session_id: str,
+) -> list[OpenClawTranscriptArtifact]:
+    attached: list[OpenClawTranscriptArtifact] = []
+    for artifact in transcript_artifacts:
+        if artifact.kind == "live_transcript" or artifact.agent_id != live_artifact.agent_id:
+            continue
+        candidate_lines = parse_openclaw_session_lines(artifact.content)
+        candidate_project_path, candidate_session_id = _openclaw_canonical_identity(artifact, candidate_lines)
+        if candidate_project_path != f"openclaw:agent:{live_artifact.agent_id}":
+            continue
+        if candidate_session_id != canonical_session_id and artifact.session_id != live_artifact.session_id:
+            continue
+        attached.append(artifact)
+    attached.sort(key=lambda item: (item.modified_at, item.path), reverse=True)
+    return attached
 
 
 def _openclaw_user_texts(message: dict[str, Any]) -> list[str]:
@@ -3129,6 +3353,151 @@ def _openclaw_total_reasoning_tokens(lines: list[dict[str, Any]]) -> int | None:
         if reasoning_tokens > 0:
             latest = reasoning_tokens
     return latest or None
+
+
+def _openclaw_transcript_skill_payload(lines: list[dict[str, Any]]) -> dict[str, object]:
+    for line in reversed(lines):
+        data = _dict_or_none(line.get("data"))
+        if _string_or_none(data.get("kind")) != "skills":
+            continue
+        return {
+            "prompt": _string_or_none(data.get("prompt")),
+            "names": [item for item in data.get("names", []) if isinstance(item, str)]
+            if isinstance(data.get("names"), list)
+            else [],
+        }
+    return {}
+
+
+def _openclaw_system_prompt_payload(
+    lines: list[dict[str, Any]],
+    *,
+    matched_session_store_entry: dict[str, Any] | None,
+) -> dict[str, object]:
+    for line in reversed(lines):
+        data = _dict_or_none(line.get("data"))
+        if _string_or_none(data.get("kind")) != "system_prompt":
+            continue
+        return {
+            "workspace_dir": _string_or_none(data.get("workspaceDir")),
+            "content": _string_or_none(data.get("content")),
+        }
+
+    session = _openclaw_header_session(lines)
+    system_prompt = _dict_or_none((matched_session_store_entry or {}).get("systemPrompt"))
+    return {
+        "workspace_dir": _openclaw_header_workspace_dir(lines)
+        or _string_or_none(session.get("workspaceDir"))
+        or _string_or_none(system_prompt.get("workspaceDir")),
+        "content": _string_or_none(system_prompt.get("content")),
+    }
+
+
+def _openclaw_provider_detail(
+    services: BackendServices,
+    *,
+    live_artifact: OpenClawTranscriptArtifact,
+    lines: list[dict[str, Any]],
+    project_path: str,
+    canonical_session_id: str,
+    total_usage: _UsageTotals,
+) -> ConversationProviderDetailResponse:
+    session_store = _openclaw_session_store(services, agent_id=live_artifact.agent_id)
+    matched_session_store = _match_openclaw_session_store_entry(
+        live_artifact,
+        lines=lines,
+        session_store=session_store,
+    )
+    matched_entry_key = matched_session_store[0] if matched_session_store is not None else None
+    matched_entry = matched_session_store[1] if matched_session_store is not None else None
+    attached_archives = _attached_openclaw_archives(
+        _openclaw_transcript_artifacts(services),
+        live_artifact=live_artifact,
+        canonical_session_id=canonical_session_id,
+    )
+    event_types: dict[str, int] = {}
+    for line in lines:
+        line_type = _string_or_none(line.get("type")) or "unknown"
+        event_types[line_type] = event_types.get(line_type, 0) + 1
+
+    session_store_usage = _dict_or_none((matched_entry or {}).get("usage"))
+    artifact_inventory = {
+        "live_transcript": {
+            "status": "live",
+            "kind": live_artifact.kind,
+            "path": live_artifact.path,
+            "agent_id": live_artifact.agent_id,
+            "session_id": live_artifact.session_id,
+            "canonical_session_id": canonical_session_id,
+            "project_path": project_path,
+            "modified_at": live_artifact.modified_at,
+        },
+        "attached_archives": [
+            {
+                "kind": artifact.kind,
+                "path": artifact.path,
+                "agent_id": artifact.agent_id,
+                "session_id": artifact.session_id,
+                "modified_at": artifact.modified_at,
+            }
+            for artifact in attached_archives
+        ],
+    }
+    session_store_payload: dict[str, object] = {}
+    if session_store is not None:
+        session_store_payload = {
+            "path": session_store.path,
+            "modified_at": session_store.modified_at,
+            "entry_key": matched_entry_key,
+            "skills": _dict_or_none((matched_entry or {}).get("skills")),
+        }
+
+    raw_events = [
+        {
+            "type": _string_or_none(line.get("type")) or "",
+            "timestamp": line.get("timestamp"),
+            "workspaceDir": _string_or_none(line.get("workspaceDir")),
+            "raw": _dict_or_none(line.get("raw")),
+            "unknown_fields": _dict_or_none(line.get("unknown_fields")),
+        }
+        for line in lines
+    ]
+
+    return ConversationProviderDetailResponse(
+        kind="openclaw",
+        openclaw=OpenClawConversationDetailResponse(
+            artifact_inventory=artifact_inventory,
+            session_store=session_store_payload,
+            skills=_openclaw_transcript_skill_payload(lines),
+            system_prompt=_openclaw_system_prompt_payload(
+                lines,
+                matched_session_store_entry=matched_entry,
+            ),
+            transcript_diagnostics={
+                "event_types": event_types,
+                "total_events": len(lines),
+                "out_of_matrix_event_count": sum(
+                    1
+                    for line in lines
+                    if (_string_or_none(line.get("type")) or "") not in _OPENCLAW_PROVIDER_EVENT_TYPES
+                ),
+            },
+            usage_reconciliation={
+                "transcript_total_tokens": total_usage.total_tokens,
+                "store_total_tokens": _int_value(session_store_usage.get("totalTokens")),
+            },
+            memory_store=_openclaw_memory_store_metadata(services),
+            raw={
+                "events": raw_events,
+                "unhandled_events": [
+                    item
+                    for item in raw_events
+                    if item["type"] not in _OPENCLAW_PROVIDER_EVENT_TYPES
+                ],
+                "session_store_entry": matched_entry or {},
+            },
+        ),
+    )
 
 
 def _shape_plan_steps(raw_steps: list[HistoricalConversationPlanStep]) -> list[ConversationPlanStepResponse]:

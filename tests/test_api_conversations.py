@@ -1465,37 +1465,166 @@ def _seed_openclaw_archive_family(settings: Settings) -> None:
         "agent:main:main": {
             "sessionId": "primary",
             "title": "Primary stitched family",
+            "skills": {
+                "prompt": "Follow the OpenClaw rollout checklist",
+                "names": ["verification-before-completion", "requesting-code-review"],
+            },
+            "systemPrompt": {
+                "workspaceDir": "/Users/tony/Code/helaicopter",
+                "content": "You are working in the helaicopter workspace.",
+            },
+            "usage": {
+                "totalTokens": 275,
+            },
         }
     }
     sessions_json_path.write_text(json.dumps(sessions_json), encoding="utf-8")
 
     primary_live = sessions_dir / "primary.jsonl"
     primary_live.write_text(
-        json.dumps(
-            {
-                "type": "session",
-                "timestamp": "2026-03-22T03:00:00Z",
-                "session": {
-                    "id": "primary",
-                    "agentId": "main",
-                    "title": "Primary live transcript",
-                },
-            }
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-22T03:00:00Z",
+                        "workspaceDir": "/Users/tony/Code/helaicopter",
+                        "session": {
+                            "id": "primary",
+                            "agentId": "main",
+                            "title": "Primary live transcript",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "model_change",
+                        "timestamp": "2026-03-22T03:00:01Z",
+                        "model": "gpt-5",
+                        "provider": "openai-codex",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "thinking_level_change",
+                        "timestamp": "2026-03-22T03:00:02Z",
+                        "thinkingLevel": "max",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "custom",
+                        "timestamp": "2026-03-22T03:00:03Z",
+                        "data": {
+                            "kind": "skills",
+                            "prompt": "Transcript skill prompt",
+                            "names": ["verification-before-completion"],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "custom_message",
+                        "timestamp": "2026-03-22T03:00:03.250000Z",
+                        "data": {
+                            "kind": "system_prompt",
+                            "workspaceDir": "/Users/tony/Code/helaicopter",
+                            "content": "Prefer repository-local evidence.",
+                        },
+                        "label": "provider-note",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "compaction",
+                        "timestamp": "2026-03-22T03:00:03.500000Z",
+                        "data": {
+                            "beforeTokens": 320,
+                            "afterTokens": 210,
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "branch_summary",
+                        "timestamp": "2026-03-22T03:00:03.750000Z",
+                        "data": {
+                            "branch": "codex/openclaw-provider-detail",
+                            "status": "in_progress",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-22T03:00:04Z",
+                        "message": {
+                            "id": "primary-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Inspect provider detail stitching"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-22T03:00:05Z",
+                        "message": {
+                            "id": "primary-assistant-1",
+                            "role": "assistant",
+                            "model": "gpt-5",
+                            "usage": {
+                                "inputTokens": 111,
+                                "outputTokens": 68,
+                                "cacheReadTokens": 12,
+                                "cacheCreationTokens": 4,
+                                "reasoningTokens": 21,
+                            },
+                            "content": [
+                                {"type": "text", "text": "Provider detail is stitched from the live transcript."}
+                            ],
+                            "checkpoint": "provider-detail",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "unknown_event",
+                        "timestamp": "2026-03-22T03:00:06Z",
+                        "payload": {"note": "keep for raw diagnostics"},
+                    }
+                ),
+            ]
         ),
         encoding="utf-8",
     )
     reset_archive = sessions_dir / "primary.jsonl.reset.2026-03-22T03-00-11.497Z"
     reset_archive.write_text(
-        json.dumps(
-            {
-                "type": "session",
-                "timestamp": "2026-03-22T03:00:11.497Z",
-                "session": {
-                    "id": "primary",
-                    "agentId": "main",
-                    "title": "Primary archive reset",
-                },
-            }
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "timestamp": "2026-03-22T03:00:11.497Z",
+                        "session": {
+                            "id": "primary",
+                            "agentId": "main",
+                            "title": "Primary archive reset",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-03-22T03:00:11.600000Z",
+                        "message": {
+                            "id": "archive-user-1",
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Archive-only context"}],
+                        },
+                    }
+                ),
+            ]
         ),
         encoding="utf-8",
     )
@@ -1934,6 +2063,299 @@ class TestConversationEndpoints:
             "thread_type": "main",
             "parent_session_id": None,
         }
+
+    def test_openclaw_provider_detail_stitches_family_and_attaches_archives(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                summary_response = client.get("/conversations", params={"project": "openclaw:agent:main"})
+                detail_response = client.get("/conversations/openclaw:agent:main/primary")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert summary_response.status_code == 200
+        primary_summary = {item["session_id"]: item for item in summary_response.json()}["primary"]
+        assert primary_summary["provider"] == "openclaw"
+
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["provider"] == "openclaw"
+        assert payload["provider_detail"]["kind"] == "openclaw"
+        assert [message["id"] for message in payload["messages"]] == [
+            "primary-user-1",
+            "primary-assistant-1",
+        ]
+
+        openclaw = payload["provider_detail"]["openclaw"]
+        assert openclaw["artifact_inventory"]["live_transcript"]["status"] == "live"
+        assert openclaw["artifact_inventory"]["live_transcript"]["canonical_session_id"] == "primary"
+        assert [item["kind"] for item in openclaw["artifact_inventory"]["attached_archives"]] == [
+            "reset_archive"
+        ]
+        assert openclaw["session_store"]["skills"]["prompt"] == "Follow the OpenClaw rollout checklist"
+        assert openclaw["skills"]["prompt"] == "Transcript skill prompt"
+        assert openclaw["system_prompt"]["workspace_dir"] == "/Users/tony/Code/helaicopter"
+        assert openclaw["usage_reconciliation"]["transcript_total_tokens"] == 195
+        assert openclaw["memory_store"]["path"].endswith("/.openclaw/memory/main.sqlite")
+        assert openclaw["transcript_diagnostics"]["event_types"]["custom_message"] == 1
+        assert openclaw["transcript_diagnostics"]["event_types"]["branch_summary"] == 1
+        assert openclaw["raw"]["session_store_entry"]["sessionId"] == "primary"
+        assert openclaw["raw"]["events"][0]["workspaceDir"] == "/Users/tony/Code/helaicopter"
+        assert [item["type"] for item in openclaw["raw"]["unhandled_events"]] == ["unknown_event"]
+
+    def test_openclaw_provider_detail_system_prompt_falls_back_to_header_workspace_dir(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        sessions_dir = settings.openclaw_agents_dir / "main" / "sessions"
+        sessions_json_path = sessions_dir / "sessions.json"
+        sessions_json = json.loads(sessions_json_path.read_text(encoding="utf-8"))
+        sessions_json["entries"]["agent:main:main"].pop("systemPrompt", None)
+        sessions_json_path.write_text(json.dumps(sessions_json), encoding="utf-8")
+
+        primary_path = sessions_dir / "primary.jsonl"
+        lines = [
+            json.loads(line)
+            for line in primary_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        filtered_lines = [line for line in lines if line.get("type") != "custom_message"]
+        primary_path.write_text(
+            "\n".join(json.dumps(line) for line in filtered_lines),
+            encoding="utf-8",
+        )
+
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                detail_response = client.get("/conversations/openclaw:agent:main/primary")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert detail_response.status_code == 200
+        assert (
+            detail_response.json()["provider_detail"]["openclaw"]["system_prompt"]["workspace_dir"]
+            == "/Users/tony/Code/helaicopter"
+        )
+
+    def test_openclaw_provider_detail_canonical_identity_prefers_header_then_filename_stem(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        sessions_dir = settings.openclaw_agents_dir / "main" / "sessions"
+        sessions_json_path = sessions_dir / "sessions.json"
+        sessions_json = json.loads(sessions_json_path.read_text(encoding="utf-8"))
+        sessions_json["entries"] = {
+            "agent:main:header": {"sessionId": "store-header-id"},
+            "agent:main:filename": {"sessionId": "store-filename-id"},
+        }
+        sessions_json_path.write_text(json.dumps(sessions_json), encoding="utf-8")
+        sessions_dir.joinpath("header-filename.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "session",
+                            "timestamp": "2026-03-22T05:00:00Z",
+                            "session": {"id": "header-wins", "agentId": "main"},
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "message",
+                            "timestamp": "2026-03-22T05:00:01Z",
+                            "message": {
+                                "id": "header-user-1",
+                                "role": "user",
+                                "content": [{"type": "text", "text": "Header identity should win"}],
+                            },
+                        }
+                    ),
+                ]
+            ),
+            encoding="utf-8",
+        )
+        sessions_dir.joinpath("filename-wins.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "message",
+                    "timestamp": "2026-03-22T05:05:00Z",
+                    "message": {
+                        "id": "filename-user-1",
+                        "role": "user",
+                        "content": [{"type": "text", "text": "Filename identity should win"}],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                response = client.get("/conversations", params={"project": "openclaw:agent:main"})
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert response.status_code == 200
+        by_session = {item["session_id"]: item for item in response.json()}
+        assert "header-wins" in by_session
+        assert "filename-wins" in by_session
+        assert "store-header-id" not in by_session
+        assert "store-filename-id" not in by_session
+
+    def test_openclaw_headerless_live_transcript_uses_session_store_fallback_for_summary_detail_and_ref(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        sessions_dir = settings.openclaw_agents_dir / "main" / "sessions"
+        sessions_json_path = sessions_dir / "sessions.json"
+        sessions_json = json.loads(sessions_json_path.read_text(encoding="utf-8"))
+        sessions_json["entries"] = {
+            "agent:main:fallback": {
+                "sessionId": "store-fallback-id",
+                "sessionFile": str(sessions_dir / "fallback-live.jsonl"),
+            }
+        }
+        sessions_json_path.write_text(json.dumps(sessions_json), encoding="utf-8")
+        sessions_dir.joinpath("fallback-live.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "message",
+                    "timestamp": "2026-03-22T06:00:00Z",
+                    "message": {
+                        "id": "fallback-user-1",
+                        "role": "user",
+                        "content": [{"type": "text", "text": "Store fallback should route this transcript"}],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                list_response = client.get("/conversations", params={"project": "openclaw:agent:main"})
+                detail_response = client.get("/conversations/openclaw:agent:main/fallback-live")
+                by_ref_response = client.get(
+                    "/conversations/by-ref/outdated--openclaw-fallback-live"
+                )
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert list_response.status_code == 200
+        by_session = {item["session_id"]: item for item in list_response.json()}
+        assert "fallback-live" in by_session
+        assert "store-fallback-id" not in by_session
+
+        assert detail_response.status_code == 200
+        assert detail_response.json()["session_id"] == "fallback-live"
+        assert (
+            detail_response.json()["provider_detail"]["openclaw"]["raw"]["session_store_entry"]["sessionId"]
+            == "store-fallback-id"
+        )
+
+        assert by_ref_response.status_code == 200
+        assert by_ref_response.json()["session_id"] == "fallback-live"
+        assert by_ref_response.json()["project_path"] == "openclaw:agent:main"
+
+    def test_openclaw_session_file_match_beats_weaker_session_store_candidates(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        sessions_dir = settings.openclaw_agents_dir / "main" / "sessions"
+        sessions_json_path = sessions_dir / "sessions.json"
+        sessions_json = json.loads(sessions_json_path.read_text(encoding="utf-8"))
+        target_path = sessions_dir / "ambiguous-live.jsonl"
+        sessions_json["entries"] = {
+            "agent:main:strong": {
+                "sessionId": "session-file-wins",
+                "sessionFile": str(target_path),
+            },
+            "agent:main:weaker": {
+                "sessionId": "ambiguous-live",
+                "title": "Same title but weaker evidence",
+            },
+        }
+        sessions_json_path.write_text(json.dumps(sessions_json), encoding="utf-8")
+        target_path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "session",
+                            "timestamp": "2026-03-22T06:05:00Z",
+                            "session": {
+                                "agentId": "main",
+                                "title": "Same title but weaker evidence",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "message",
+                            "timestamp": "2026-03-22T06:05:01Z",
+                            "message": {
+                                "id": "ambiguous-user-1",
+                                "role": "user",
+                                "content": [{"type": "text", "text": "sessionFile should win"}],
+                            },
+                        }
+                    ),
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                list_response = client.get("/conversations", params={"project": "openclaw:agent:main"})
+                detail_response = client.get("/conversations/openclaw:agent:main/ambiguous-live")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert list_response.status_code == 200
+        by_session = {item["session_id"]: item for item in list_response.json()}
+        assert "ambiguous-live" in by_session
+        assert "session-file-wins" not in by_session
+
+        assert detail_response.status_code == 200
+        assert detail_response.json()["session_id"] == "ambiguous-live"
+        assert (
+            detail_response.json()["provider_detail"]["openclaw"]["raw"]["session_store_entry"]["sessionId"]
+            == "session-file-wins"
+        )
 
     def test_opencloud_list_discovers_sqlite_sessions_and_tracks_tool_usage(
         self,
