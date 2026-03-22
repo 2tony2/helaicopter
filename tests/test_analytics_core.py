@@ -116,6 +116,40 @@ class TestPureAnalyticsFiltering:
         codex_only = filter_analytics_conversations(filtered, provider="codex", now=now)
         assert [conversation.conversation_id for conversation in codex_only] == ["codex-recent"]
 
+    def test_filtering_can_return_only_openclaw_conversations(self) -> None:
+        now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
+        recent_openclaw = _summary(
+            "openclaw-recent",
+            provider="openclaw",
+            project_path="openclaw:agent:main",
+            started_at="2026-03-17T08:00:00Z",
+            ended_at="2026-03-17T08:30:00Z",
+            model="openclaw-v1",
+        )
+        recent_claude = _summary(
+            "claude-recent",
+            started_at="2026-03-17T09:00:00Z",
+            ended_at="2026-03-17T09:30:00Z",
+            model="claude-sonnet-4-5-20250929",
+        )
+        recent_codex = _summary(
+            "codex-recent",
+            provider="codex",
+            project_path="codex:-Users-tony-Code-helaicopter",
+            started_at="2026-03-17T10:00:00Z",
+            ended_at="2026-03-17T10:30:00Z",
+            model="gpt-5",
+        )
+
+        filtered = filter_analytics_conversations(
+            [recent_openclaw, recent_claude, recent_codex],
+            provider="openclaw",
+            days=3,
+            now=now,
+        )
+
+        assert [conversation.conversation_id for conversation in filtered] == ["openclaw-recent"]
+
     def test_time_windows_use_requested_days_or_earliest_start(self) -> None:
         now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
         conversations = [
@@ -256,6 +290,117 @@ class TestPureAnalyticsAggregation:
         assert analytics.cost_breakdown_by_provider["claude"].total_cost == pytest.approx(1.0935)
         assert analytics.cost_breakdown_by_provider["codex"].total_cost == pytest.approx(0.45125)
         assert analytics.estimated_cost == pytest.approx(1.54475)
+
+    def test_build_analytics_keeps_openclaw_counts_costs_and_tool_breakdowns_separate(self) -> None:
+        now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
+        claude = _summary(
+            "claude-1",
+            started_at="2026-03-16T09:15:00Z",
+            ended_at="2026-03-16T09:45:00Z",
+            model="claude-sonnet-4-5-20250929",
+            total_input_tokens=100_000,
+            total_output_tokens=50_000,
+            total_cache_write_tokens=10_000,
+            total_cache_read_tokens=20_000,
+            tool_use_count=2,
+            tool_breakdown={"read_file": 2},
+        )
+        codex = _summary(
+            "codex-1",
+            provider="codex",
+            project_path="codex:-Users-tony-Code-helaicopter",
+            started_at="2026-03-17T11:00:00Z",
+            ended_at="2026-03-17T11:30:00Z",
+            model="gpt-5",
+            total_input_tokens=200_000,
+            total_output_tokens=20_000,
+            total_cache_write_tokens=50_000,
+            total_cache_read_tokens=10_000,
+            tool_use_count=4,
+            failed_tool_call_count=1,
+            tool_breakdown={"search": 3, "read_file": 1},
+        )
+        openclaw = _summary(
+            "openclaw-1",
+            provider="openclaw",
+            project_path="openclaw:agent:main",
+            started_at="2026-03-17T07:00:00Z",
+            ended_at="2026-03-17T07:20:00Z",
+            model="claude-sonnet-4-5-20250929",
+            total_input_tokens=50_000,
+            total_output_tokens=5_000,
+            total_cache_write_tokens=1_000,
+            total_cache_read_tokens=2_000,
+            tool_use_count=3,
+            failed_tool_call_count=1,
+            tool_breakdown={"search": 1, "bash": 2},
+        )
+
+        analytics = build_analytics([claude, codex, openclaw], days=7, now=now)
+
+        assert analytics.total_conversations == 3
+        assert analytics.tool_breakdown == {"bash": 2, "read_file": 3, "search": 4}
+        assert analytics.tool_breakdown_by_provider["search"].claude == 0
+        assert analytics.tool_breakdown_by_provider["search"].codex == 3
+        assert analytics.tool_breakdown_by_provider["search"].openclaw == 1
+        assert analytics.tool_breakdown_by_provider["bash"].openclaw == 2
+        assert analytics.model_breakdown_by_provider["claude-sonnet-4-5-20250929"].claude == 1
+        assert analytics.model_breakdown_by_provider["claude-sonnet-4-5-20250929"].openclaw == 1
+        assert analytics.cost_breakdown_by_provider["claude"].total_cost == pytest.approx(1.0935)
+        assert analytics.cost_breakdown_by_provider["codex"].total_cost == pytest.approx(0.45125)
+        assert analytics.cost_breakdown_by_provider["openclaw"].total_cost == pytest.approx(0.22935)
+
+    def test_build_analytics_keeps_claude_and_codex_provider_filters_stable(self) -> None:
+        now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
+        conversations = [
+            _summary(
+                "claude-1",
+                started_at="2026-03-16T09:00:00Z",
+                ended_at="2026-03-16T09:30:00Z",
+                model="claude-sonnet-4-5-20250929",
+                tool_use_count=1,
+                tool_breakdown={"read_file": 1},
+            ),
+            _summary(
+                "codex-1",
+                provider="codex",
+                project_path="codex:-Users-tony-Code-helaicopter",
+                started_at="2026-03-17T09:00:00Z",
+                ended_at="2026-03-17T09:30:00Z",
+                model="gpt-5",
+                tool_use_count=2,
+                tool_breakdown={"search": 2},
+            ),
+            _summary(
+                "openclaw-1",
+                provider="openclaw",
+                project_path="openclaw:agent:main",
+                started_at="2026-03-17T10:00:00Z",
+                ended_at="2026-03-17T10:30:00Z",
+                model="openclaw-v1",
+                tool_use_count=3,
+                tool_breakdown={"bash": 3},
+            ),
+        ]
+
+        claude_only = build_analytics(
+            filter_analytics_conversations(conversations, provider="claude", now=now),
+            days=7,
+            now=now,
+        )
+        codex_only = build_analytics(
+            filter_analytics_conversations(conversations, provider="codex", now=now),
+            days=7,
+            now=now,
+        )
+
+        assert claude_only.total_conversations == 1
+        assert claude_only.tool_breakdown == {"read_file": 1}
+        assert set(claude_only.cost_breakdown_by_provider) == {"claude"}
+
+        assert codex_only.total_conversations == 1
+        assert codex_only.tool_breakdown == {"search": 2}
+        assert set(codex_only.cost_breakdown_by_provider) == {"codex"}
 
     def test_build_analytics_preserves_cache_and_long_context_pricing_rules(self) -> None:
         now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)

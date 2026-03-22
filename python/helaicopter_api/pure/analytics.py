@@ -9,7 +9,7 @@ from typing import Literal
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_semantics import calculate_cost, supports_long_context_premium, resolve_provider
 
-AnalyticsProvider = Literal["claude", "codex"]
+AnalyticsProvider = Literal["claude", "codex", "openclaw"]
 TimeSeriesKey = Literal["hourly", "daily", "weekly", "monthly"]
 TIME_SERIES_KEYS: tuple[TimeSeriesKey, TimeSeriesKey, TimeSeriesKey, TimeSeriesKey] = (
     "hourly",
@@ -23,6 +23,7 @@ TIME_SERIES_KEYS: tuple[TimeSeriesKey, TimeSeriesKey, TimeSeriesKey, TimeSeriesK
 class ProviderBreakdown:
     claude: int = 0
     codex: int = 0
+    openclaw: int = 0
 
 
 @dataclass(slots=True)
@@ -75,6 +76,18 @@ class AnalyticsTimeSeriesPoint:
     claude_failed_tool_calls: int = 0
     claude_tool_error_rate_pct: float = 0.0
     claude_subagents: int = 0
+    openclaw_estimated_cost: float = 0.0
+    openclaw_input_tokens: int = 0
+    openclaw_output_tokens: int = 0
+    openclaw_cache_write_tokens: int = 0
+    openclaw_cache_read_tokens: int = 0
+    openclaw_reasoning_tokens: int = 0
+    openclaw_total_tokens: int = 0
+    openclaw_conversations: int = 0
+    openclaw_tool_calls: int = 0
+    openclaw_failed_tool_calls: int = 0
+    openclaw_tool_error_rate_pct: float = 0.0
+    openclaw_subagents: int = 0
     codex_input_tokens: int = 0
     codex_output_tokens: int = 0
     codex_cache_write_tokens: int = 0
@@ -115,8 +128,14 @@ class DailyUsage:
     codex_cache_read_tokens: int = 0
     claude_conversations: int = 0
     codex_conversations: int = 0
+    openclaw_input_tokens: int = 0
+    openclaw_output_tokens: int = 0
+    openclaw_cache_write_tokens: int = 0
+    openclaw_cache_read_tokens: int = 0
+    openclaw_conversations: int = 0
     claude_subagents: int = 0
     codex_subagents: int = 0
+    openclaw_subagents: int = 0
 
 
 @dataclass(slots=True)
@@ -324,13 +343,20 @@ def build_analytics(
             daily_usage.claude_cache_read_tokens += conversation.total_cache_read_tokens
             daily_usage.claude_conversations += 1
             daily_usage.claude_subagents += conversation.subagent_count
-        else:
+        elif provider == "codex":
             daily_usage.codex_input_tokens += conversation.total_input_tokens
             daily_usage.codex_output_tokens += conversation.total_output_tokens
             daily_usage.codex_cache_write_tokens += conversation.total_cache_write_tokens
             daily_usage.codex_cache_read_tokens += conversation.total_cache_read_tokens
             daily_usage.codex_conversations += 1
             daily_usage.codex_subagents += conversation.subagent_count
+        else:
+            daily_usage.openclaw_input_tokens += conversation.total_input_tokens
+            daily_usage.openclaw_output_tokens += conversation.total_output_tokens
+            daily_usage.openclaw_cache_write_tokens += conversation.total_cache_write_tokens
+            daily_usage.openclaw_cache_read_tokens += conversation.total_cache_read_tokens
+            daily_usage.openclaw_conversations += 1
+            daily_usage.openclaw_subagents += conversation.subagent_count
 
         for key in TIME_SERIES_KEYS:
             bucket_start = _bucket_start(started_at, key)
@@ -359,7 +385,7 @@ def build_analytics(
                 bucket.claude_tool_calls += conversation.tool_use_count
                 bucket.claude_failed_tool_calls += conversation.failed_tool_call_count
                 bucket.claude_subagents += conversation.subagent_count
-            else:
+            elif provider == "codex":
                 bucket.codex_estimated_cost += conversation_cost.total_cost
                 bucket.codex_input_tokens += conversation.total_input_tokens
                 bucket.codex_output_tokens += conversation.total_output_tokens
@@ -371,6 +397,18 @@ def build_analytics(
                 bucket.codex_tool_calls += conversation.tool_use_count
                 bucket.codex_failed_tool_calls += conversation.failed_tool_call_count
                 bucket.codex_subagents += conversation.subagent_count
+            else:
+                bucket.openclaw_estimated_cost += conversation_cost.total_cost
+                bucket.openclaw_input_tokens += conversation.total_input_tokens
+                bucket.openclaw_output_tokens += conversation.total_output_tokens
+                bucket.openclaw_cache_write_tokens += conversation.total_cache_write_tokens
+                bucket.openclaw_cache_read_tokens += conversation.total_cache_read_tokens
+                bucket.openclaw_reasoning_tokens += reasoning_tokens
+                bucket.openclaw_total_tokens += total_tokens
+                bucket.openclaw_conversations += 1
+                bucket.openclaw_tool_calls += conversation.tool_use_count
+                bucket.openclaw_failed_tool_calls += conversation.failed_tool_call_count
+                bucket.openclaw_subagents += conversation.subagent_count
 
     total_tokens = (
         data.total_input_tokens
@@ -514,6 +552,9 @@ def _apply_tool_error_rates(point: AnalyticsTimeSeriesPoint) -> None:
     point.codex_tool_error_rate_pct = (
         (point.codex_failed_tool_calls / point.codex_tool_calls) * 100 if point.codex_tool_calls else 0.0
     )
+    point.openclaw_tool_error_rate_pct = (
+        (point.openclaw_failed_tool_calls / point.openclaw_tool_calls) * 100 if point.openclaw_tool_calls else 0.0
+    )
 
 
 def _increment_provider_breakdown(
@@ -525,8 +566,10 @@ def _increment_provider_breakdown(
     entry = mapping.setdefault(key, ProviderBreakdown())
     if provider == "claude":
         entry.claude += count
-    else:
+    elif provider == "codex":
         entry.codex += count
+    else:
+        entry.openclaw += count
 
 
 def _add_cost_breakdown(target: AnalyticsCostBreakdown, source: AnalyticsCostBreakdown) -> None:

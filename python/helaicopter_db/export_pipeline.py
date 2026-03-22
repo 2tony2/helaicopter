@@ -10,7 +10,10 @@ from typing import Iterable
 
 from helaicopter_api.application.conversations import (
     _get_codex_live_conversation,
+    _get_openclaw_live_conversation,
+    _openclaw_session_artifacts,
     _shape_claude_live_conversation_detail,
+    _summarize_openclaw_artifact,
     _summarize_claude_session,
     _summarize_codex_artifact,
 )
@@ -25,6 +28,7 @@ from helaicopter_api.schema.conversations import (
     ConversationSummaryResponse,
 )
 from helaicopter_api.server.config import Settings, load_settings
+from helaicopter_semantics import resolve_provider
 from helaicopter_semantics.pricing import calculate_cost
 
 from .export_types import (
@@ -87,10 +91,12 @@ def _iter_historical_envelopes(settings: Settings | None = None) -> Iterable[Exp
     for iterator in (
         _iter_claude_historical_envelopes(backend_settings),
         _iter_codex_historical_envelopes(backend_settings),
+        _iter_openclaw_historical_envelopes(backend_settings),
     ):
         for envelope in iterator:
             parsed = parse_export_conversation_envelope(_drop_none_fields(envelope))
             if parsed is not None and parsed.get("type") == "conversation":
+                parsed["summary"]["provider"] = _summary_provider(parsed["summary"])
                 key = _conversation_key(parsed)
                 existing = deduped.get(key)
                 if existing is None or _envelope_rank(parsed) >= _envelope_rank(existing):
@@ -204,6 +210,33 @@ def _iter_codex_historical_envelopes(settings: Settings) -> Iterable[dict[str, o
         )
 
 
+def _iter_openclaw_historical_envelopes(settings: Settings) -> Iterable[dict[str, object]]:
+    services = build_services(settings)
+    cutoff_ms = _utc_now_ms() - MAX_WINDOW_DAYS * MILLIS_PER_DAY
+    start_of_today_ms = int(_start_of_today().timestamp() * 1000)
+    for artifact in _openclaw_session_artifacts(services):
+        modified_at_ms = int(artifact.modified_at * 1000)
+        if modified_at_ms < cutoff_ms:
+            continue
+        summary = _summarize_openclaw_artifact(artifact)
+        if summary is None or summary.timestamp >= start_of_today_ms or summary.last_updated_at < cutoff_ms:
+            continue
+        detail = _get_openclaw_live_conversation(
+            services,
+            session_id=summary.session_id,
+            project_path=summary.project_path,
+        )
+        if detail is None:
+            continue
+        yield _build_envelope(
+            summary=summary,
+            detail=detail,
+            tasks=[],
+            source_path=artifact.path,
+            source_file_modified_at=modified_at_ms,
+        )
+
+
 def _build_envelope(
     *,
     summary: ConversationSummaryResponse,
@@ -240,8 +273,10 @@ def _summary_payload(
     source_path: str,
     source_file_modified_at: int,
 ) -> dict[str, object]:
+    provider = resolve_provider(model=summary.model, project_path=summary.project_path)
     return {
         "sessionId": summary.session_id,
+        "provider": provider,
         "projectPath": summary.project_path,
         "projectName": summary.project_name,
         "threadType": summary.thread_type,
@@ -383,8 +418,18 @@ def _finite_number(value: object) -> bool:
 
 def _conversation_key(envelope: ExportConversationEnvelope) -> str:
     summary = envelope["summary"]
-    provider = provider_for_project_path(summary["projectPath"])
+    provider = _summary_provider(summary)
     return conversation_id(provider, summary["sessionId"])
+
+
+def _summary_provider(summary: dict[str, object]) -> str:
+    provider = summary.get("provider")
+    if isinstance(provider, str) and provider:
+        return provider
+    project_path = summary["projectPath"]
+    if isinstance(project_path, str) and project_path.startswith("openclaw:"):
+        return "openclaw"
+    return provider_for_project_path(project_path)
 
 
 def _envelope_rank(envelope: ExportConversationEnvelope) -> tuple[int, int]:
