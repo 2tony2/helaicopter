@@ -20,7 +20,7 @@ class AnalyticsQueryParams(BaseModel):
     )
     provider: ProviderSelection | None = Field(
         default=None,
-        description="Optional provider filter. Use `all` or omit for combined analytics.",
+        description="Optional provider filter. Use `all` or omit for combined analytics across Claude, Codex, and OpenClaw.",
     )
 
 
@@ -37,10 +37,11 @@ class AnalyticsCostBreakdownResponse(BaseModel):
 
 
 class ProviderBreakdownResponse(BaseModel):
-    """Per-provider count breakdown (Claude vs Codex) for a single metric."""
+    """Per-provider count breakdown (Claude, Codex, OpenClaw) for a single metric."""
 
     claude: int = 0
     codex: int = 0
+    openclaw: int = 0
 
 
 class AnalyticsRateValueResponse(BaseModel):

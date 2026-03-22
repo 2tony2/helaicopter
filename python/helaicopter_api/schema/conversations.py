@@ -47,7 +47,7 @@ class ConversationDagListQueryParams(BaseModel):
     )
     provider: ProviderSelection | None = Field(
         default=None,
-        description="Optional provider filter. Use `all` or omit for combined DAGs.",
+        description="Optional provider filter. Use `all` or omit for combined DAGs across Claude, Codex, and OpenClaw.",
     )
 
 
@@ -65,7 +65,7 @@ class HistoryQueryParams(BaseModel):
 
 
 class ConversationSummaryResponse(BaseModel):
-    """Summary of a single Claude/Codex conversation session."""
+    """Summary of a single Claude, Codex, or OpenClaw conversation session."""
 
     session_id: SessionId
     project_path: EncodedProjectKey

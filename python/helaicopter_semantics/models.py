@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-ProviderIdentifier = Literal["claude", "codex"]
+ProviderIdentifier = Literal["claude", "codex", "openclaw"]
 
 
 def resolve_provider(
@@ -20,8 +20,8 @@ def resolve_provider(
     """Resolve the canonical provider identifier from available metadata.
 
     Resolution priority:
-    1. Explicit provider field (if "codex")
-    2. Project path prefix (if starts with "codex:")
+    1. Explicit provider field (if recognized)
+    2. Project path prefix (if starts with a recognized provider prefix)
     3. Model identifier heuristics
     4. Default to "claude"
 
@@ -33,13 +33,18 @@ def resolve_provider(
     Returns:
         Canonical provider identifier
     """
-    # Explicit provider field takes precedence for Codex
-    if provider and provider.lower() == "codex":
-        return "codex"
+    # Explicit provider field takes precedence when recognized.
+    if provider:
+        provider_lower = provider.lower()
+        if provider_lower in {"codex", "openclaw"}:
+            return provider_lower
 
-    # Project path prefix is authoritative
-    if project_path and project_path.startswith("codex:"):
-        return "codex"
+    # Project path prefix is authoritative when provenance is encoded there.
+    if project_path:
+        if project_path.startswith("openclaw:"):
+            return "openclaw"
+        if project_path.startswith("codex:"):
+            return "codex"
 
     # Model identifier heuristics
     if model:
