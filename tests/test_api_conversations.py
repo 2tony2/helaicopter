@@ -1647,7 +1647,81 @@ def _seed_openclaw_archive_family(settings: Settings) -> None:
     os.utime(reset_archive, (1_763_805_611, 1_763_805_611))
     os.utime(deleted_archive, (1_763_719_194, 1_763_719_194))
     settings.openclaw_memory_sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-    sqlite3.connect(settings.openclaw_memory_sqlite_path).close()
+    _seed_openclaw_memory_store(settings.openclaw_memory_sqlite_path)
+
+
+def _seed_openclaw_memory_store(
+    path: Path,
+    *,
+    workspace_root: str = "/Users/tony/Code/helaicopter",
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.unlink()
+
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE files (
+              id INTEGER PRIMARY KEY,
+              path TEXT NOT NULL,
+              source TEXT
+            );
+
+            CREATE TABLE chunks (
+              id INTEGER PRIMARY KEY,
+              file_id INTEGER NOT NULL,
+              source TEXT,
+              FOREIGN KEY(file_id) REFERENCES files(id)
+            );
+
+            CREATE TABLE embedding_cache (
+              id INTEGER PRIMARY KEY,
+              cache_key TEXT NOT NULL
+            );
+
+            CREATE TABLE memory_summary (
+              id INTEGER PRIMARY KEY,
+              kind TEXT NOT NULL,
+              value TEXT NOT NULL
+            );
+            """
+        )
+        connection.executemany(
+            "INSERT INTO files (id, path, source) VALUES (?, ?, ?)",
+            [
+                (1, f"{workspace_root}/src/hooks/use-conversations.ts", "workspace"),
+                (2, f"{workspace_root}/python/helaicopter_api/application/conversations.py", "workspace"),
+                (3, "/Users/tony/Code/other-project/README.md", "external"),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO chunks (id, file_id, source) VALUES (?, ?, ?)",
+            [
+                (1, 1, "workspace"),
+                (2, 1, "workspace"),
+                (3, 2, "workspace"),
+                (4, 3, "external"),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO embedding_cache (id, cache_key) VALUES (?, ?)",
+            [
+                (1, "workspace:1"),
+                (2, "workspace:2"),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO memory_summary (id, kind, value) VALUES (?, ?, ?)",
+            [
+                (1, "index_version", "3"),
+                (2, "last_refresh", "2026-03-22T03:00:11.497Z"),
+            ],
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 @pytest.fixture()
@@ -1848,7 +1922,7 @@ class TestConversationEndpoints:
         assert main_summary["route_slug"] == "review-openclaw-backend-rollout"
         assert (
             main_summary["conversation_ref"]
-            == "review-openclaw-backend-rollout--openclaw-openclaw-main-session"
+            == "review-openclaw-backend-rollout--openclaw-openclaw:agent:main::openclaw-main-session"
         )
         assert main_summary["model"] == "gpt-5"
         assert main_summary["reasoning_effort"] == "high"
@@ -1864,7 +1938,7 @@ class TestConversationEndpoints:
         secondary_summary = by_session["openclaw-secondary-session"]
         assert secondary_summary["project_path"] == "openclaw:agent:secondary"
         assert secondary_summary["conversation_ref"] == (
-            "inspect-secondary-agent-transcript--openclaw-openclaw-secondary-session"
+            "inspect-secondary-agent-transcript--openclaw-openclaw:agent:secondary::openclaw-secondary-session"
         )
 
         filtered = conversations_client.get("/conversations", params={"project": "openclaw:agent:main"})
@@ -1970,7 +2044,7 @@ class TestConversationEndpoints:
         assert payload["project_path"] == "openclaw:agent:main"
         assert payload["route_slug"] == "review-openclaw-backend-rollout"
         assert payload["conversation_ref"] == (
-            "review-openclaw-backend-rollout--openclaw-openclaw-main-session"
+            "review-openclaw-backend-rollout--openclaw-openclaw:agent:main::openclaw-main-session"
         )
         assert payload["model"] == "gpt-5"
         assert payload["reasoning_effort"] == "high"
@@ -2039,7 +2113,7 @@ class TestConversationEndpoints:
         alias_summary = by_session["payload-session-id"]
         assert alias_summary["project_path"] == "openclaw:agent:secondary"
         assert alias_summary["conversation_ref"] == (
-            "alias-session-id-transcript--openclaw-payload-session-id"
+            "alias-session-id-transcript--openclaw-openclaw:agent:secondary::payload-session-id"
         )
 
         detail_response = conversations_client.get(
@@ -2048,7 +2122,7 @@ class TestConversationEndpoints:
         assert detail_response.status_code == 200
         assert detail_response.json()["session_id"] == "payload-session-id"
         assert detail_response.json()["conversation_ref"] == (
-            "alias-session-id-transcript--openclaw-payload-session-id"
+            "alias-session-id-transcript--openclaw-openclaw:agent:secondary::payload-session-id"
         )
 
         by_ref_response = conversations_client.get(
@@ -2056,10 +2130,208 @@ class TestConversationEndpoints:
         )
         assert by_ref_response.status_code == 200
         assert by_ref_response.json() == {
-            "conversation_ref": "alias-session-id-transcript--openclaw-payload-session-id",
+            "conversation_ref": "alias-session-id-transcript--openclaw-openclaw:agent:secondary::payload-session-id",
             "route_slug": "alias-session-id-transcript",
             "project_path": "openclaw:agent:secondary",
             "session_id": "payload-session-id",
+            "thread_type": "main",
+            "parent_session_id": None,
+        }
+
+    def test_openclaw_by_ref_resolution_is_unique_across_agents_with_duplicate_session_ids(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        main_sessions_dir = settings.openclaw_agents_dir / "main" / "sessions"
+        secondary_sessions_dir = settings.openclaw_agents_dir / "secondary" / "sessions"
+        shared_session_id = "shared-session"
+
+        main_sessions_dir.joinpath(f"{shared_session_id}.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "session",
+                            "timestamp": "2026-03-22T08:00:00Z",
+                            "session": {
+                                "id": shared_session_id,
+                                "agentId": "main",
+                                "title": "Main shared session",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "message",
+                            "timestamp": "2026-03-22T08:00:01Z",
+                            "message": {
+                                "id": "main-shared-user-1",
+                                "role": "user",
+                                "content": [{"type": "text", "text": "Main agent duplicate ref"}],
+                            },
+                        }
+                    ),
+                ]
+            ),
+            encoding="utf-8",
+        )
+        secondary_sessions_dir.joinpath(f"{shared_session_id}.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "session",
+                            "timestamp": "2026-03-22T08:05:00Z",
+                            "session": {
+                                "id": shared_session_id,
+                                "agentId": "secondary",
+                                "title": "Secondary shared session",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "message",
+                            "timestamp": "2026-03-22T08:05:01Z",
+                            "message": {
+                                "id": "secondary-shared-user-1",
+                                "role": "user",
+                                "content": [{"type": "text", "text": "Secondary agent duplicate ref"}],
+                            },
+                        }
+                    ),
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                list_response = client.get("/conversations")
+                main_by_ref = client.get(
+                    "/conversations/by-ref/main-agent-duplicate-ref--openclaw-openclaw:agent:main::shared-session"
+                )
+                secondary_by_ref = client.get(
+                    "/conversations/by-ref/secondary-agent-duplicate-ref--openclaw-openclaw:agent:secondary::shared-session"
+                )
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert list_response.status_code == 200
+        shared_summaries = [
+            item
+            for item in list_response.json()
+            if item["session_id"] == shared_session_id and item["provider"] == "openclaw"
+        ]
+        by_project = {item["project_path"]: item for item in shared_summaries}
+        assert by_project["openclaw:agent:main"]["conversation_ref"] == (
+            "main-agent-duplicate-ref--openclaw-openclaw:agent:main::shared-session"
+        )
+        assert by_project["openclaw:agent:secondary"]["conversation_ref"] == (
+            "secondary-agent-duplicate-ref--openclaw-openclaw:agent:secondary::shared-session"
+        )
+
+        assert main_by_ref.status_code == 200
+        assert main_by_ref.json()["project_path"] == "openclaw:agent:main"
+        assert main_by_ref.json()["session_id"] == shared_session_id
+
+        assert secondary_by_ref.status_code == 200
+        assert secondary_by_ref.json()["project_path"] == "openclaw:agent:secondary"
+        assert secondary_by_ref.json()["session_id"] == shared_session_id
+
+    def test_persisted_openclaw_summary_and_detail_keep_agent_qualified_ref(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        archived_session_id = "archived-main-session"
+        _insert_persisted_conversation_summary(
+            settings.app_sqlite_path,
+            provider="openclaw",
+            session_id=archived_session_id,
+            project_path="openclaw:agent:main",
+            project_name="openclaw:agent:main",
+            thread_type="main",
+            first_message="Persisted main archived session",
+            route_slug="persisted-main-archived-session",
+            started_at="2026-03-20T10:00:00Z",
+            ended_at="2026-03-20T10:10:00Z",
+        )
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                list_response = client.get("/conversations")
+                detail_response = client.get(
+                    f"/conversations/openclaw:agent:main/{archived_session_id}"
+                )
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert list_response.status_code == 200
+        archived_summary = next(
+            item
+            for item in list_response.json()
+            if item["provider"] == "openclaw" and item["session_id"] == archived_session_id
+        )
+        assert archived_summary["project_path"] == "openclaw:agent:main"
+        assert archived_summary["conversation_ref"] == (
+            "persisted-main-archived-session--openclaw-openclaw:agent:main::archived-main-session"
+        )
+
+        assert detail_response.status_code == 200
+        assert detail_response.json()["conversation_ref"] == (
+            "persisted-main-archived-session--openclaw-openclaw:agent:main::archived-main-session"
+        )
+
+    def test_openclaw_by_ref_resolves_persisted_archived_only_conversations(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        archived_session_id = "archived-only-session"
+        _insert_persisted_conversation_summary(
+            settings.app_sqlite_path,
+            provider="openclaw",
+            session_id=archived_session_id,
+            project_path="openclaw:agent:main",
+            project_name="openclaw:agent:main",
+            thread_type="main",
+            first_message="Persisted archived only session",
+            route_slug="persisted-archived-only-session",
+            started_at="2026-03-19T09:00:00Z",
+            ended_at="2026-03-19T09:05:00Z",
+        )
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                by_ref_response = client.get(
+                    "/conversations/by-ref/old-title--openclaw-openclaw:agent:main::archived-only-session"
+                )
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert by_ref_response.status_code == 200
+        assert by_ref_response.json() == {
+            "conversation_ref": (
+                "persisted-archived-only-session--openclaw-openclaw:agent:main::archived-only-session"
+            ),
+            "route_slug": "persisted-archived-only-session",
+            "project_path": "openclaw:agent:main",
+            "session_id": "archived-only-session",
             "thread_type": "main",
             "parent_session_id": None,
         }
@@ -2090,6 +2362,12 @@ class TestConversationEndpoints:
         payload = detail_response.json()
         assert payload["provider"] == "openclaw"
         assert payload["provider_detail"]["kind"] == "openclaw"
+        assert payload["total_usage"] == {
+            "input_tokens": 111,
+            "output_tokens": 68,
+            "cache_creation_tokens": 4,
+            "cache_read_tokens": 12,
+        }
         assert [message["id"] for message in payload["messages"]] == [
             "primary-user-1",
             "primary-assistant-1",
@@ -2105,12 +2383,195 @@ class TestConversationEndpoints:
         assert openclaw["skills"]["prompt"] == "Transcript skill prompt"
         assert openclaw["system_prompt"]["workspace_dir"] == "/Users/tony/Code/helaicopter"
         assert openclaw["usage_reconciliation"]["transcript_total_tokens"] == 195
+        assert openclaw["usage_reconciliation"]["store_total_tokens"] == 275
         assert openclaw["memory_store"]["path"].endswith("/.openclaw/memory/main.sqlite")
+        assert openclaw["memory_store"]["tables"] == [
+            "chunks",
+            "embedding_cache",
+            "files",
+            "memory_summary",
+        ]
+        assert openclaw["memory_store"]["counts"] == {
+            "files": 3,
+            "chunks": 4,
+            "embedding_cache": 2,
+        }
+        assert openclaw["memory_store"]["coverage"]["file_sources"] == {
+            "external": 1,
+            "workspace": 2,
+        }
+        assert openclaw["memory_store"]["coverage"]["chunk_sources"] == {
+            "external": 1,
+            "workspace": 3,
+        }
+        assert openclaw["memory_store"]["workspace_link"] == {
+            "workspace_dir": "/Users/tony/Code/helaicopter",
+            "matched_prefix": "/Users/tony/Code/helaicopter",
+            "confidence": "exact",
+            "counts": {
+                "files": 2,
+                "chunks": 3,
+            },
+        }
+        assert openclaw["memory_store"]["raw_rows"] == [
+            {"kind": "index_version", "value": "3"},
+            {"kind": "last_refresh", "value": "2026-03-22T03:00:11.497Z"},
+        ]
         assert openclaw["transcript_diagnostics"]["event_types"]["custom_message"] == 1
         assert openclaw["transcript_diagnostics"]["event_types"]["branch_summary"] == 1
         assert openclaw["raw"]["session_store_entry"]["sessionId"] == "primary"
         assert openclaw["raw"]["events"][0]["workspaceDir"] == "/Users/tony/Code/helaicopter"
         assert [item["type"] for item in openclaw["raw"]["unhandled_events"]] == ["unknown_event"]
+
+    def test_openclaw_list_polling_skips_memory_sqlite_and_reuses_cached_discovery(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        services = build_services(settings)
+        memory_connects = 0
+        discovery_reads = 0
+        transcript_reads = 0
+        session_store_reads = 0
+
+        original_connect = sqlite3.connect
+        original_read_discovery_snapshot = services.openclaw_store.read_discovery_snapshot
+        original_list_transcript_artifacts = services.openclaw_store.list_transcript_artifacts
+        original_read_session_store = services.openclaw_store.read_session_store
+
+        def _counting_connect(database: object, *args: object, **kwargs: object):
+            nonlocal memory_connects
+            if str(settings.openclaw_memory_sqlite_path) in str(database):
+                memory_connects += 1
+            return original_connect(database, *args, **kwargs)
+
+        def _counting_read_discovery_snapshot():
+            nonlocal discovery_reads
+            discovery_reads += 1
+            return original_read_discovery_snapshot()
+
+        def _counting_list_transcript_artifacts():
+            nonlocal transcript_reads
+            transcript_reads += 1
+            return original_list_transcript_artifacts()
+
+        def _counting_read_session_store(*, agent_id: str):
+            nonlocal session_store_reads
+            session_store_reads += 1
+            return original_read_session_store(agent_id=agent_id)
+
+        monkeypatch.setattr(sqlite3, "connect", _counting_connect)
+        monkeypatch.setattr(
+            services.openclaw_store,
+            "read_discovery_snapshot",
+            _counting_read_discovery_snapshot,
+        )
+        monkeypatch.setattr(
+            services.openclaw_store,
+            "list_transcript_artifacts",
+            _counting_list_transcript_artifacts,
+        )
+        monkeypatch.setattr(
+            services.openclaw_store,
+            "read_session_store",
+            _counting_read_session_store,
+        )
+
+        first = conversations_application.list_conversations(services)
+
+        assert any(item.session_id == "primary" for item in first)
+        assert memory_connects == 0
+        assert discovery_reads >= 1
+        assert transcript_reads == 1
+        assert session_store_reads == 2
+
+        services.cache.delete(conversations_application._cache_key("conversation_summaries", "*", "all"))
+
+        second = conversations_application.list_conversations(services)
+
+        assert any(item.session_id == "primary" for item in second)
+        assert memory_connects == 0
+        assert discovery_reads > 1
+        assert transcript_reads == 1
+        assert session_store_reads == 2
+
+        sessions_json_path = settings.openclaw_agents_dir / "main" / "sessions" / "sessions.json"
+        time.sleep(0.01)
+        sessions_json_path.touch()
+        services.cache.delete(conversations_application._cache_key("conversation_summaries", "*", "all"))
+
+        third = conversations_application.list_conversations(services)
+
+        assert any(item.session_id == "primary" for item in third)
+        assert memory_connects == 0
+        assert discovery_reads > 2
+        assert transcript_reads == 1
+        assert session_store_reads == 3
+
+    def test_openclaw_detail_opens_memory_store_only_for_detail_requests(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+        memory_connects = 0
+        original_connect = sqlite3.connect
+
+        def _counting_connect(database: object, *args: object, **kwargs: object):
+            nonlocal memory_connects
+            if str(settings.openclaw_memory_sqlite_path) in str(database):
+                memory_connects += 1
+            return original_connect(database, *args, **kwargs)
+
+        monkeypatch.setattr(sqlite3, "connect", _counting_connect)
+
+        try:
+            with TestClient(application) as client:
+                list_response = client.get("/conversations", params={"project": "openclaw:agent:main"})
+                detail_response = client.get("/conversations/openclaw:agent:main/primary")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert list_response.status_code == 200
+        assert detail_response.status_code == 200
+        assert memory_connects == 1
+
+    def test_openclaw_memory_store_without_exact_join_stays_global_only(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        _seed_openclaw_memory_store(
+            settings.openclaw_memory_sqlite_path,
+            workspace_root="/Users/tony/Code/unrelated-workspace",
+        )
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                detail_response = client.get("/conversations/openclaw:agent:main/primary")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert detail_response.status_code == 200
+        memory_store = detail_response.json()["provider_detail"]["openclaw"]["memory_store"]
+        assert memory_store["counts"] == {
+            "files": 3,
+            "chunks": 4,
+            "embedding_cache": 2,
+        }
+        assert memory_store.get("workspace_link") is None
 
     def test_openclaw_provider_detail_system_prompt_falls_back_to_header_workspace_dir(
         self,

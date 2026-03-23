@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -45,6 +46,7 @@ from helaicopter_api.ports.opencloud_sqlite import (
     OpenCloudSessionRecord,
 )
 from helaicopter_api.ports.openclaw_fs import (
+    OpenClawDiscoverySnapshot,
     OpenClawSessionArtifact,
     OpenClawSessionStoreArtifact,
     OpenClawTranscriptArtifact,
@@ -271,6 +273,7 @@ def resolve_conversation_ref(
         services,
         provider=parsed.provider,
         session_id=parsed.session_id,
+        route_slug=parsed.route_slug,
     )
     services.cache.set(cache_key, resolved, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return resolved
@@ -564,7 +567,17 @@ def _conversation_route_target(
     project_path: str | None = None,
 ) -> ConversationRouteTarget:
     resolved_provider = provider or _provider_for_project_path(project_path or "")
-    return build_conversation_route_target(route_slug, resolved_provider, session_id)
+    ref_session_id = (
+        _openclaw_ref_session_id(project_path=project_path, session_id=session_id)
+        if resolved_provider == "openclaw" and project_path is not None
+        else None
+    )
+    return build_conversation_route_target(
+        route_slug,
+        resolved_provider,
+        session_id,
+        ref_session_id=ref_session_id,
+    )
 
 
 def _conversation_route_target_from_first_message(
@@ -604,17 +617,33 @@ def _resolve_conversation_identity(
     *,
     provider: str,
     session_id: str,
+    route_slug: str | None = None,
 ) -> ConversationRefResolutionResponse | None:
-    persisted = _resolve_persisted_conversation_identity(services, provider=provider, session_id=session_id)
+    project_path_hint: str | None = None
+    resolved_session_id = session_id
+    if provider == "openclaw":
+        project_path_hint, resolved_session_id = _parse_openclaw_ref_session_id(session_id)
+
+    persisted = _resolve_persisted_conversation_identity(
+        services,
+        provider=provider,
+        session_id=resolved_session_id,
+        project_path_hint=project_path_hint,
+    )
     if persisted is not None:
         return persisted
     if provider == "opencloud":
-        return _resolve_live_opencloud_conversation_identity(services, session_id=session_id)
+        return _resolve_live_opencloud_conversation_identity(services, session_id=resolved_session_id)
     if provider == "codex":
-        return _resolve_live_codex_conversation_identity(services, session_id=session_id)
+        return _resolve_live_codex_conversation_identity(services, session_id=resolved_session_id)
     if provider == "openclaw":
-        return _resolve_live_openclaw_conversation_identity(services, session_id=session_id)
-    return _resolve_live_claude_conversation_identity(services, session_id=session_id)
+        return _resolve_live_openclaw_conversation_identity(
+            services,
+            session_id=resolved_session_id,
+            route_slug=route_slug,
+            project_path_hint=project_path_hint,
+        )
+    return _resolve_live_claude_conversation_identity(services, session_id=resolved_session_id)
 
 
 def _resolve_persisted_conversation_identity(
@@ -622,15 +651,18 @@ def _resolve_persisted_conversation_identity(
     *,
     provider: str,
     session_id: str,
+    project_path_hint: str | None = None,
 ) -> ConversationRefResolutionResponse | None:
     for summary in services.app_sqlite_store.list_historical_conversations():
         if summary.provider != provider or summary.session_id != session_id:
+            continue
+        if project_path_hint is not None and summary.project_path != project_path_hint:
             continue
         return _conversation_ref_resolution(
             route_target=_conversation_route_target(
                 session_id=summary.session_id,
                 route_slug=summary.route_slug,
-                provider=summary.provider,
+                project_path=summary.project_path,
             ),
             project_path=summary.project_path,
             thread_type=summary.thread_type,
@@ -712,7 +744,10 @@ def _resolve_live_openclaw_conversation_identity(
     services: BackendServices,
     *,
     session_id: str,
+    route_slug: str | None = None,
+    project_path_hint: str | None = None,
 ) -> ConversationRefResolutionResponse | None:
+    candidates: list[ConversationSummaryResponse] = []
     for artifact in _openclaw_session_artifacts(services):
         summary = _summarize_openclaw_artifact(
             artifact,
@@ -720,16 +755,26 @@ def _resolve_live_openclaw_conversation_identity(
         )
         if summary is None or summary.session_id != session_id:
             continue
-        return _conversation_ref_resolution(
-            route_target=_conversation_route_target(
-                session_id=summary.session_id,
-                route_slug=summary.route_slug,
-                project_path=summary.project_path,
-            ),
+        candidates.append(summary)
+
+    if project_path_hint is not None:
+        candidates = [item for item in candidates if item.project_path == project_path_hint]
+    if len(candidates) > 1 and route_slug is not None:
+        slug_matches = [item for item in candidates if item.route_slug == route_slug]
+        if slug_matches:
+            candidates = slug_matches
+    if not candidates:
+        return None
+    summary = sorted(candidates, key=lambda item: (item.project_path, item.route_slug))[0]
+    return _conversation_ref_resolution(
+        route_target=_conversation_route_target(
+            session_id=summary.session_id,
+            route_slug=summary.route_slug,
             project_path=summary.project_path,
-            thread_type=summary.thread_type,
-        )
-    return None
+        ),
+        project_path=summary.project_path,
+        thread_type=summary.thread_type,
+    )
 
 
 def _resolve_live_opencloud_conversation_identity(
@@ -813,7 +858,10 @@ def _merge_summary(
     candidate: ConversationSummaryResponse,
 ) -> None:
     provider = _provider_for_project_path(candidate.project_path)
-    key = (provider, candidate.session_id)
+    key = (
+        candidate.project_path if provider == "openclaw" else provider,
+        candidate.session_id,
+    )
     existing = summaries_by_key.get(key)
     if existing is None:
         summaries_by_key[key] = candidate
@@ -843,7 +891,7 @@ def _shape_historical_summary(summary: HistoricalConversationSummary) -> Convers
     route_target = _conversation_route_target(
         session_id=summary.session_id,
         route_slug=summary.route_slug,
-        provider=summary.provider,
+        project_path=summary.project_path,
     )
     return ConversationSummaryResponse(
         session_id=summary.session_id,
@@ -887,7 +935,7 @@ def _shape_historical_detail(
     route_target = _conversation_route_target(
         session_id=record.session_id,
         route_slug=record.route_slug,
-        provider=record.provider,
+        project_path=record.project_path,
     )
     messages = [_shape_historical_message(message) for message in record.messages]
     total_usage = ConversationUsageResponse(
@@ -2951,26 +2999,48 @@ def _codex_threads_by_id(services: BackendServices) -> dict[str, CodexThreadReco
 
 
 def _openclaw_session_artifacts(services: BackendServices) -> list[OpenClawSessionArtifact]:
-    cached = services.cache.get("openclaw_session_artifacts")
-    if isinstance(cached, list):
-        return cached
-    artifacts = services.openclaw_store.list_session_artifacts()
+    snapshot = _openclaw_discovery_snapshot(services)
+    sessions_dir_signature = tuple(sorted(snapshot.sessions_dir_mtimes.items()))
+    cached = services.cache.get("openclaw_session_artifacts", _CACHE_MISS)
+    if isinstance(cached, dict):
+        cached_signature = cached.get("sessions_dir_signature")
+        cached_artifacts = cached.get("artifacts")
+        if cached_signature == sessions_dir_signature and isinstance(cached_artifacts, list):
+            return cast(list[OpenClawSessionArtifact], cached_artifacts)
+
+    artifacts = [
+        artifact
+        for artifact in _openclaw_transcript_artifacts(services)
+        if artifact.kind == "live_transcript"
+    ]
     services.cache.set(
         "openclaw_session_artifacts",
-        artifacts,
+        {
+            "sessions_dir_signature": sessions_dir_signature,
+            "artifacts": artifacts,
+        },
         ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
     )
     return artifacts
 
 
 def _openclaw_transcript_artifacts(services: BackendServices) -> list[OpenClawTranscriptArtifact]:
-    cached = services.cache.get("openclaw_transcript_artifacts")
-    if isinstance(cached, list):
-        return cached
+    snapshot = _openclaw_discovery_snapshot(services)
+    sessions_dir_signature = tuple(sorted(snapshot.sessions_dir_mtimes.items()))
+    cached = services.cache.get("openclaw_transcript_artifacts", _CACHE_MISS)
+    if isinstance(cached, dict):
+        cached_signature = cached.get("sessions_dir_signature")
+        cached_artifacts = cached.get("artifacts")
+        if cached_signature == sessions_dir_signature and isinstance(cached_artifacts, list):
+            return cast(list[OpenClawTranscriptArtifact], cached_artifacts)
+
     artifacts = services.openclaw_store.list_transcript_artifacts()
     services.cache.set(
         "openclaw_transcript_artifacts",
-        artifacts,
+        {
+            "sessions_dir_signature": sessions_dir_signature,
+            "artifacts": artifacts,
+        },
         ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
     )
     return artifacts
@@ -2981,12 +3051,31 @@ def _openclaw_session_store(
     *,
     agent_id: str,
 ) -> OpenClawSessionStoreArtifact | None:
+    snapshot = _openclaw_discovery_snapshot(services)
+    expected_mtime = snapshot.session_store_mtimes.get(
+        str(services.settings.openclaw_agents_dir / agent_id / "sessions" / "sessions.json")
+    )
     cache_key = _cache_key("openclaw_session_store", agent_id)
     cached = services.cache.get(cache_key, _CACHE_MISS)
-    if cached is None or isinstance(cached, OpenClawSessionStoreArtifact):
-        return cached
+    if isinstance(cached, dict) and cached.get("mtime") == expected_mtime:
+        cached_artifact = cached.get("artifact")
+        if cached_artifact is None or isinstance(cached_artifact, OpenClawSessionStoreArtifact):
+            return cached_artifact
+
+    if expected_mtime is None:
+        services.cache.set(
+            cache_key,
+            {"mtime": None, "artifact": None},
+            ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+        )
+        return None
+
     artifact = services.openclaw_store.read_session_store(agent_id=agent_id)
-    services.cache.set(cache_key, artifact, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
+    services.cache.set(
+        cache_key,
+        {"mtime": expected_mtime, "artifact": artifact},
+        ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+    )
     return artifact
 
 
@@ -3001,6 +3090,257 @@ def _openclaw_memory_store_metadata(services: BackendServices) -> dict[str, Any]
         ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
     )
     return metadata
+
+
+def _openclaw_discovery_snapshot(services: BackendServices) -> OpenClawDiscoverySnapshot:
+    latest = services.openclaw_store.read_discovery_snapshot()
+    cached = services.cache.get("openclaw_discovery_snapshot", _CACHE_MISS)
+    if isinstance(cached, OpenClawDiscoverySnapshot) and cached.signature == latest.signature:
+        return cached
+    services.cache.set(
+        "openclaw_discovery_snapshot",
+        latest,
+        ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+    )
+    return latest
+
+
+def _openclaw_memory_summary(
+    services: BackendServices,
+    *,
+    transcript_cwd: str | None,
+    workspace_dir: str | None,
+) -> dict[str, Any]:
+    metadata = services.openclaw_store.read_memory_store_metadata().model_dump(mode="python")
+    signature = (metadata.get("path"), metadata.get("modified_at"), metadata.get("exists"))
+    cached = services.cache.get("openclaw_memory_store_metadata", _CACHE_MISS)
+    if isinstance(cached, dict) and cached.get("_signature") == signature:
+        summary = cached
+    else:
+        summary = {
+            "_signature": signature,
+            **metadata,
+            "tables": [],
+            "counts": {},
+            "coverage": {},
+            "raw_rows": [],
+            "_indexed_paths": [],
+            "_file_counts_by_path": {},
+            "_chunk_counts_by_path": {},
+        }
+        if bool(metadata.get("exists")):
+            summary.update(_read_openclaw_memory_tables(Path(str(metadata["path"]))))
+        services.cache.set(
+            "openclaw_memory_store_metadata",
+            summary,
+            ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
+        )
+
+    result = {
+        key: value
+        for key, value in summary.items()
+        if not key.startswith("_")
+    }
+    workspace_link = _openclaw_memory_workspace_link(
+        transcript_cwd=transcript_cwd,
+        workspace_dir=workspace_dir,
+        indexed_paths=cast(list[str], summary.get("_indexed_paths", [])),
+        file_counts_by_path=cast(dict[str, int], summary.get("_file_counts_by_path", {})),
+        chunk_counts_by_path=cast(dict[str, int], summary.get("_chunk_counts_by_path", {})),
+    )
+    result["workspace_link"] = workspace_link
+    return result
+
+
+def _read_openclaw_memory_tables(path: Path) -> dict[str, Any]:
+    connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        table_rows = connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            ORDER BY name
+            """
+        ).fetchall()
+        tables = [str(row["name"]) for row in table_rows]
+        counts = {
+            table_name: _openclaw_table_row_count(connection, table_name)
+            for table_name in ("files", "chunks", "embedding_cache")
+            if table_name in tables
+        }
+        file_rows = _openclaw_memory_file_rows(connection, tables)
+        chunk_rows = _openclaw_memory_chunk_rows(connection, tables)
+        indexed_paths = sorted({row["path"] for row in file_rows + chunk_rows if row.get("path")})
+        raw_rows = _openclaw_memory_raw_rows(connection, tables)
+        return {
+            "tables": tables,
+            "counts": counts,
+            "coverage": {
+                "file_sources": _count_openclaw_memory_sources(file_rows),
+                "chunk_sources": _count_openclaw_memory_sources(chunk_rows),
+                "path_roots": _openclaw_memory_path_roots(indexed_paths),
+            },
+            "raw_rows": raw_rows,
+            "_indexed_paths": indexed_paths,
+            "_file_counts_by_path": _count_openclaw_memory_paths(file_rows),
+            "_chunk_counts_by_path": _count_openclaw_memory_paths(chunk_rows),
+        }
+    finally:
+        connection.close()
+
+
+def _openclaw_table_row_count(connection: sqlite3.Connection, table_name: str) -> int:
+    query = f'SELECT COUNT(*) AS count FROM "{table_name}"'
+    row = connection.execute(query).fetchone()
+    if row is None:
+        return 0
+    value = row["count"] if isinstance(row, sqlite3.Row) else row[0]
+    return _int_value(value)
+
+
+def _openclaw_memory_file_rows(
+    connection: sqlite3.Connection,
+    tables: list[str],
+) -> list[dict[str, str]]:
+    if "files" not in tables:
+        return []
+    rows = connection.execute("SELECT path, source FROM files ORDER BY id").fetchall()
+    return [
+        {
+            "path": _string_or_none(row["path"]) or "",
+            "source": _string_or_none(row["source"]) or "unknown",
+        }
+        for row in rows
+        if _string_or_none(row["path"])
+    ]
+
+
+def _openclaw_memory_chunk_rows(
+    connection: sqlite3.Connection,
+    tables: list[str],
+) -> list[dict[str, str]]:
+    if "chunks" not in tables:
+        return []
+    if "files" in tables:
+        rows = connection.execute(
+            """
+            SELECT files.path AS path, COALESCE(chunks.source, files.source, 'unknown') AS source
+            FROM chunks
+            LEFT JOIN files ON files.id = chunks.file_id
+            ORDER BY chunks.id
+            """
+        ).fetchall()
+        return [
+            {
+                "path": _string_or_none(row["path"]) or "",
+                "source": _string_or_none(row["source"]) or "unknown",
+            }
+            for row in rows
+            if _string_or_none(row["path"])
+        ]
+    rows = connection.execute("SELECT source FROM chunks ORDER BY id").fetchall()
+    return [
+        {
+            "path": "",
+            "source": _string_or_none(row["source"]) or "unknown",
+        }
+        for row in rows
+    ]
+
+
+def _openclaw_memory_raw_rows(
+    connection: sqlite3.Connection,
+    tables: list[str],
+) -> list[dict[str, object]]:
+    if "memory_summary" not in tables:
+        return []
+    rows = connection.execute(
+        "SELECT kind, value FROM memory_summary ORDER BY id LIMIT 5"
+    ).fetchall()
+    return [
+        {
+            "kind": _string_or_none(row["kind"]) or "",
+            "value": _string_or_none(row["value"]) or "",
+        }
+        for row in rows
+    ]
+
+
+def _count_openclaw_memory_sources(rows: list[dict[str, str]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        source = row.get("source") or "unknown"
+        counts[source] = counts.get(source, 0) + 1
+    return counts
+
+
+def _count_openclaw_memory_paths(rows: list[dict[str, str]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        path = row.get("path")
+        if not path:
+            continue
+        counts[path] = counts.get(path, 0) + 1
+    return counts
+
+
+def _openclaw_memory_path_roots(indexed_paths: list[str]) -> list[str]:
+    roots = {
+        str(path.parent)
+        for raw_path in indexed_paths
+        if (path := Path(raw_path)).parent != path
+    }
+    return sorted(roots)
+
+
+def _openclaw_memory_workspace_link(
+    *,
+    transcript_cwd: str | None,
+    workspace_dir: str | None,
+    indexed_paths: list[str],
+    file_counts_by_path: dict[str, int],
+    chunk_counts_by_path: dict[str, int],
+) -> dict[str, Any] | None:
+    for candidate in (workspace_dir, transcript_cwd):
+        if not candidate:
+            continue
+        matched_paths = [path for path in indexed_paths if _same_openclaw_path_prefix(candidate, path)]
+        if not matched_paths:
+            continue
+        return {
+            "workspace_dir": candidate,
+            "matched_prefix": candidate,
+            "confidence": "exact",
+            "counts": {
+                "files": sum(file_counts_by_path.get(path, 0) for path in matched_paths),
+                "chunks": sum(chunk_counts_by_path.get(path, 0) for path in matched_paths),
+            },
+        }
+    return None
+
+
+def _same_openclaw_path_prefix(prefix: str, path: str) -> bool:
+    try:
+        prefix_path = Path(prefix).resolve(strict=False)
+        candidate_path = Path(path).resolve(strict=False)
+    except OSError:
+        return path == prefix or path.startswith(f"{prefix}/")
+    return prefix_path == candidate_path or prefix_path in candidate_path.parents
+
+
+def _openclaw_ref_session_id(*, project_path: str | None, session_id: str) -> str:
+    if project_path is None:
+        return session_id
+    return f"{project_path}::{session_id}"
+
+
+def _parse_openclaw_ref_session_id(ref_session_id: str) -> tuple[str | None, str]:
+    project_path, separator, session_id = ref_session_id.rpartition("::")
+    if separator and project_path.startswith("openclaw:") and session_id:
+        return project_path, session_id
+    return None, ref_session_id
 
 
 def _opencloud_sessions(services: BackendServices) -> list[OpenCloudSessionRecord]:
@@ -3486,7 +3826,16 @@ def _openclaw_provider_detail(
                 "transcript_total_tokens": total_usage.total_tokens,
                 "store_total_tokens": _int_value(session_store_usage.get("totalTokens")),
             },
-            memory_store=_openclaw_memory_store_metadata(services),
+            memory_store=_openclaw_memory_summary(
+                services,
+                transcript_cwd=_string_or_none(_openclaw_header_session(lines).get("cwd")),
+                workspace_dir=_string_or_none(
+                    _openclaw_system_prompt_payload(
+                        lines,
+                        matched_session_store_entry=matched_entry,
+                    ).get("workspace_dir")
+                ),
+            ),
             raw={
                 "events": raw_events,
                 "unhandled_events": [
