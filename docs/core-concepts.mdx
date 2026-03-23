@@ -81,16 +81,12 @@ Helaicopter uses multiple databases, each with a specific role:
 |----------|--------|------|----------|
 | OLTP | SQLite | Operational metadata — conversations, evaluations, subscriptions | `database-artifacts/oltp/` |
 | OLAP | DuckDB | Analytics warehouse — time-series aggregation | `database-artifacts/olap/` |
-| Prefect | PostgreSQL | Orchestration control plane (external) | Configured via Prefect |
 | Frontend cache | Browser | SWR client-side cache | In-memory |
 
 The **refresh pipeline** (`POST /databases/refresh`) re-parses conversation files and updates both SQLite and DuckDB, then invalidates all backend caches.
 
 ## Orchestration
 
-Two orchestration systems are supported:
+The orchestration system is **OATS (Overnight Automated Task Specs)** — a repo-local CLI for defining multi-step agent workflows as markdown run specs. Tasks execute as Claude Code or Codex invocations with dependency tracking.
 
-- **OATS (Overnight Automated Task Specs)** — a repo-local CLI for defining multi-step agent workflows as markdown run specs. Tasks execute as Claude Code or Codex invocations with dependency tracking.
-- **Prefect** — a production workflow orchestration platform. OATS run specs can be compiled into Prefect deployments for scheduled, monitored execution with worker pools.
-
-The orchestration hub at `/orchestration` provides a unified view of both systems.
+The orchestration hub at `/orchestration` provides a unified view of run records, runtime state, and task DAGs.

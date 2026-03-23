@@ -11,7 +11,6 @@ Helaicopter uses a multi-database architecture where each store is optimized for
 |-------|--------|------|----------|
 | OLTP | SQLite | Operational metadata, conversations, evaluations | `database-artifacts/oltp/helaicopter_oltp.sqlite` |
 | OLAP | DuckDB | Analytics warehouse, time-series queries | `database-artifacts/olap/helaicopter_olap.duckdb` |
-| Prefect | PostgreSQL | Orchestration control plane (external) | Configured via Prefect |
 | Backend cache | In-process | LRU cache for hot reads | Memory |
 | Frontend cache | SWR | Client-side response cache | Browser memory |
 

@@ -1,11 +1,11 @@
 ---
 title: Using Orchestration
-description: Monitor OATS runs and Prefect workflows from the orchestration hub.
+description: Monitor repo-local OATS runs from the orchestration hub.
 ---
 
 ## The orchestration hub
 
-Navigate to `/orchestration` for a unified view of all workflow execution. The hub has three tabs:
+Navigate to `/orchestration` for a unified view of repo-local workflow execution. The hub has two tabs:
 
 ### Conversation DAGs
 Browse DAG summaries across all conversations — see which sessions spawned subagents, how deep the tree went, and aggregate token/cost stats.
@@ -17,13 +17,6 @@ View Overnight OATS run records — each run shows:
 - DAG visualization of task dependencies
 - Links to the underlying conversation threads
 
-### Prefect
-Monitor Prefect orchestration:
-- **Deployments** — registered workflow definitions
-- **Flow runs** — execution history with status and duration
-- **Workers** — active worker processes
-- **Work pools** — worker pool configuration and utilization
-
 ## Running an OATS spec
 
 OATS run specs are markdown files that define multi-step agent workflows. Example:
@@ -32,14 +25,8 @@ OATS run specs are markdown files that define multi-step agent workflows. Exampl
 # Preview the execution plan
 uv run oats plan examples/my-spec.md
 
-# Run locally (legacy)
+# Run locally
 uv run oats run examples/my-spec.md
-
-# Deploy to Prefect
-uv run oats prefect deploy examples/my-spec.md
-
-# Trigger a Prefect run
-uv run oats prefect run examples/my-spec.md
 ```
 
 Each task in a run spec becomes a node in the execution DAG. Tasks can declare dependencies on other tasks, and OATS handles the scheduling.
@@ -52,16 +39,4 @@ The dashboard shows real-time status:
 - **Timed out** — task exceeded its time limit
 - **Succeeded/Failed** — terminal states with result details
 
-## Prefect integration details
-
-The backend proxies Prefect's REST API (default `http://127.0.0.1:4200/api`). This means you need a running Prefect server for the Prefect tab to show data:
-
-```bash
-# Start Prefect server (separate terminal)
-prefect server start
-```
-
-Configure the Prefect URL if non-default:
-```bash
-export HELA_PREFECT_API_URL=http://your-prefect-host:4200/api
-```
+There is no separate orchestration control plane to start. The dashboard reads repo-local OATS runtime state and persisted run records directly.

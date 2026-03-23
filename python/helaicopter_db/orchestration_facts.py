@@ -14,7 +14,6 @@ from oats.models import (
     TaskExecutionRecord,
     TaskRuntimeRecord,
 )
-from oats.prefect.analytics import StoredLocalFlowRunArtifacts, load_local_flow_run_artifacts
 
 from helaicopter_api.adapters.oats_artifacts import FileOatsRunStore
 
@@ -72,7 +71,6 @@ class OrchestrationTaskAttemptFact:
 
 
 def collect_orchestration_facts(project_root: Path) -> tuple[list[OrchestrationRunFact], list[OrchestrationTaskAttemptFact]]:
-    prefect_artifacts = load_local_flow_run_artifacts(project_root)
     legacy_store = FileOatsRunStore(project_root=project_root, runtime_dir=project_root / ".oats" / "runtime")
     runtime_states = {str(item.state.run_id): item.state for item in legacy_store.list_runtime_states()}
     run_records = {
@@ -82,11 +80,6 @@ def collect_orchestration_facts(project_root: Path) -> tuple[list[OrchestrationR
 
     run_facts: list[OrchestrationRunFact] = []
     task_attempt_facts: list[OrchestrationTaskAttemptFact] = []
-
-    for stored in prefect_artifacts.values():
-        run_fact = _build_prefect_run_fact(stored)
-        run_facts.append(run_fact)
-        task_attempt_facts.extend(_build_prefect_task_attempt_facts(run_fact, stored))
 
     for run_id in sorted(set(runtime_states) | set(run_records)):
         runtime_state = runtime_states.get(run_id)
@@ -100,71 +93,6 @@ def collect_orchestration_facts(project_root: Path) -> tuple[list[OrchestrationR
         )
 
     return run_facts, task_attempt_facts
-
-
-def _build_prefect_run_fact(stored: StoredLocalFlowRunArtifacts) -> OrchestrationRunFact:
-    analytics = stored.analytics
-    metadata = stored.metadata
-    return OrchestrationRunFact(
-        run_fact_id=f"prefect_local:{metadata.flow_run_id}",
-        run_source="prefect_local",
-        run_id=metadata.flow_run_id,
-        flow_run_name=metadata.flow_run_name,
-        run_title=metadata.run_title,
-        source_path=str(metadata.source_path),
-        repo_root=str(metadata.repo_root),
-        config_path=str(metadata.config_path),
-        artifact_root=str(metadata.artifact_root),
-        status=analytics.run_status,
-        canonical_status_source="prefect_local_artifacts",
-        has_runtime_snapshot=True,
-        has_terminal_record=metadata.completed_at is not None,
-        task_count=analytics.task_count,
-        completed_task_count=analytics.completed_task_count,
-        running_task_count=analytics.running_task_count,
-        failed_task_count=analytics.failed_task_count,
-        task_attempt_count=analytics.task_attempt_count,
-        started_at=_parse_timestamp(metadata.created_at),
-        updated_at=_parse_timestamp(analytics.last_updated_at or metadata.updated_at) or _utc_now(),
-        finished_at=_parse_timestamp(metadata.completed_at),
-    )
-
-
-def _build_prefect_task_attempt_facts(
-    run_fact: OrchestrationRunFact,
-    stored: StoredLocalFlowRunArtifacts,
-) -> list[OrchestrationTaskAttemptFact]:
-    facts: list[OrchestrationTaskAttemptFact] = []
-    for checkpoint in stored.attempts:
-        facts.append(
-            OrchestrationTaskAttemptFact(
-                task_attempt_fact_id=f"{run_fact.run_fact_id}:{checkpoint.task_id}:{checkpoint.attempt}",
-                run_fact_id=run_fact.run_fact_id,
-                run_source=run_fact.run_source,
-                run_id=run_fact.run_id,
-                task_id=checkpoint.task_id,
-                task_title=checkpoint.task_title,
-                attempt=checkpoint.attempt,
-                status=checkpoint.status.strip().lower(),
-                upstream_task_ids_json=json.dumps(checkpoint.upstream_task_ids),
-                agent=None,
-                session_id=checkpoint.session_id,
-                model=_result_field(checkpoint.result, "model"),
-                reasoning_effort=_result_field(checkpoint.result, "reasoning_effort"),
-                error=checkpoint.error,
-                output_text=checkpoint.output_text or _result_field(checkpoint.result, "output_text"),
-                started_at=None,
-                updated_at=_parse_timestamp(checkpoint.updated_at) or run_fact.updated_at,
-                finished_at=(
-                    _parse_timestamp(checkpoint.updated_at)
-                    if checkpoint.status.strip().lower() not in {"running", "pending", "blocked"}
-                    else None
-                ),
-                last_heartbeat_at=_parse_timestamp(checkpoint.last_heartbeat_at),
-                last_progress_event_at=_parse_timestamp(checkpoint.last_progress_event_at),
-            )
-        )
-    return facts
 
 
 def _build_legacy_run_fact(

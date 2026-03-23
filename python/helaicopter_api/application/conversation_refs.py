@@ -17,6 +17,7 @@ class ConversationRouteTarget:
     ref_session_id: str
     route_slug: str
     conversation_ref: str
+    project_path: str | None = None
 
 
 def derive_route_slug(first_message: str) -> str:
@@ -44,6 +45,7 @@ def build_conversation_route_target(
     session_id: str,
     *,
     ref_session_id: str | None = None,
+    project_path: str | None = None,
 ) -> ConversationRouteTarget:
     """Construct a ``ConversationRouteTarget`` from its constituent parts.
 
@@ -59,13 +61,25 @@ def build_conversation_route_target(
     return ConversationRouteTarget(
         provider=provider,
         session_id=session_id,
-        ref_session_id=ref_session_id or session_id,
+        ref_session_id=(
+            ref_session_id
+            or (f"{project_path}::{session_id}" if provider == "openclaw" and project_path else session_id)
+        ),
         route_slug=route_slug,
-        conversation_ref=build_conversation_ref(route_slug, provider, ref_session_id or session_id),
+        project_path=project_path,
+        conversation_ref=build_conversation_ref(
+            route_slug,
+            provider,
+            ref_session_id or (f"{project_path}::{session_id}" if provider == "openclaw" and project_path else session_id),
+        ),
     )
 
 
-def build_conversation_ref(route_slug: str, provider: str, session_id: str) -> str:
+def build_conversation_ref(
+    route_slug: str,
+    provider: str,
+    session_id: str,
+) -> str:
     """Assemble a canonical conversation reference string.
 
     The format is ``<route_slug>--<provider>-<session_id>``.
@@ -108,15 +122,26 @@ def parse_conversation_ref(conversation_ref: str) -> ConversationRouteTarget | N
         provider_prefix = f"{provider}-"
         if not suffix.startswith(provider_prefix):
             continue
-        session_id = suffix.removeprefix(provider_prefix)
+        raw_identity = suffix.removeprefix(provider_prefix)
+        project_path: str | None = None
+        ref_session_id = raw_identity
+        session_id = raw_identity
+        if provider == "openclaw":
+            project_path, separator, parsed_session_id = raw_identity.rpartition("::")
+            if separator and project_path.startswith("openclaw:") and parsed_session_id:
+                session_id = parsed_session_id
+                ref_session_id = raw_identity
+            else:
+                project_path = None
         if not session_id:
             return None
         return ConversationRouteTarget(
             provider=provider,
             session_id=session_id,
-            ref_session_id=session_id,
+            ref_session_id=ref_session_id,
             route_slug=route_slug,
             conversation_ref=conversation_ref,
+            project_path=project_path,
         )
 
     return None

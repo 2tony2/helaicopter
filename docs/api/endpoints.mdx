@@ -109,16 +109,3 @@ The refresh endpoint re-parses all conversation files, updates both SQLite and D
 | `GET` | `/orchestration/oats` | OATS run records with DAGs and task status |
 
 Returns both live runtime state and persisted records, preferring live state when available.
-
-## Orchestration — Prefect
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/orchestration/prefect/deployments` | All Prefect deployments |
-| `GET` | `/orchestration/prefect/deployments/{deploymentId}` | Deployment detail |
-| `GET` | `/orchestration/prefect/flow-runs` | Recent flow runs |
-| `GET` | `/orchestration/prefect/flow-runs/{flowRunId}` | Flow run detail |
-| `GET` | `/orchestration/prefect/workers` | Active workers with heartbeat |
-| `GET` | `/orchestration/prefect/work-pools` | Work pool configuration |
-
-These proxy the Prefect REST API (default `http://127.0.0.1:4200/api`), enriching responses with status tones and OATS metadata.

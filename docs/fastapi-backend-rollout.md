@@ -12,7 +12,7 @@ The backend split is complete enough for day-to-day development:
 
 - `src/app/api` route handlers are removed.
 - FastAPI owns health, OpenAPI, and application routers.
-- Frontend endpoint builders default to `http://localhost:30000` when the browser is on `localhost` or `127.0.0.1`.
+- Frontend endpoint builders stay relative unless `NEXT_PUBLIC_API_BASE_URL` is configured.
 - [`src/lib/client/normalize.ts`](/Users/tony/Code/helaicopter/src/lib/client/normalize.ts) still accepts both legacy camelCase payloads and current snake_case FastAPI responses so cached fixtures continue to load during cleanup.
 
 ## Local Developer Runbook
@@ -69,8 +69,7 @@ open http://127.0.0.1:30000/openapi.json
 
 FastAPI is the single backend gateway for the runtime platform:
 
-- The Next.js frontend calls FastAPI directly rather than talking to Prefect, DuckDB, or repo-local artifacts on its own.
-- Prefect is the primary orchestration surface and is exposed through `/orchestration/prefect/*`.
+- The Next.js frontend calls FastAPI directly rather than talking to DuckDB or repo-local artifacts on its own.
 - The legacy repo-local Oats runtime remains available under `/orchestration/oats` as a compatibility and inspection surface.
 - SQLite-backed app metadata remains the primary backend read/write store.
 - DuckDB remains inspection-only and is intentionally surfaced through the Databases API rather than treated as a peer application backend.
@@ -110,7 +109,7 @@ Expected outputs:
 - `public/openapi/helaicopter-api.json`
 - `public/openapi/helaicopter-api.yaml`
 
-Use those committed snapshots for review and diffing, and compare them against `http://127.0.0.1:30000/openapi.json` when validating a live local server.
+Use those committed snapshots for review and diffing, and compare them against the configured backend origin plus `/openapi.json` when validating a configured live local server.
 
 ## Migration Notes
 

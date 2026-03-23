@@ -9,6 +9,40 @@ import subprocess
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from helaicopter_api.server.dev_instance import build_checkout_instance
+
+
+def _default_project_root() -> Path:
+    cwd = Path.cwd().resolve()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return cwd
+
+    if result.returncode != 0:
+        return cwd
+
+    raw_path = result.stdout.strip()
+    if not raw_path:
+        return cwd
+
+    git_common_dir = Path(raw_path)
+    if not git_common_dir.is_absolute():
+        git_common_dir = (cwd / git_common_dir).resolve()
+    else:
+        git_common_dir = git_common_dir.resolve()
+
+    if git_common_dir.name == ".git":
+        return git_common_dir.parent
+
+    return cwd
+
 
 def _default_project_root() -> Path:
     cwd = Path.cwd().resolve()
@@ -135,13 +169,6 @@ class DatabaseSettings(BaseModel):
         return self.duckdb
 
 
-class PrefectApiSettings(BaseModel):
-    """Backend-owned Prefect API connection settings."""
-
-    api_url: str
-    timeout_seconds: float = 30.0
-
-
 class OpenApiArtifactSettings(BaseModel):
     """Stable repo-local OpenAPI artifact output settings."""
 
@@ -160,6 +187,20 @@ class Settings(BaseSettings):
     project_root: Path = Field(
         default_factory=_default_project_root,
         description="Root of the helaicopter project checkout.",
+    )
+    checkout_runtime_root: Path | None = Field(
+        default=None,
+        description="Override for checkout-local generated runtime/artifact files.",
+    )
+    api_port_override: int | None = Field(
+        default=None,
+        validation_alias="HELA_API_PORT",
+        description="Override for the checkout-local FastAPI dev port.",
+    )
+    web_port_override: int | None = Field(
+        default=None,
+        validation_alias="HELA_WEB_PORT",
+        description="Override for the checkout-local Next.js dev port.",
     )
     oats_runtime_dir: Path | None = Field(
         default=None,
@@ -181,15 +222,11 @@ class Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".local" / "share" / "opencode",
         description="Root of the OpenCode runtime data directory that backs the OpenCloud provider.",
     )
-    prefect_api_url: str = Field(
-        default="http://127.0.0.1:4200/api",
-        description="Base URL for the Prefect API proxied by the backend.",
-    )
-    prefect_api_timeout_seconds: float = Field(
-        default=30.0,
-        description="Timeout for Prefect API requests made by the backend.",
-    )
     debug: bool = False
+
+    @cached_property
+    def checkout_instance(self):
+        return build_checkout_instance(self.project_root)
 
     @cached_property
     def cli(self) -> CliSettings:
@@ -202,10 +239,11 @@ class Settings(BaseSettings):
 
     @cached_property
     def database(self) -> DatabaseSettings:
+        runtime_root = self.checkout_runtime_root or (self.project_root / ".helaicopter")
         public_dir = self.project_root / "public"
         artifacts_dir = public_dir / "database-artifacts"
         schema_docs_dir = public_dir / "database-schemas"
-        runtime_dir = self.project_root / "var" / "database-runtime"
+        runtime_dir = runtime_root / "database-runtime"
         return DatabaseSettings(
             runtime_dir=runtime_dir,
             tools_dir=runtime_dir / "tools",
@@ -237,13 +275,6 @@ class Settings(BaseSettings):
         )
 
     @cached_property
-    def prefect(self) -> PrefectApiSettings:
-        return PrefectApiSettings(
-            api_url=self.prefect_api_url,
-            timeout_seconds=self.prefect_api_timeout_seconds,
-        )
-
-    @cached_property
     def openapi(self) -> OpenApiArtifactSettings:
         artifacts_dir = self.project_root / "public" / "openapi"
         return OpenApiArtifactSettings(
@@ -259,6 +290,14 @@ class Settings(BaseSettings):
         if self.oats_runtime_dir is not None:
             return self.oats_runtime_dir
         return self.project_root / ".oats" / "runtime"
+
+    @property
+    def api_port(self) -> int:
+        return self.api_port_override or self.checkout_instance.api_port
+
+    @property
+    def web_port(self) -> int:
+        return self.web_port_override or self.checkout_instance.web_port
 
     @property
     def claude_projects_dir(self) -> Path:

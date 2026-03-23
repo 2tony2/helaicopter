@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from helaicopter_api.application.analytics import get_analytics
 from helaicopter_api.bootstrap.services import build_services
+from helaicopter_api.server.dev_instance import build_checkout_instance
 from helaicopter_api.server.config import Settings
 from helaicopter_db import refresh as refresh_module
 from helaicopter_db import settings as db_settings
@@ -73,25 +74,6 @@ def _status_payload(path: str) -> dict[str, object]:
                 "inventorySummary": "No tables recorded",
                 "load": [],
             },
-            "prefectPostgres": {
-                "key": "prefect_postgres",
-                "label": "Prefect Postgres",
-                "engine": "Postgres",
-                "role": "orchestration",
-                "availability": "ready",
-                "health": "healthy",
-                "operationalStatus": "Prefect API responding",
-                "note": "Backing store for the local Prefect control plane.",
-                "error": None,
-                "path": None,
-                "target": "postgresql://prefect@127.0.0.1:5432/prefect",
-                "tableCount": 0,
-                "tables": [],
-                "sizeBytes": None,
-                "sizeDisplay": None,
-                "inventorySummary": "Catalog visibility not exposed by Prefect API",
-                "load": [],
-            },
         },
     }
 
@@ -112,7 +94,7 @@ def test_settings_expose_nested_cli_and_database_sections(tmp_path) -> None:
     assert settings.openclaw_agents_dir == tmp_path / ".openclaw" / "agents"
     assert settings.openclaw_agent_sessions_glob.endswith(".openclaw/agents/*/sessions")
     assert settings.opencloud_sqlite_path == tmp_path / ".local" / "share" / "opencode" / "opencode.db"
-    assert settings.database.runtime_dir == tmp_path / "var" / "database-runtime"
+    assert settings.database.runtime_dir == tmp_path / ".helaicopter" / "database-runtime"
     assert settings.database.sqlite.path == (
         tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
     )
@@ -139,15 +121,36 @@ def test_settings_parse_hela_prefixed_environment_values(monkeypatch, tmp_path) 
     runtime_dir = tmp_path / ".oats" / "custom-runtime"
     monkeypatch.setenv("HELA_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("HELA_OATS_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setenv("HELA_API_PORT", "31506")
+    monkeypatch.setenv("HELA_WEB_PORT", "32506")
     monkeypatch.setenv("HELA_DEBUG", "true")
 
     settings = Settings()
 
     assert settings.project_root == tmp_path
     assert settings.runtime_dir == runtime_dir
+    assert settings.api_port == 31506
+    assert settings.web_port == 32506
     assert settings.debug is True
 
+def test_checkout_instance_derives_stable_ports_from_project_root(tmp_path) -> None:
+    a = build_checkout_instance(tmp_path / "helaicopter")
+    b = build_checkout_instance(tmp_path / "helaicopter")
+    c = build_checkout_instance(tmp_path / "helaicopter-main")
 
+    assert a.checkout_id == b.checkout_id
+    assert a.api_port == b.api_port
+    assert a.web_port == b.web_port
+    assert a.api_port != c.api_port
+    assert a.web_port != c.web_port
+
+
+def test_settings_expose_derived_checkout_ports_and_runtime_root(tmp_path) -> None:
+    settings = Settings(project_root=tmp_path)
+
+    assert settings.api_port == build_checkout_instance(tmp_path).api_port
+    assert settings.web_port == build_checkout_instance(tmp_path).web_port
+    assert settings.database.runtime_dir.parent == tmp_path / ".helaicopter"
 def test_settings_default_to_git_common_root_when_running_inside_worktree(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -290,7 +293,7 @@ def test_settings_reject_invalid_hela_environment_values(monkeypatch) -> None:
 
 def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("HELA_PROJECT_ROOT", str(tmp_path))
-    status_file = tmp_path / "var" / "database-runtime" / "status.json"
+    status_file = tmp_path / ".helaicopter" / "database-runtime" / "status.json"
     status_file.parent.mkdir(parents=True, exist_ok=True)
     payload = _status_payload(str(tmp_path / "public" / "database-artifacts" / "oltp" / "db.sqlite"))
     status_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -298,7 +301,8 @@ def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> 
     loaded = status_module.load_status()
 
     assert loaded is not None
-    assert loaded["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
+    assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
+    assert "prefectPostgres" not in loaded["databases"]
     assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
 
 

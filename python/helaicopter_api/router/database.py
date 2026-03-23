@@ -31,7 +31,7 @@ async def database_status(
     Returns:
         Status payload containing the current refresh state, timing metadata,
         runtime read-backend configuration, and per-artifact health details
-        for SQLite, DuckDB, frontend cache, and Prefect Postgres.
+        for SQLite, DuckDB, and the frontend cache.
 
     Raises:
         HTTPException: 500 if a database operation error occurs without a

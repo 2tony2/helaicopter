@@ -272,7 +272,7 @@ def resolve_conversation_ref(
     resolved = _resolve_conversation_identity(
         services,
         provider=parsed.provider,
-        session_id=parsed.session_id,
+        session_id=parsed.ref_session_id,
         route_slug=parsed.route_slug,
     )
     services.cache.set(cache_key, resolved, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
@@ -577,6 +577,7 @@ def _conversation_route_target(
         resolved_provider,
         session_id,
         ref_session_id=ref_session_id,
+        project_path=project_path,
     )
 
 
@@ -854,13 +855,14 @@ def _load_conversation_for_dag(
 
 
 def _merge_summary(
-    summaries_by_key: dict[tuple[str, str], ConversationSummaryResponse],
+    summaries_by_key: dict[tuple[str, str, str | None], ConversationSummaryResponse],
     candidate: ConversationSummaryResponse,
 ) -> None:
     provider = _provider_for_project_path(candidate.project_path)
     key = (
         candidate.project_path if provider == "openclaw" else provider,
         candidate.session_id,
+        candidate.project_path if provider == "openclaw" else None,
     )
     existing = summaries_by_key.get(key)
     if existing is None:

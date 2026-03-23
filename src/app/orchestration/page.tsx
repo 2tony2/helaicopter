@@ -4,15 +4,10 @@ import { resolveOrchestrationInitialTab } from "@/components/orchestration/tabs"
 export default function OrchestrationPage({
   searchParams,
 }: {
-  searchParams: { tab?: string; flowRunId?: string; prefectPath?: string };
+  searchParams: { tab?: string };
 }) {
-  const { tab, prefectPath } = searchParams;
+  const { tab } = searchParams;
   const initialTab = resolveOrchestrationInitialTab(tab);
 
-  return (
-    <OrchestrationHub
-      initialTab={initialTab}
-      prefectPath={prefectPath}
-    />
-  );
+  return <OrchestrationHub initialTab={initialTab} />;
 }

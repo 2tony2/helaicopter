@@ -5,7 +5,7 @@ description: How the frontend communicates with the backend and how the API is s
 
 ## Base URL
 
-The backend runs on `http://127.0.0.1:30000` during local development. The frontend resolves this automatically — if `NEXT_PUBLIC_API_BASE_URL` is not set and the page is loaded from localhost, the client falls back to `:30000`.
+Set `NEXT_PUBLIC_API_BASE_URL` when the frontend should call a backend on a different origin. When it is unset, the frontend uses relative backend paths.
 
 ```bash
 # Override for custom deployment
@@ -62,7 +62,6 @@ The frontend uses [SWR](https://swr.vercel.app/) hooks for all data fetching wit
 | `useConversation()` | 3 seconds | Single conversation detail |
 | `useAnalytics()` | 15 seconds | Token/cost analytics |
 | `useDatabaseStatus()` | 5 minutes | Database health |
-| `usePrefectFlowRuns()` | SWR default | Prefect flow runs |
 | `useOvernightOatsRuns()` | SWR default | OATS run records |
 
 All hooks are defined in `src/hooks/use-conversations.ts` and `src/hooks/use-plans.ts`.
