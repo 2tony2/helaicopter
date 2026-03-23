@@ -16,6 +16,7 @@ import {
   resolveConversationProvider,
 } from "../../../components/conversation/conversation-viewer.tsx";
 import { matchesConversationProvider } from "../../../components/conversation/conversation-list.tsx";
+import { resolveConversationDetailTab } from "../../../lib/routes.ts";
 
 const canonicalRef = "review-the-backend-rollout--claude-claude-session-1";
 const wrongSlugRef = "stale-slug--claude-claude-session-1";
@@ -124,7 +125,7 @@ function createTestDependencies(
 
   return {
     fetchCalls,
-    async fetchJson(path, init) {
+    async fetchJson<T>(path: string, init?: RequestInit) {
       fetchCalls.push({ path, init });
       const response = handlers[path];
       if (!response) {
@@ -133,7 +134,10 @@ function createTestDependencies(
       if ((response.status ?? 200) === 404) {
         return { status: 404, data: null };
       }
-      return { status: response.status ?? 200, data: response.body ?? null };
+      return {
+        status: response.status ?? 200,
+        data: (response.body ?? null) as T | null,
+      };
     },
     redirect(href) {
       throw new RedirectSignal(href);
@@ -214,6 +218,52 @@ test("canonical tab routes render without nested detail validation", async () =>
   assert.deepEqual(deps.fetchCalls.map((call) => call.path), [
     `/conversations/by-ref/${encodeURIComponent(canonicalRef)}`,
   ]);
+});
+
+test("OpenClaw canonical tab routes preserve the openclaw tab", async () => {
+  const openClawRef =
+    "review-openclaw-rollout--openclaw-openclaw:agent:main::openclaw-session-1";
+  const openClawProjectPath = "openclaw:agent:main";
+  const openClawSessionId = "openclaw-session-1";
+  const deps = createTestDependencies({
+    [`/conversations/by-ref/${encodeURIComponent(openClawRef)}`]: {
+      body: makeResolution({
+        conversation_ref: openClawRef,
+        route_slug: "review-openclaw-rollout",
+        project_path: openClawProjectPath,
+        session_id: openClawSessionId,
+      }),
+    },
+    [`/conversations/${encodeURIComponent(openClawProjectPath)}/${openClawSessionId}`]: {
+      body: makeConversationDetail({
+        session_id: openClawSessionId,
+        project_path: openClawProjectPath,
+        provider: "openclaw",
+        provider_detail: {
+          kind: "openclaw",
+          openclaw: {
+            artifact_inventory: {},
+          },
+        },
+      }),
+    },
+  });
+
+  const handlePage = createConversationPageHandler(deps);
+  const result = await handlePage({
+    segments: [openClawRef, "openclaw"],
+    searchParams: new URLSearchParams(),
+  });
+
+  assert.equal(result.kind, "render");
+  assert.equal(result.viewer.initialTab, "openclaw");
+  assert.deepEqual(
+    deps.fetchCalls.map((call) => call.path),
+    [
+      `/conversations/by-ref/${encodeURIComponent(openClawRef)}`,
+      `/conversations/${encodeURIComponent(openClawProjectPath)}/${openClawSessionId}`,
+    ]
+  );
 });
 
 test("child canonical routes fetch detail with parent_session_id and pass parentSessionId to the viewer", async () => {
@@ -447,6 +497,33 @@ test("project provider filtering does not treat every non-codex namespace as Cla
   assert.equal(matchesConversationProvider(openClawConversation, "openclaw"), true);
   assert.equal(matchesConversationProvider(openClawConversation, "claude"), false);
   assert.equal(matchesConversationProvider(openClawConversation, "codex"), false);
+});
+
+test("route parsing accepts the OpenClaw provider detail tab", () => {
+  assert.equal(resolveConversationDetailTab("openclaw"), "openclaw");
+});
+
+test("non-OpenClaw conversations reject the provider-specific openclaw tab", async () => {
+  const deps = createTestDependencies({
+    [`/conversations/by-ref/${encodeURIComponent(canonicalRef)}`]: {
+      body: makeResolution(),
+    },
+    [`/conversations/${encodeURIComponent(projectPath)}/${sessionId}`]: {
+      body: makeConversationDetail({
+        provider: "claude",
+      }),
+    },
+  });
+
+  const handlePage = createConversationPageHandler(deps);
+
+  await assert.rejects(
+    handlePage({
+      segments: [canonicalRef, "openclaw"],
+      searchParams: new URLSearchParams(),
+    }),
+    (error: unknown) => error instanceof NotFoundSignal
+  );
 });
 
 test("project provider filtering matches OpenCloud sessions by provider", () => {

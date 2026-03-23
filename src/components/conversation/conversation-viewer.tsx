@@ -34,6 +34,7 @@ import { ToolCallBlock } from "./tool-call-block";
 import { EvaluationDialog } from "./evaluation-dialog";
 import { EvaluationsTab } from "./evaluations-tab";
 import { ConversationDagView } from "./conversation-dag-view";
+import { OpenClawTab } from "./openclaw-tab";
 import {
   buildCanonicalConversationRoute,
   buildConversationTabRoute,
@@ -393,10 +394,15 @@ export function ConversationViewer({
   const selectedPlanId = routeState.plan ?? null;
   const selectedSubagentId = routeState.subagent ?? null;
   const selectedMessageId = routeState.message ?? null;
-  const activeTab = routeState.tab;
+  const provider = resolveConversationProvider(projectPath, conversation.provider);
+  const openclawDetail =
+    provider === "openclaw" && conversation.providerDetail?.kind === "openclaw"
+      ? conversation.providerDetail.openclaw
+      : null;
+  const activeTab =
+    routeState.tab === "openclaw" && !openclawDetail ? "messages" : routeState.tab;
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || plans[0];
   const conversationEvaluations = evaluations ?? [];
-  const provider = resolveConversationProvider(projectPath, conversation.provider);
 
   function replaceRoute(next: {
     tab?: ConversationDetailTab;
@@ -404,7 +410,7 @@ export function ConversationViewer({
     subagent?: string | null;
     message?: string | null;
   }) {
-    const tab = next.tab ?? routeState.tab;
+    const tab = next.tab ?? activeTab;
     const target =
       tab === "messages"
         ? next.message ?? routeState.message
@@ -565,6 +571,7 @@ export function ConversationViewer({
           <TabsTrigger value="tasks">
             Tasks {tasks && tasks.length > 0 ? `(${tasks.length})` : ""}
           </TabsTrigger>
+          {openclawDetail ? <TabsTrigger value="openclaw">OpenClaw</TabsTrigger> : null}
           <TabsTrigger value="raw">Raw</TabsTrigger>
         </TabsList>
 
@@ -752,6 +759,12 @@ export function ConversationViewer({
             )}
           </div>
         </TabsContent>
+
+        {openclawDetail ? (
+          <TabsContent value="openclaw">
+            <OpenClawTab detail={openclawDetail} />
+          </TabsContent>
+        ) : null}
 
         <TabsContent value="raw">
           <div className="mt-4">

@@ -18,6 +18,7 @@ const {
 } = await import(new URL("./normalize.ts", import.meta.url).href);
 const {
   conversationSummaryListSchema,
+  conversationDetailSchema,
 } = await import(new URL("./schemas/conversations.ts", import.meta.url).href);
 const {
   providerFilterSchema,
@@ -605,6 +606,342 @@ test("normalizeConversationDetail preserves token usage semantics expected by th
   );
   assert.equal(normalized.contextAnalytics.buckets[0].cacheWriteTokens, 3);
   assert.equal(normalized.contextWindow.peakContextWindow, 44);
+});
+
+test("normalizeConversationDetail preserves OpenClaw provider detail payloads", () => {
+  const parsed = conversationDetailSchema.parse({
+    session_id: "openclaw-session-1",
+    project_path: "openclaw:agent:main",
+    route_slug: "review-openclaw-rollout",
+    conversation_ref: "review-openclaw-rollout--openclaw-openclaw:agent:main::openclaw-session-1",
+    provider: "openclaw",
+    created_at: 1763000000000,
+    last_updated_at: 1763000001000,
+    is_running: false,
+    messages: [],
+    plans: [],
+    total_usage: {
+      input_tokens: 100,
+      output_tokens: 200,
+      cache_creation_tokens: 30,
+      cache_read_tokens: 40,
+    },
+    start_time: 1763000000000,
+    end_time: 1763000001000,
+    subagents: [],
+    context_analytics: {
+      buckets: [],
+      steps: [],
+    },
+    context_window: {
+      peak_context_window: 44,
+      api_calls: 2,
+      cumulative_tokens: 300,
+    },
+    provider_detail: {
+      kind: "openclaw",
+      openclaw: {
+        artifact_inventory: {
+          live_transcript: {
+            path: "/Users/tony/.openclaw/agents/main/sessions/openclaw-session-1.jsonl",
+            status: "live",
+            canonical_session_id: "openclaw-session-1",
+          },
+          attached_archives: [
+            {
+              kind: "reset_archive",
+              path: "/Users/tony/.openclaw/agents/main/sessions/openclaw-session-1.jsonl.reset.2026-03-22T03-00-11.497Z",
+            },
+          ],
+        },
+        session_store: {
+          sessionKey: "agent:main:main",
+          skills: {
+            prompt: "Follow the OpenClaw rollout checklist",
+          },
+        },
+        skills: {
+          prompt: "Follow the OpenClaw rollout checklist",
+          declared: [{ name: "planner", source: "builtin" }],
+        },
+        system_prompt: {
+          workspace_dir: "/Users/tony/Code/helaicopter",
+          sandbox_mode: "workspace-write",
+        },
+        transcript_diagnostics: {
+          event_types: {
+            custom_message: 1,
+            branch_summary: 1,
+          },
+        },
+        usage_reconciliation: {
+          transcript_total_tokens: 195,
+          store_total_tokens: 275,
+        },
+        memory_store: {
+          path: "/Users/tony/.openclaw/memory/main.sqlite",
+          tables: ["chunks", "files"],
+          counts: {
+            files: 2,
+            chunks: 3,
+          },
+          workspace_link: {
+            workspace_dir: "/Users/tony/Code/helaicopter",
+            matched_prefix: "/Users/tony/Code/helaicopter",
+            confidence: "exact",
+          },
+        },
+        raw: {
+          session_store_entry: {
+            sessionId: "openclaw-session-1",
+          },
+        },
+      },
+    },
+  });
+
+  const normalized = normalizeConversationDetail(parsed);
+
+  assert.equal(normalized.providerDetail?.kind, "openclaw");
+  assert.equal(
+    normalized.providerDetail?.openclaw.artifactInventory.liveTranscript?.status,
+    "live"
+  );
+  assert.equal(
+    normalized.providerDetail?.openclaw.artifactInventory.attachedArchives[0]?.kind,
+    "reset_archive"
+  );
+  assert.equal(
+    normalized.providerDetail?.openclaw.skills?.declared?.[0]?.name,
+    "planner"
+  );
+  assert.equal(
+    normalized.providerDetail?.openclaw.systemPrompt?.workspaceDir,
+    "/Users/tony/Code/helaicopter"
+  );
+  assert.equal(
+    normalized.providerDetail?.openclaw.usageReconciliation?.storeTotalTokens,
+    275
+  );
+  assert.equal(
+    normalized.providerDetail?.openclaw.memoryStore?.workspaceLink?.confidence,
+    "exact"
+  );
+  assert.equal(
+    (normalized.providerDetail?.openclaw.raw?.session_store_entry as { sessionId?: string } | undefined)
+      ?.sessionId,
+    "openclaw-session-1"
+  );
+});
+
+test("normalizeConversationDetail omits provider detail for non-OpenClaw payloads", () => {
+  const normalized = normalizeConversationDetail({
+    session_id: "claude-session-1",
+    project_path: "-Users-tony-Code-helaicopter",
+    provider: "claude",
+    created_at: 1763000000000,
+    last_updated_at: 1763000001000,
+    is_running: false,
+    messages: [],
+    plans: [],
+    total_usage: {
+      input_tokens: 1,
+      output_tokens: 2,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+    },
+    start_time: 1763000000000,
+    end_time: 1763000001000,
+    subagents: [],
+    context_analytics: { buckets: [], steps: [] },
+    context_window: {
+      peak_context_window: 0,
+      api_calls: 0,
+      cumulative_tokens: 0,
+    },
+  });
+
+  assert.equal(normalized.providerDetail, undefined);
+});
+
+test("normalizeConversationDetail tolerates sparse OpenClaw provider detail payloads", () => {
+  const normalized = normalizeConversationDetail({
+    session_id: "openclaw-session-2",
+    project_path: "openclaw:agent:main",
+    provider: "openclaw",
+    created_at: 1763000000000,
+    last_updated_at: 1763000001000,
+    is_running: false,
+    messages: [],
+    plans: [],
+    total_usage: {
+      input_tokens: 1,
+      output_tokens: 2,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+    },
+    start_time: 1763000000000,
+    end_time: 1763000001000,
+    subagents: [],
+    context_analytics: { buckets: [], steps: [] },
+    context_window: {
+      peak_context_window: 0,
+      api_calls: 0,
+      cumulative_tokens: 0,
+    },
+    provider_detail: {
+      kind: "openclaw",
+      openclaw: {
+        artifact_inventory: {},
+      },
+    },
+  });
+
+  assert.equal(normalized.providerDetail?.kind, "openclaw");
+  assert.deepEqual(normalized.providerDetail?.openclaw.artifactInventory.attachedArchives, []);
+  assert.equal(normalized.providerDetail?.openclaw.memoryStore, undefined);
+});
+
+test("normalizeConversationDetail still accepts camelCase detail payloads during rollout", () => {
+  const parsed = conversationDetailSchema.parse({
+    sessionId: "openclaw-session-3",
+    projectPath: "openclaw:agent:main",
+    provider: "openclaw",
+    routeSlug: "camel-openclaw-rollout",
+    conversationRef: "camel-openclaw-rollout--openclaw-openclaw:agent:main::openclaw-session-3",
+    threadType: "main",
+    createdAt: 1763000000000,
+    lastUpdatedAt: 1763000001000,
+    isRunning: false,
+    messages: [
+      {
+        id: "camel-message-1",
+        role: "assistant",
+        timestamp: 1763000000000,
+        blocks: [
+          {
+            type: "tool_call",
+            toolUseId: "tool-camel-1",
+            toolName: "Shell",
+            input: {},
+            result: "stdout",
+            isError: false,
+          },
+        ],
+        usage: {
+          inputTokens: 5,
+          outputTokens: 6,
+          cacheCreationTokens: 1,
+          cacheReadTokens: 2,
+        },
+        reasoningTokens: 7,
+      },
+    ],
+    plans: [
+      {
+        id: "camel-plan-1",
+        slug: "camel-plan-1",
+        title: "Camel plan",
+        preview: "Preview",
+        content: "Content",
+        provider: "openclaw",
+        timestamp: 1763000000000,
+        sessionId: "openclaw-session-3",
+        projectPath: "openclaw:agent:main",
+        routeSlug: "camel-openclaw-rollout",
+        conversationRef:
+          "camel-openclaw-rollout--openclaw-openclaw:agent:main::openclaw-session-3",
+        sourcePath: "/tmp/camel-plan.md",
+      },
+    ],
+    totalUsage: {
+      inputTokens: 3,
+      outputTokens: 4,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+    },
+    startTime: 1763000000000,
+    endTime: 1763000001000,
+    subagents: [
+      {
+        agentId: "camel-agent-1",
+        hasFile: true,
+        projectPath: "openclaw:agent:main",
+        sessionId: "camel-agent-1",
+        routeSlug: "camel-agent-route",
+        conversationRef: "camel-agent-route--openclaw-openclaw:agent:main::camel-agent-1",
+      },
+    ],
+    contextAnalytics: {
+      buckets: [
+        {
+          label: "conversation",
+          category: "conversation",
+          inputTokens: 1,
+          outputTokens: 2,
+          cacheWriteTokens: 3,
+          cacheReadTokens: 4,
+          totalTokens: 10,
+          calls: 1,
+        },
+      ],
+      steps: [
+        {
+          messageId: "camel-message-1",
+          index: 0,
+          role: "assistant",
+          label: "conversation",
+          category: "conversation",
+          timestamp: 1763000000000,
+          inputTokens: 1,
+          outputTokens: 2,
+          cacheWriteTokens: 3,
+          cacheReadTokens: 4,
+          totalTokens: 10,
+        },
+      ],
+    },
+    contextWindow: {
+      peakContextWindow: 9,
+      apiCalls: 2,
+      cumulativeTokens: 30,
+    },
+    providerDetail: {
+      kind: "openclaw",
+      openclaw: {
+        artifactInventory: {
+          attachedArchives: [],
+        },
+        systemPrompt: {
+          workspaceDir: "/Users/tony/Code/helaicopter",
+        },
+        raw: {
+          session_store_entry: {
+            sessionId: "openclaw-session-3",
+          },
+        },
+      },
+    },
+  });
+  const normalized = normalizeConversationDetail(parsed);
+
+  assert.equal(normalized.sessionId, "openclaw-session-3");
+  assert.equal(normalized.routeSlug, "camel-openclaw-rollout");
+  assert.equal(
+    normalized.providerDetail?.openclaw.systemPrompt?.workspaceDir,
+    "/Users/tony/Code/helaicopter"
+  );
+  assert.equal(
+    (normalized.providerDetail?.openclaw.raw?.session_store_entry as { sessionId?: string } | undefined)
+      ?.sessionId,
+    "openclaw-session-3"
+  );
+  assert.equal(normalized.messages[0]?.usage?.cache_creation_input_tokens, 1);
+  assert.equal(normalized.messages[0]?.reasoningTokens, 7);
+  assert.equal(normalized.plans[0]?.sourcePath, "/tmp/camel-plan.md");
+  assert.equal(normalized.subagents[0]?.agentId, "camel-agent-1");
+  assert.equal(normalized.contextAnalytics.buckets[0]?.cacheWriteTokens, 3);
+  assert.equal(normalized.contextWindow.peakContextWindow, 9);
 });
 
 test("normalizeConversationDetail preserves standalone tool roles", () => {
