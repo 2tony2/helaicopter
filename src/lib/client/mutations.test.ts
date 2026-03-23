@@ -1,15 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const {
-  createConversationEvaluation,
-  createEvaluationPrompt,
-  refreshOvernightOatsRun,
-  refreshDatabase,
-  resumeOvernightOatsRun,
-  saveSubscriptionSettings,
-} = await import(new URL("./mutations.ts", import.meta.url).href);
-const { setBaseUrl } = await import(new URL("./endpoints.ts", import.meta.url).href);
+async function getMutations() {
+  return import(new URL("./mutations.ts", import.meta.url).href);
+}
+
+async function getEndpoints() {
+  return import(new URL("./endpoints.ts", import.meta.url).href);
+}
 
 function installFetchStub(
   implementation: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -22,6 +20,7 @@ function installFetchStub(
 }
 
 test("refreshDatabase keeps the failed status payload from FastAPI error responses", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   const restoreFetch = installFetchStub(async (input, init) => {
     assert.equal(String(input), "https://api.example.test/databases/refresh");
@@ -93,6 +92,7 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
   });
 
   try {
+    const { refreshDatabase } = await getMutations();
     const status = await refreshDatabase({
       force: true,
       trigger: "manual",
@@ -108,6 +108,7 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
 });
 
 test("createEvaluationPrompt posts to the FastAPI endpoint and normalizes the response", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   const restoreFetch = installFetchStub(async (input, init) => {
     assert.equal(String(input), "https://api.example.test/evaluation-prompts");
@@ -136,6 +137,7 @@ test("createEvaluationPrompt posts to the FastAPI endpoint and normalizes the re
   });
 
   try {
+    const { createEvaluationPrompt } = await getMutations();
     const prompt = await createEvaluationPrompt({
       name: "Reviewer Sweep",
       description: "Focus on failures",
@@ -149,6 +151,7 @@ test("createEvaluationPrompt posts to the FastAPI endpoint and normalizes the re
 });
 
 test("createEvaluationPrompt validates outgoing payloads before fetch", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   let fetchCalls = 0;
   const restoreFetch = installFetchStub(async () => {
@@ -159,11 +162,14 @@ test("createEvaluationPrompt validates outgoing payloads before fetch", async ()
   try {
     await assert.rejects(
       () =>
-        createEvaluationPrompt({
+        (async () => {
+          const { createEvaluationPrompt } = await getMutations();
+          return createEvaluationPrompt({
           name: "   ",
           description: "Focus on failures",
           promptText: "Review the weakest turns.",
-        }),
+          });
+        })(),
       /name/i
     );
     assert.equal(fetchCalls, 0);
@@ -173,6 +179,7 @@ test("createEvaluationPrompt validates outgoing payloads before fetch", async ()
 });
 
 test("saveSubscriptionSettings and createConversationEvaluation normalize FastAPI payloads", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   const responses = [
     new Response(
@@ -232,6 +239,7 @@ test("saveSubscriptionSettings and createConversationEvaluation normalize FastAP
   });
 
   try {
+    const { saveSubscriptionSettings, createConversationEvaluation } = await getMutations();
     const settings = await saveSubscriptionSettings({
       claude: {
         provider: "claude",
@@ -280,6 +288,7 @@ test("saveSubscriptionSettings and createConversationEvaluation normalize FastAP
 });
 
 test("createConversationEvaluation includes parent_session_id only for parent-scoped child routes", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   const seenRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
   const restoreFetch = installFetchStub(async (input, init) => {
@@ -316,6 +325,7 @@ test("createConversationEvaluation includes parent_session_id only for parent-sc
   });
 
   try {
+    const { createConversationEvaluation } = await getMutations();
     await createConversationEvaluation("-Users-tony-Code-helaicopter", "claude-agent-1", {
       provider: "codex",
       model: "gpt-5",
@@ -374,6 +384,7 @@ test("createConversationEvaluation includes parent_session_id only for parent-sc
 });
 
 test("createConversationEvaluation validates outgoing payloads before fetch", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   let fetchCalls = 0;
   const restoreFetch = installFetchStub(async () => {
@@ -384,7 +395,9 @@ test("createConversationEvaluation validates outgoing payloads before fetch", as
   try {
     await assert.rejects(
       () =>
-        createConversationEvaluation("-Users-tony-Code-helaicopter", "session-1", {
+        (async () => {
+          const { createConversationEvaluation } = await getMutations();
+          return createConversationEvaluation("-Users-tony-Code-helaicopter", "session-1", {
           provider: "codex",
           model: "gpt-5",
           promptId: "prompt-1",
@@ -392,7 +405,8 @@ test("createConversationEvaluation validates outgoing payloads before fetch", as
           promptText: "Review the weakest turns.",
           scope: "invalid-scope" as never,
           selectionInstruction: null,
-        }),
+          });
+        })(),
       /scope/i
     );
     assert.equal(fetchCalls, 0);
@@ -402,6 +416,7 @@ test("createConversationEvaluation validates outgoing payloads before fetch", as
 });
 
 test("saveSubscriptionSettings validates outgoing payloads before fetch", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   let fetchCalls = 0;
   const restoreFetch = installFetchStub(async () => {
@@ -412,7 +427,9 @@ test("saveSubscriptionSettings validates outgoing payloads before fetch", async 
   try {
     await assert.rejects(
       () =>
-        saveSubscriptionSettings({
+        (async () => {
+          const { saveSubscriptionSettings } = await getMutations();
+          return saveSubscriptionSettings({
           claude: {
             provider: "claude",
             hasSubscription: false,
@@ -425,7 +442,8 @@ test("saveSubscriptionSettings validates outgoing payloads before fetch", async 
             monthlyCost: 200,
             updatedAt: "2026-03-18T10:00:00Z",
           },
-        }),
+          });
+        })(),
       /monthlyCost|monthly_cost/i
     );
     assert.equal(fetchCalls, 0);
@@ -435,6 +453,7 @@ test("saveSubscriptionSettings validates outgoing payloads before fetch", async 
 });
 
 test("refreshOvernightOatsRun and resumeOvernightOatsRun post to the run action endpoints", async () => {
+  const { setBaseUrl } = await getEndpoints();
   setBaseUrl("https://api.example.test");
   const responses = [
     new Response(
@@ -572,6 +591,7 @@ test("refreshOvernightOatsRun and resumeOvernightOatsRun post to the run action 
   });
 
   try {
+    const { refreshOvernightOatsRun, resumeOvernightOatsRun } = await getMutations();
     const refreshed = await refreshOvernightOatsRun("oats-run-1");
     const resumed = await resumeOvernightOatsRun("oats-run-1");
 

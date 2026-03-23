@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from helaicopter_api.application.oats_run_actions import refresh_oats_run, resume_oats_run
 from helaicopter_api.application.orchestration import get_oats_facts, list_oats_runs
@@ -67,7 +67,13 @@ async def orchestration_oats_refresh(
     Returns:
         The updated OATS run record reflecting the latest stacked PR state.
     """
-    return refresh_oats_run(services, run_id)
+    try:
+        return refresh_oats_run(services, run_id)
+    except RuntimeError as error:
+        # Missing or invalid backend settings, or runtime errors from adapters
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
 @orchestration_router.post(
@@ -88,4 +94,9 @@ async def orchestration_oats_resume(
     Returns:
         The updated OATS run record after the resume action has been dispatched.
     """
-    return resume_oats_run(services, run_id)
+    try:
+        return resume_oats_run(services, run_id)
+    except RuntimeError as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error

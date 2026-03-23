@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 
-const { del, patch, post, requestJson } = await import(new URL("./fetcher.ts", import.meta.url).href);
+async function getFetcher() {
+  return import(new URL("./fetcher.ts", import.meta.url).href);
+}
 
 function installFetchStub(
   implementation: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -30,6 +32,7 @@ test("requestJson parses successful JSON responses through a schema", async () =
   });
 
   try {
+    const { requestJson } = await getFetcher();
     const payload = await requestJson("https://api.example.test/projects/alpha", { method: "GET" }, payloadSchema);
 
     assert.equal(payload.projectId, "alpha");
@@ -54,6 +57,7 @@ test("requestJson disables browser caching by default for repeated live reads", 
   });
 
   try {
+    const { requestJson } = await getFetcher();
     const payload = await requestJson(
       "https://api.example.test/conversations?days=7",
       undefined,
@@ -79,6 +83,7 @@ test("requestJson throws a concise validation error when schema parsing fails", 
   });
 
   try {
+    const { requestJson } = await getFetcher();
     await assert.rejects(
       () => requestJson("https://api.example.test/projects/alpha", undefined, payloadSchema),
       (error: unknown) => {
@@ -106,6 +111,7 @@ test("requestJson prefers backend error messages for non-OK responses even with 
   });
 
   try {
+    const { requestJson } = await getFetcher();
     await assert.rejects(
       () => requestJson("https://api.example.test/projects/alpha", undefined, payloadSchema),
       /Project lookup exploded\./
@@ -124,6 +130,7 @@ test("requestJson keeps legacy normalize-only call sites working during migratio
   });
 
   try {
+    const { requestJson } = await getFetcher();
     const payload = await requestJson(
       "https://api.example.test/projects/alpha",
       undefined,
@@ -152,6 +159,7 @@ test("requestJson validates with a schema before running a follow-up normalizer"
   });
 
   try {
+    const { requestJson } = await getFetcher();
     const payload = await requestJson(
       "https://api.example.test/projects/alpha",
       undefined,
@@ -202,6 +210,7 @@ test("mutation helpers carry schema-aware parsing through post, patch, and delet
   });
 
   try {
+    const { post, patch, del } = await getFetcher();
     const created = await post(
       "https://api.example.test/projects",
       { projectId: "alpha" },
@@ -271,6 +280,7 @@ test("requestJson bounds validation errors, strips raw query strings, and skips 
   });
 
   try {
+    const { requestJson } = await getFetcher();
     await assert.rejects(
       () =>
         requestJson(

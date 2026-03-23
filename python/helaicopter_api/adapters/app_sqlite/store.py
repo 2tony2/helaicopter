@@ -1137,13 +1137,21 @@ class SqliteAppStore(AppSqliteStore):
         if not self._db_path.exists():
             return None
         uri = f"file:{quote(str(self._db_path))}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True)
+        try:
+            connection = sqlite3.connect(uri, uri=True)
+        except sqlite3.Error:
+            # Corrupt or unreadable SQLite file – treat as unavailable.
+            return None
         connection.row_factory = sqlite3.Row
         return connection
 
     def _connect_writable(self) -> sqlite3.Connection:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self._db_path)
+        try:
+            connection = sqlite3.connect(self._db_path)
+        except sqlite3.Error as error:
+            # Surface a stable error for API boundaries to translate.
+            raise RuntimeError("SQLite database is unavailable") from error
         connection.row_factory = sqlite3.Row
         return connection
 
