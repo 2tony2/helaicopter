@@ -45,8 +45,7 @@
                     "all",
                     "claude",
                     "codex",
-                    "openclaw",
-                    "opencloud"
+                    "openclaw"
                   ],
                   "type": "string"
                 },
@@ -446,7 +445,7 @@
           "databases"
         ],
         "summary": "Database Status",
-        "description": "Return database artifact status, bootstrapping refresh on first access.\n\nReturns:\n    Status payload containing the current refresh state, timing metadata,\n    runtime read-backend configuration, and per-artifact health details\n    for SQLite, DuckDB, frontend cache, and Prefect Postgres.\n\nRaises:\n    HTTPException: 500 if a database operation error occurs without a\n        structured payload.",
+        "description": "Return database artifact status, bootstrapping refresh on first access.\n\nReturns:\n    Status payload containing the current refresh state, timing metadata,\n    runtime read-backend configuration, and per-artifact health details\n    for SQLite, DuckDB, and the frontend cache.\n\nRaises:\n    HTTPException: 500 if a database operation error occurs without a\n        structured payload.",
         "operationId": "database_status_databases_status_get",
         "responses": {
           "200": {
@@ -3545,8 +3544,7 @@
             "enum": [
               "frontend_cache",
               "sqlite",
-              "duckdb",
-              "prefect_postgres"
+              "duckdb"
             ],
             "title": "Key"
           },
@@ -3741,20 +3739,16 @@
           },
           "duckdb": {
             "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
-          },
-          "prefectPostgres": {
-            "$ref": "#/components/schemas/DatabaseArtifactStatusResponse"
           }
         },
         "type": "object",
         "required": [
           "frontendCache",
           "sqlite",
-          "duckdb",
-          "prefectPostgres"
+          "duckdb"
         ],
         "title": "DatabaseArtifactsResponse",
-        "description": "Status snapshots for all managed database artifacts (cache, SQLite, DuckDB, Postgres)."
+        "description": "Status snapshots for all managed database artifacts."
       },
       "DatabaseColumnSchemaResponse": {
         "properties": {
@@ -5950,496 +5944,6 @@
         "title": "PlanSummaryResponse",
         "description": "Lightweight plan listing item."
       },
-      "PrefectDeploymentResponse": {
-        "properties": {
-          "deploymentId": {
-            "type": "string",
-            "title": "Deploymentid"
-          },
-          "deploymentName": {
-            "type": "string",
-            "title": "Deploymentname"
-          },
-          "flowId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flowid"
-          },
-          "flowName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flowname"
-          },
-          "workPoolName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workpoolname"
-          },
-          "workQueueName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workqueuename"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
-          "updatedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updatedat"
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Tags",
-            "default": []
-          },
-          "oatsMetadata": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PrefectOatsMetadataResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "deploymentId",
-          "deploymentName"
-        ],
-        "title": "PrefectDeploymentResponse",
-        "description": "Prefect deployment record with optional OATS metadata."
-      },
-      "PrefectFlowRunAnalyticsResponse": {
-        "properties": {
-          "runStatus": {
-            "type": "string",
-            "title": "Runstatus"
-          },
-          "taskCount": {
-            "type": "integer",
-            "title": "Taskcount",
-            "default": 0
-          },
-          "completedTaskCount": {
-            "type": "integer",
-            "title": "Completedtaskcount",
-            "default": 0
-          },
-          "runningTaskCount": {
-            "type": "integer",
-            "title": "Runningtaskcount",
-            "default": 0
-          },
-          "failedTaskCount": {
-            "type": "integer",
-            "title": "Failedtaskcount",
-            "default": 0
-          },
-          "taskAttemptCount": {
-            "type": "integer",
-            "title": "Taskattemptcount",
-            "default": 0
-          },
-          "lastUpdatedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastupdatedat"
-          }
-        },
-        "type": "object",
-        "required": [
-          "runStatus"
-        ],
-        "title": "PrefectFlowRunAnalyticsResponse",
-        "description": "Task-level analytics summary for a Prefect flow run."
-      },
-      "PrefectFlowRunResponse": {
-        "properties": {
-          "flowRunId": {
-            "type": "string",
-            "title": "Flowrunid"
-          },
-          "flowRunName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flowrunname"
-          },
-          "deploymentId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deploymentid"
-          },
-          "deploymentName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deploymentname"
-          },
-          "flowId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flowid"
-          },
-          "flowName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flowname"
-          },
-          "workPoolName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workpoolname"
-          },
-          "workQueueName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workqueuename"
-          },
-          "stateType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Statetype"
-          },
-          "stateName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Statename"
-          },
-          "createdAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updatedat"
-          },
-          "oatsMetadata": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PrefectOatsMetadataResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "analytics": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PrefectFlowRunAnalyticsResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "flowRunId"
-        ],
-        "title": "PrefectFlowRunResponse",
-        "description": "Prefect flow run record with state, deployment linkage, and optional OATS analytics."
-      },
-      "PrefectOatsMetadataResponse": {
-        "properties": {
-          "runTitle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Runtitle"
-          },
-          "sourcePath": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sourcepath"
-          },
-          "repoRoot": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reporoot"
-          },
-          "configPath": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Configpath"
-          },
-          "localMetadataPath": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Localmetadatapath"
-          },
-          "artifactRoot": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Artifactroot"
-          }
-        },
-        "type": "object",
-        "title": "PrefectOatsMetadataResponse",
-        "description": "OATS-specific metadata attached to a Prefect deployment or flow run."
-      },
-      "PrefectWorkPoolResponse": {
-        "properties": {
-          "workPoolId": {
-            "type": "string",
-            "title": "Workpoolid"
-          },
-          "workPoolName": {
-            "type": "string",
-            "title": "Workpoolname"
-          },
-          "type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Type"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
-          "isPaused": {
-            "type": "boolean",
-            "title": "Ispaused",
-            "default": false
-          },
-          "concurrencyLimit": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Concurrencylimit"
-          }
-        },
-        "type": "object",
-        "required": [
-          "workPoolId",
-          "workPoolName"
-        ],
-        "title": "PrefectWorkPoolResponse",
-        "description": "Prefect work pool record with type, status, and concurrency configuration."
-      },
-      "PrefectWorkerResponse": {
-        "properties": {
-          "workerId": {
-            "type": "string",
-            "title": "Workerid"
-          },
-          "workerName": {
-            "type": "string",
-            "title": "Workername"
-          },
-          "workPoolName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workpoolname"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
-          "lastHeartbeatAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastheartbeatat"
-          }
-        },
-        "type": "object",
-        "required": [
-          "workerId",
-          "workerName"
-        ],
-        "title": "PrefectWorkerResponse",
-        "description": "Prefect worker record with heartbeat and work pool association."
-      },
       "ProjectResponse": {
         "properties": {
           "encoded_path": {
@@ -6752,7 +6256,7 @@
     },
     {
       "name": "orchestration",
-      "description": "Prefect-first orchestration plus legacy OATS compatibility surfaces."
+      "description": "Repo-local OATS orchestration and runtime inspection surfaces."
     }
   ]
 }

@@ -12,7 +12,7 @@ Helaicopter is a self-hosted analytics and operations platform that reads your A
 - **Conversation DAGs** — visualize parent/subagent relationships as directed acyclic graphs
 - **Plan viewer** — browse saved implementation plans from `~/.claude/plans/`
 - **Evaluation system** — run LLM-as-judge evaluations against conversation transcripts
-- **Orchestration hub** — monitor OATS run specs and Prefect workflow executions
+- **Orchestration hub** — monitor repo-local OATS run specs and runtime execution
 - **Database inspector** — view schema, table inventories, and refresh status for all backing stores
 
 ## Architecture at a glance
@@ -30,8 +30,8 @@ Helaicopter is a self-hosted analytics and operations platform that reads your A
 │   Hexagonal architecture        │
 └────┬───────┬───────┬────────────┘
      │       │       │
-  ~/.claude  SQLite  Prefect API
-  ~/.codex   DuckDB  OATS runtime
+  ~/.claude  SQLite  OATS runtime
+  ~/.codex   DuckDB  Backend cache
 ```
 
 The frontend never touches the filesystem directly — all data flows through the FastAPI backend, which owns the conversation parser, analytics aggregation, and database refresh pipeline.
@@ -65,7 +65,7 @@ npm run db:refresh
     Step-by-step guides for common tasks
   </Card>
   <Card title="Orchestration" icon="diagram-project" href="/orchestration/overview">
-    OATS run specs, Prefect integration, and workflow monitoring
+    OATS run specs and workflow monitoring
   </Card>
   <Card title="Data Layer" icon="database" href="/data/databases-and-caches">
     SQLite, DuckDB, refresh pipeline, and caching strategy

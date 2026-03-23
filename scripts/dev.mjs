@@ -3,9 +3,25 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  assertPortAvailableForCheckout,
+  buildCheckoutInstance,
+  buildDevChildEnv,
+  ownsDevProcess,
+} from "./dev-instance.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const apiPort = process.env.HELA_API_PORT ?? "30000";
+const checkoutInstance = buildCheckoutInstance(repoRoot, {
+  apiPort:
+    process.env.HELA_API_PORT === undefined
+      ? undefined
+      : Number.parseInt(process.env.HELA_API_PORT, 10),
+  webPort:
+    process.env.HELA_WEB_PORT === undefined
+      ? undefined
+      : Number.parseInt(process.env.HELA_WEB_PORT, 10),
+});
+const apiPort = String(checkoutInstance.apiPort);
 const nextLockPath = path.join(repoRoot, ".next", "dev", "lock");
 
 function runOutput(command, args) {
@@ -43,16 +59,6 @@ function listListeningPids(port) {
     .filter((value) => Number.isInteger(value) && value > 0);
 }
 
-function listMatchingPids(pattern) {
-  const output = runOutput("pgrep", ["-f", pattern]);
-  return output
-    .split(/\s+/)
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value) && value > 0);
-}
-
 function childPids(pid) {
   const output = runOutput("pgrep", ["-P", String(pid)]);
   return output
@@ -72,6 +78,33 @@ function collectProcessTree(rootPid, seen = new Set()) {
   return [...descendants, rootPid];
 }
 
+function readProcessCwd(pid) {
+  const output = runOutput("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]);
+  const match = output.match(/\nn(.+)\s*$/);
+  return match ? match[1].trim() : null;
+}
+
+function readProcessEnv(pid) {
+  const output = runOutput("ps", ["eww", "-p", String(pid)]);
+  if (!output) {
+    return {};
+  }
+  const env = {};
+  for (const match of output.matchAll(/(?:^|\s)([A-Z0-9_]+)=([^\s]+)/g)) {
+    env[match[1]] = match[2];
+  }
+  return env;
+}
+
+function readProcessSnapshot(pid, port) {
+  return {
+    pid,
+    port,
+    cwd: readProcessCwd(pid),
+    env: readProcessEnv(pid),
+  };
+}
+
 function terminatePids(pids) {
   const unique = [...new Set(pids.flatMap((pid) => collectProcessTree(pid)))];
   for (const pid of unique) {
@@ -83,6 +116,23 @@ function terminatePids(pids) {
   }
 }
 
+function ensureCheckoutOwnedOrAvailable(port) {
+  const pids = listListeningPids(port);
+  if (pids.length === 0) {
+    return [];
+  }
+
+  const owned = [];
+  for (const pid of pids) {
+    const snapshot = readProcessSnapshot(pid, port);
+    assertPortAvailableForCheckout(checkoutInstance, snapshot);
+    if (ownsDevProcess(checkoutInstance, snapshot)) {
+      owned.push(pid);
+    }
+  }
+  return owned;
+}
+
 function cleanupRepoProcesses() {
   const staleNextPids = listPidsHoldingFile(nextLockPath);
   if (staleNextPids.length > 0) {
@@ -92,13 +142,16 @@ function cleanupRepoProcesses() {
     fs.rmSync(nextLockPath, { force: true });
   }
 
-  const staleApiPids = [
-    ...listListeningPids(apiPort),
-    ...listMatchingPids("uvicorn .*helaicopter_api\\.server\\.main:app"),
-  ];
+  const staleApiPids = ensureCheckoutOwnedOrAvailable(checkoutInstance.apiPort);
   if (staleApiPids.length > 0) {
     console.log(`[dev] stopping stale FastAPI process(es): ${[...new Set(staleApiPids)].join(", ")}`);
     terminatePids(staleApiPids);
+  }
+
+  const staleWebPids = ensureCheckoutOwnedOrAvailable(checkoutInstance.webPort);
+  if (staleWebPids.length > 0) {
+    console.log(`[dev] stopping stale Next.js process(es): ${[...new Set(staleWebPids)].join(", ")}`);
+    terminatePids(staleWebPids);
   }
 }
 
@@ -116,16 +169,6 @@ function spawnChild(name, command, args, env = process.env) {
 
 function main() {
   cleanupRepoProcesses();
-
-  if (process.env.HELA_SKIP_PREFECT_BOOTSTRAP !== "1") {
-    // Default bootstrap entrypoint: bin/oats-prefect-up
-    console.log("[dev] bootstrapping Prefect control plane and worker");
-    execFileSync(path.join(repoRoot, "bin", "oats-prefect-up"), [], {
-      cwd: repoRoot,
-      stdio: "inherit",
-      env: process.env,
-    });
-  }
 
   const children = [];
   let shuttingDown = false;
@@ -150,18 +193,15 @@ function main() {
   process.on("SIGINT", () => shutdown(0));
   process.on("SIGTERM", () => shutdown(0));
 
-  const webEnv = {
-    ...process.env,
-    NEXT_PUBLIC_API_BASE_URL:
-      process.env.NEXT_PUBLIC_API_BASE_URL ?? `http://127.0.0.1:${apiPort}`,
-  };
+  const childEnv = buildDevChildEnv(checkoutInstance, process.env);
 
-  console.log(`[dev] starting FastAPI on http://127.0.0.1:${apiPort}`);
-  const api = spawnChild("api", "npm", ["run", "api:dev"]);
+  console.log(`[dev] checkout ${checkoutInstance.checkoutId}`);
+  console.log(`[dev] starting FastAPI on http://127.0.0.1:${checkoutInstance.apiPort}`);
+  const api = spawnChild("api", "npm", ["run", "api:dev"], childEnv);
   children.push(api);
 
-  console.log("[dev] starting Next.js frontend");
-  const web = spawnChild("web", "npm", ["run", "dev:web"], webEnv);
+  console.log(`[dev] starting Next.js frontend on http://127.0.0.1:${checkoutInstance.webPort}`);
+  const web = spawnChild("web", "npm", ["run", "dev:web"], childEnv);
   children.push(web);
 
   for (const child of children) {

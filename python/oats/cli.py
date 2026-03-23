@@ -17,12 +17,6 @@ from rich.table import Table
 
 from oats.parser import RunSpecParseError, parse_run_spec
 from oats.planner import PlanError, build_execution_plan
-from oats.prefect.client import PrefectApiError
-from oats.prefect.deployments import (
-    deploy_run_spec,
-    read_flow_run_status,
-    trigger_run_spec,
-)
 from oats.repo_config import RepoConfigError, find_repo_config, load_repo_config
 from oats.runner import (
     AgentInvocationError,
@@ -68,20 +62,14 @@ from oats.runtime_state import (
     write_plan_snapshot,
     write_runtime_state,
 )
-from oats.run_definition_loader import (
-    UnsupportedRunDefinitionInputError,
-    load_run_definition,
-)
 
 
 app = typer.Typer(
     help=(
-        "Overnight Oats CLI. Primary path: prefect deploy, run, status. "
-        "Legacy top-level commands available."
+        "Overnight Oats CLI for repo-local orchestration runs, status inspection, "
+        "and stacked PR workflows."
     )
 )
-prefect_app = typer.Typer(help="Primary orchestration commands: deploy, run, status.")
-app.add_typer(prefect_app, name="prefect")
 console = Console()
 DEFAULT_STALE_AFTER_SECONDS = 300
 DEFAULT_PROGRESS_HEARTBEAT_INTERVAL_SECONDS = 30.0
@@ -102,16 +90,6 @@ def _load_execution_plan(
         config_path=config_path,
     )
     return config, config_path, execution_plan
-
-
-def _load_repo_config_for_run_spec(
-    run_spec: Path,
-    repo: Path | None,
-) -> tuple[RepoConfig, Path]:
-    search_root = repo.resolve() if repo else run_spec.resolve().parent
-    config_path = find_repo_config(search_root)
-    return load_repo_config(config_path), config_path
-
 
 def _invocation_runtime_to_result(
     invocation: InvocationRuntimeRecord | None,
@@ -1094,8 +1072,7 @@ def pr_apply(
 
 @app.command(
     help=(
-        "Legacy compatibility command. "
-        "Use `oats prefect run`."
+        "Execute a repo-local OATS run and persist runtime state."
     )
 )
 def run(
@@ -1445,102 +1422,6 @@ def watch(
         }:
             break
         time.sleep(interval_seconds)
-
-
-@prefect_app.command("deploy")
-def prefect_deploy(
-    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
-    repo: Path | None = typer.Option(
-        None,
-        "--repo",
-        file_okay=False,
-        dir_okay=True,
-        help="Repo root to use when resolving .oats/config.toml.",
-    ),
-) -> None:
-    """Register or update a Prefect deployment from a Markdown run spec."""
-
-    try:
-        run_definition = load_run_definition(run_spec, repo_root=repo)
-        repo_config, _ = _load_repo_config_for_run_spec(run_spec, repo)
-        registered = deploy_run_spec(run_definition, repo_config)
-    except (
-        PrefectApiError,
-        RepoConfigError,
-        RunSpecParseError,
-        UnsupportedRunDefinitionInputError,
-    ) as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        raise typer.Exit(code=1) from exc
-
-    action = "Created" if registered.created else "Updated"
-    console.print(
-        Panel.fit(
-            f"{action} deployment [bold]{registered.deployment_name}[/bold]\n"
-            f"Deployment ID: {registered.deployment_id}\n"
-            f"Flow: {registered.flow_name}",
-            title="Prefect Deployment",
-        )
-    )
-
-
-@prefect_app.command("run")
-def prefect_run(
-    run_spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
-    repo: Path | None = typer.Option(
-        None,
-        "--repo",
-        file_okay=False,
-        dir_okay=True,
-        help="Repo root to use when resolving .oats/config.toml.",
-    ),
-) -> None:
-    """Create a manual Prefect flow run from a Markdown run spec."""
-
-    try:
-        run_definition = load_run_definition(run_spec, repo_root=repo)
-        repo_config, _ = _load_repo_config_for_run_spec(run_spec, repo)
-        flow_run = trigger_run_spec(run_definition, repo_config)
-    except (
-        PrefectApiError,
-        RepoConfigError,
-        RunSpecParseError,
-        UnsupportedRunDefinitionInputError,
-    ) as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        raise typer.Exit(code=1) from exc
-
-    console.print(
-        Panel.fit(
-            f"Flow run ID: [bold]{flow_run.flow_run_id}[/bold]\n"
-            f"Deployment ID: {flow_run.deployment_id}\n"
-            f"State: {flow_run.state_name or flow_run.state_type or '-'}",
-            title="Prefect Flow Run",
-        )
-    )
-
-
-@prefect_app.command("status")
-def prefect_status(
-    flow_run_id: str = typer.Argument(..., help="Prefect flow-run id to inspect."),
-) -> None:
-    """Print the latest Prefect status for a flow run."""
-
-    try:
-        status = read_flow_run_status(flow_run_id)
-    except PrefectApiError as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        raise typer.Exit(code=1) from exc
-
-    console.print(
-        Panel.fit(
-            f"Flow run ID: [bold]{status.flow_run_id}[/bold]\n"
-            f"Name: {status.flow_run_name or '-'}\n"
-            f"State: {status.state_name or status.state_type or '-'}",
-            title="Prefect Status",
-        )
-    )
-
 
 def main() -> None:
     app()

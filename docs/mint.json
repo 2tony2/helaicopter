@@ -39,8 +39,7 @@
       "group": "Orchestration",
       "pages": [
         "orchestration/overview",
-        "orchestration/oats",
-        "orchestration/prefect"
+        "orchestration/oats"
       ]
     },
     {

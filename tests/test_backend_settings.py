@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 from pydantic import ValidationError
 
+from helaicopter_api.application.analytics import get_analytics
+from helaicopter_api.bootstrap.services import build_services
+from helaicopter_api.server.dev_instance import build_checkout_instance
 from helaicopter_api.server.config import Settings
 from helaicopter_db import refresh as refresh_module
 from helaicopter_db import settings as db_settings
@@ -70,25 +74,6 @@ def _status_payload(path: str) -> dict[str, object]:
                 "inventorySummary": "No tables recorded",
                 "load": [],
             },
-            "prefectPostgres": {
-                "key": "prefect_postgres",
-                "label": "Prefect Postgres",
-                "engine": "Postgres",
-                "role": "orchestration",
-                "availability": "ready",
-                "health": "healthy",
-                "operationalStatus": "Prefect API responding",
-                "note": "Backing store for the local Prefect control plane.",
-                "error": None,
-                "path": None,
-                "target": "postgresql://prefect@127.0.0.1:5432/prefect",
-                "tableCount": 0,
-                "tables": [],
-                "sizeBytes": None,
-                "sizeDisplay": None,
-                "inventorySummary": "Catalog visibility not exposed by Prefect API",
-                "load": [],
-            },
         },
     }
 
@@ -109,7 +94,7 @@ def test_settings_expose_nested_cli_and_database_sections(tmp_path) -> None:
     assert settings.openclaw_agents_dir == tmp_path / ".openclaw" / "agents"
     assert settings.openclaw_agent_sessions_glob.endswith(".openclaw/agents/*/sessions")
     assert settings.opencloud_sqlite_path == tmp_path / ".local" / "share" / "opencode" / "opencode.db"
-    assert settings.database.runtime_dir == tmp_path / "var" / "database-runtime"
+    assert settings.database.runtime_dir == tmp_path / ".helaicopter" / "database-runtime"
     assert settings.database.sqlite.path == (
         tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
     )
@@ -136,13 +121,170 @@ def test_settings_parse_hela_prefixed_environment_values(monkeypatch, tmp_path) 
     runtime_dir = tmp_path / ".oats" / "custom-runtime"
     monkeypatch.setenv("HELA_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("HELA_OATS_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setenv("HELA_API_PORT", "31506")
+    monkeypatch.setenv("HELA_WEB_PORT", "32506")
     monkeypatch.setenv("HELA_DEBUG", "true")
 
     settings = Settings()
 
     assert settings.project_root == tmp_path
     assert settings.runtime_dir == runtime_dir
+    assert settings.api_port == 31506
+    assert settings.web_port == 32506
     assert settings.debug is True
+
+
+def test_checkout_instance_derives_stable_ports_from_project_root(tmp_path) -> None:
+    a = build_checkout_instance(tmp_path / "helaicopter")
+    b = build_checkout_instance(tmp_path / "helaicopter")
+    c = build_checkout_instance(tmp_path / "helaicopter-main")
+
+    assert a.checkout_id == b.checkout_id
+    assert a.api_port == b.api_port
+    assert a.web_port == b.web_port
+    assert a.api_port != c.api_port
+    assert a.web_port != c.web_port
+
+
+def test_settings_expose_derived_checkout_ports_and_runtime_root(tmp_path) -> None:
+    settings = Settings(project_root=tmp_path)
+
+    assert settings.api_port == build_checkout_instance(tmp_path).api_port
+    assert settings.web_port == build_checkout_instance(tmp_path).web_port
+    assert settings.database.runtime_dir.parent == tmp_path / ".helaicopter"
+
+
+def test_settings_default_to_git_common_root_when_running_inside_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    worktree_root = repo_root / ".worktrees" / "feature"
+    worktree_root.mkdir(parents=True)
+    (repo_root / ".git").mkdir()
+    monkeypatch.chdir(worktree_root)
+    monkeypatch.delenv("HELA_PROJECT_ROOT", raising=False)
+
+    def fake_run(command: list[str], **kwargs: object):
+        assert command == ["git", "rev-parse", "--git-common-dir"]
+
+        class Completed:
+            returncode = 0
+            stdout = str(repo_root / ".git") + "\n"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setattr("helaicopter_api.server.config.subprocess.run", fake_run)
+
+    settings = Settings()
+
+    assert settings.project_root == repo_root
+    assert settings.app_sqlite_path == (
+        repo_root / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+    )
+
+
+def test_analytics_reads_shared_repo_artifacts_when_started_from_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    worktree_root = repo_root / ".worktrees" / "feature"
+    db_path = repo_root / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+    worktree_root.mkdir(parents=True)
+    db_path.parent.mkdir(parents=True)
+    (repo_root / ".git").mkdir()
+    monkeypatch.chdir(worktree_root)
+    monkeypatch.delenv("HELA_PROJECT_ROOT", raising=False)
+
+    def fake_run(command: list[str], **kwargs: object):
+        assert command == ["git", "rev-parse", "--git-common-dir"]
+
+        class Completed:
+            returncode = 0
+            stdout = str(repo_root / ".git") + "\n"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setattr("helaicopter_api.server.config.subprocess.run", fake_run)
+
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE conversations (
+              conversation_id TEXT PRIMARY KEY,
+              provider TEXT NOT NULL,
+              session_id TEXT NOT NULL,
+              project_path TEXT NOT NULL,
+              project_name TEXT NOT NULL,
+              thread_type TEXT NOT NULL DEFAULT 'main',
+              first_message TEXT NOT NULL,
+              route_slug TEXT,
+              started_at TEXT NOT NULL,
+              ended_at TEXT NOT NULL,
+              message_count INTEGER NOT NULL DEFAULT 0,
+              model TEXT,
+              git_branch TEXT,
+              reasoning_effort TEXT,
+              speed TEXT,
+              total_input_tokens INTEGER NOT NULL DEFAULT 0,
+              total_output_tokens INTEGER NOT NULL DEFAULT 0,
+              total_cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+              total_cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+              total_reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+              tool_use_count INTEGER NOT NULL DEFAULT 0,
+              subagent_count INTEGER NOT NULL DEFAULT 0,
+              task_count INTEGER NOT NULL DEFAULT 0
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO conversations (
+              conversation_id,
+              provider,
+              session_id,
+              project_path,
+              project_name,
+              thread_type,
+              first_message,
+              route_slug,
+              started_at,
+              ended_at,
+              message_count,
+              model,
+              total_input_tokens
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "claude-1",
+                "claude",
+                "session-1",
+                "-Users-tony-Code-helaicopter",
+                "helaicopter",
+                "main",
+                "Ship the analytics fix",
+                "ship-the-analytics-fix",
+                "2026-03-23T08:00:00Z",
+                "2026-03-23T09:00:00Z",
+                3,
+                "claude-sonnet-4-5-20250929",
+                1000,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    services = build_services(Settings())
+
+    analytics = get_analytics(services, days=7)
+
+    assert analytics.total_conversations == 1
+    assert analytics.total_input_tokens == 1000
 
 
 def test_settings_reject_invalid_hela_environment_values(monkeypatch) -> None:
@@ -154,7 +296,7 @@ def test_settings_reject_invalid_hela_environment_values(monkeypatch) -> None:
 
 def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("HELA_PROJECT_ROOT", str(tmp_path))
-    status_file = tmp_path / "var" / "database-runtime" / "status.json"
+    status_file = tmp_path / ".helaicopter" / "database-runtime" / "status.json"
     status_file.parent.mkdir(parents=True, exist_ok=True)
     payload = _status_payload(str(tmp_path / "public" / "database-artifacts" / "oltp" / "db.sqlite"))
     status_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -162,7 +304,8 @@ def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> 
     loaded = status_module.load_status()
 
     assert loaded is not None
-    assert loaded["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
+    assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
+    assert "prefectPostgres" not in loaded["databases"]
     assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
 
 

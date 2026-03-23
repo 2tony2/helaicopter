@@ -3,11 +3,13 @@ type BackendJsonResponse<T> = {
   data: T | null;
 };
 
-const defaultBackendBaseUrl = "http://127.0.0.1:30000";
-
 function getBackendBaseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return (configured || defaultBackendBaseUrl).replace(/\/+$/, "");
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+  const fallbackPort = process.env.HELA_API_PORT?.trim() || "30000";
+  return `http://127.0.0.1:${fallbackPort}`;
 }
 
 export async function fetchBackendJson<T>(

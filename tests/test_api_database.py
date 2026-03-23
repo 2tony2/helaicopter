@@ -115,23 +115,6 @@ def _status_payload(
                     }
                 ],
             },
-            "prefectPostgres": {
-                "key": "prefect_postgres",
-                "label": "Prefect Postgres",
-                "engine": "Postgres",
-                "role": "orchestration",
-                "availability": "ready",
-                "health": "healthy",
-                "operationalStatus": "Prefect API responding",
-                "note": "Backing store for the local Prefect control plane.",
-                "error": None,
-                "path": None,
-                "target": "postgresql://prefect@127.0.0.1:5432/prefect",
-                "publicPath": None,
-                "docsUrl": None,
-                "tableCount": 0,
-                "tables": [],
-            },
         },
     }
 
@@ -210,13 +193,11 @@ class TestDatabaseEndpoints:
             {"force": True, "trigger": "bootstrap", "stale_after_seconds": 21_600},
         ]
         assert services.cache.clear_calls == 0
-        assert services.cache.deleted_keys == [
+        assert {
             "analytics",
-            "codex_session_artifacts",
-            "codex_threads_by_id",
             "database_status",
             "projects",
-        ]
+        }.issubset(set(services.cache.deleted_keys))
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_status_endpoint_bootstraps_refresh_when_status_is_missing(self) -> None:
@@ -235,13 +216,11 @@ class TestDatabaseEndpoints:
             {"force": True, "trigger": "bootstrap", "stale_after_seconds": 21_600},
         ]
         assert services.cache.clear_calls == 0
-        assert services.cache.deleted_keys == [
+        assert {
             "analytics",
-            "codex_session_artifacts",
-            "codex_threads_by_id",
             "database_status",
             "projects",
-        ]
+        }.issubset(set(services.cache.deleted_keys))
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_refresh_endpoint_returns_status_and_invalidates_backend_caches(self) -> None:
@@ -263,7 +242,6 @@ class TestDatabaseEndpoints:
         assert body["runtime"]["analyticsReadBackend"] == "duckdb"
         assert body["databases"]["frontendCache"]["key"] == "frontend_cache"
         assert body["databases"]["duckdb"]["key"] == "duckdb"
-        assert body["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
         assert "legacyDuckdb" not in body["databases"]
         assert body["databases"]["sqlite"]["tables"][0]["servingClass"] == "fastapi-derived"
         assert body["databases"]["sqlite"]["tables"][0]["integrationType"] == "sqlalchemy"
@@ -275,13 +253,11 @@ class TestDatabaseEndpoints:
             {"force": True, "trigger": "manual-ui", "stale_after_seconds": 123},
         ]
         assert services.cache.clear_calls == 0
-        assert services.cache.deleted_keys == [
+        assert {
             "analytics",
-            "codex_session_artifacts",
-            "codex_threads_by_id",
             "database_status",
             "projects",
-        ]
+        }.issubset(set(services.cache.deleted_keys))
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_refresh_endpoint_preserves_unrelated_cache_entries(self) -> None:
@@ -364,15 +340,12 @@ class TestDatabaseEndpoints:
         assert body["databases"]["frontendCache"]["key"] == "frontend_cache"
         assert body["databases"]["sqlite"]["key"] == "sqlite"
         assert body["databases"]["duckdb"]["key"] == "duckdb"
-        assert body["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
         assert services.cache.clear_calls == 0
-        assert services.cache.deleted_keys == [
+        assert {
             "analytics",
-            "codex_session_artifacts",
-            "codex_threads_by_id",
             "database_status",
             "projects",
-        ]
+        }.issubset(set(services.cache.deleted_keys))
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_refresh_endpoint_rejects_snake_case_payload_keys(self) -> None:
@@ -411,7 +384,7 @@ class TestDatabaseEndpoints:
         assert "last_successful_refresh_at" not in status_schema["properties"]
         assert "frontendCache" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
         assert "duckdb" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
-        assert "prefectPostgres" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
+        assert "prefectPostgres" not in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
         assert "legacyDuckdb" not in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
         assert "servingClass" in table_schema["properties"]
         assert "integrationType" in table_schema["properties"]

@@ -255,6 +255,8 @@ def resolve_conversation_ref(
         services,
         provider=parsed.provider,
         session_id=parsed.session_id,
+        route_slug=parsed.route_slug,
+        project_path=parsed.project_path,
     )
     services.cache.set(cache_key, resolved, ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS)
     return resolved
@@ -548,7 +550,7 @@ def _conversation_route_target(
     project_path: str | None = None,
 ) -> ConversationRouteTarget:
     resolved_provider = provider or _provider_for_project_path(project_path or "")
-    return build_conversation_route_target(route_slug, resolved_provider, session_id)
+    return build_conversation_route_target(route_slug, resolved_provider, session_id, project_path)
 
 
 def _conversation_route_target_from_first_message(
@@ -588,8 +590,16 @@ def _resolve_conversation_identity(
     *,
     provider: str,
     session_id: str,
+    route_slug: str | None = None,
+    project_path: str | None = None,
 ) -> ConversationRefResolutionResponse | None:
-    persisted = _resolve_persisted_conversation_identity(services, provider=provider, session_id=session_id)
+    persisted = _resolve_persisted_conversation_identity(
+        services,
+        provider=provider,
+        session_id=session_id,
+        route_slug=route_slug,
+        project_path=project_path,
+    )
     if persisted is not None:
         return persisted
     if provider == "opencloud":
@@ -597,7 +607,12 @@ def _resolve_conversation_identity(
     if provider == "codex":
         return _resolve_live_codex_conversation_identity(services, session_id=session_id)
     if provider == "openclaw":
-        return _resolve_live_openclaw_conversation_identity(services, session_id=session_id)
+        return _resolve_live_openclaw_conversation_identity(
+            services,
+            session_id=session_id,
+            route_slug=route_slug,
+            project_path=project_path,
+        )
     return _resolve_live_claude_conversation_identity(services, session_id=session_id)
 
 
@@ -606,15 +621,22 @@ def _resolve_persisted_conversation_identity(
     *,
     provider: str,
     session_id: str,
+    route_slug: str | None = None,
+    project_path: str | None = None,
 ) -> ConversationRefResolutionResponse | None:
     for summary in services.app_sqlite_store.list_historical_conversations():
         if summary.provider != provider or summary.session_id != session_id:
+            continue
+        if route_slug is not None and summary.route_slug != route_slug:
+            continue
+        if project_path is not None and summary.project_path != project_path:
             continue
         return _conversation_ref_resolution(
             route_target=_conversation_route_target(
                 session_id=summary.session_id,
                 route_slug=summary.route_slug,
                 provider=summary.provider,
+                project_path=summary.project_path,
             ),
             project_path=summary.project_path,
             thread_type=summary.thread_type,
@@ -696,10 +718,16 @@ def _resolve_live_openclaw_conversation_identity(
     services: BackendServices,
     *,
     session_id: str,
+    route_slug: str | None = None,
+    project_path: str | None = None,
 ) -> ConversationRefResolutionResponse | None:
     for artifact in _openclaw_session_artifacts(services):
         summary = _summarize_openclaw_artifact(artifact)
         if summary is None or summary.session_id != session_id:
+            continue
+        if route_slug is not None and summary.route_slug != route_slug:
+            continue
+        if project_path is not None and summary.project_path != project_path:
             continue
         return _conversation_ref_resolution(
             route_target=_conversation_route_target(
@@ -790,11 +818,15 @@ def _load_conversation_for_dag(
 
 
 def _merge_summary(
-    summaries_by_key: dict[tuple[str, str], ConversationSummaryResponse],
+    summaries_by_key: dict[tuple[str, str, str | None], ConversationSummaryResponse],
     candidate: ConversationSummaryResponse,
 ) -> None:
     provider = _provider_for_project_path(candidate.project_path)
-    key = (provider, candidate.session_id)
+    key = (
+        provider,
+        candidate.session_id,
+        candidate.project_path if provider == "openclaw" else None,
+    )
     existing = summaries_by_key.get(key)
     if existing is None:
         summaries_by_key[key] = candidate

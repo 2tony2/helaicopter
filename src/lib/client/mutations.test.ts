@@ -72,16 +72,6 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
             load: [],
             tables: [],
           },
-          prefectPostgres: {
-            key: "prefect_postgres",
-            label: "Prefect Postgres",
-            engine: "Postgres",
-            role: "orchestration",
-            availability: "ready",
-            tableCount: 0,
-            load: [],
-            tables: [],
-          },
         },
       }),
       {
@@ -101,7 +91,7 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
     assert.equal(status.status, "failed");
     assert.equal(status.error, "refresh exploded");
     assert.equal(status.databases.frontendCache.key, "frontend_cache");
-    assert.equal(status.databases.prefectPostgres.key, "prefect_postgres");
+    assert.equal("orchestrationPostgres" in status.databases, false);
   } finally {
     restoreFetch();
   }

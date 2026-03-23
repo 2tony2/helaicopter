@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from urllib.parse import quote, unquote
 
 _ROUTE_SLUG_MAX_LENGTH = 80
 _ROUTE_SLUG_FALLBACK = "conversation"
@@ -16,6 +17,7 @@ class ConversationRouteTarget:
     session_id: str
     route_slug: str
     conversation_ref: str
+    project_path: str | None = None
 
 
 def derive_route_slug(first_message: str) -> str:
@@ -37,7 +39,12 @@ def derive_route_slug(first_message: str) -> str:
     return slug or _ROUTE_SLUG_FALLBACK
 
 
-def build_conversation_route_target(route_slug: str, provider: str, session_id: str) -> ConversationRouteTarget:
+def build_conversation_route_target(
+    route_slug: str,
+    provider: str,
+    session_id: str,
+    project_path: str | None = None,
+) -> ConversationRouteTarget:
     """Construct a ``ConversationRouteTarget`` from its constituent parts.
 
     Args:
@@ -53,11 +60,17 @@ def build_conversation_route_target(route_slug: str, provider: str, session_id: 
         provider=provider,
         session_id=session_id,
         route_slug=route_slug,
-        conversation_ref=build_conversation_ref(route_slug, provider, session_id),
+        conversation_ref=build_conversation_ref(route_slug, provider, session_id, project_path),
+        project_path=project_path,
     )
 
 
-def build_conversation_ref(route_slug: str, provider: str, session_id: str) -> str:
+def build_conversation_ref(
+    route_slug: str,
+    provider: str,
+    session_id: str,
+    project_path: str | None = None,
+) -> str:
     """Assemble a canonical conversation reference string.
 
     The format is ``<route_slug>--<provider>-<session_id>``.
@@ -71,6 +84,8 @@ def build_conversation_ref(route_slug: str, provider: str, session_id: str) -> s
         A single string that uniquely identifies the conversation and can be
         round-tripped via ``parse_conversation_ref``.
     """
+    if provider == "openclaw" and project_path:
+        return f"{route_slug}--{provider}-{quote(project_path, safe='')}__{session_id}"
     return f"{route_slug}--{provider}-{session_id}"
 
 
@@ -100,7 +115,12 @@ def parse_conversation_ref(conversation_ref: str) -> ConversationRouteTarget | N
         provider_prefix = f"{provider}-"
         if not suffix.startswith(provider_prefix):
             continue
-        session_id = suffix.removeprefix(provider_prefix)
+        raw_identity = suffix.removeprefix(provider_prefix)
+        project_path: str | None = None
+        session_id = raw_identity
+        if provider == "openclaw" and "__" in raw_identity:
+            project_token, session_id = raw_identity.split("__", 1)
+            project_path = unquote(project_token)
         if not session_id:
             return None
         return ConversationRouteTarget(
@@ -108,6 +128,7 @@ def parse_conversation_ref(conversation_ref: str) -> ConversationRouteTarget | N
             session_id=session_id,
             route_slug=route_slug,
             conversation_ref=conversation_ref,
+            project_path=project_path,
         )
 
     return None

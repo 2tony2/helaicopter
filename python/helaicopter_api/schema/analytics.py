@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
-from helaicopter_domain.vocab import ProviderSelection
+from typing import Literal
 
-AnalyticsProviderParam = ProviderSelection
+from pydantic import BaseModel, ConfigDict, Field
+
+AnalyticsProviderParam = Literal["all", "claude", "codex", "openclaw"]
 
 
 class AnalyticsQueryParams(BaseModel):
@@ -18,7 +19,7 @@ class AnalyticsQueryParams(BaseModel):
         ge=1,
         description="Restrict analytics to the trailing number of days.",
     )
-    provider: ProviderSelection | None = Field(
+    provider: AnalyticsProviderParam | None = Field(
         default=None,
         description="Optional provider filter. Use `all` or omit for combined analytics across Claude, Codex, and OpenClaw.",
     )

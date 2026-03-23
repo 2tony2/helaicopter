@@ -89,7 +89,7 @@ test("endpoint builders target FastAPI routes without the Next /api prefix", asy
   );
 });
 
-test("endpoint builders infer the local FastAPI origin when the frontend runs on localhost", async () => {
+test("endpoint builders stay relative when NEXT_PUBLIC_API_BASE_URL is unset", async () => {
   const { setBaseUrl, projects, conversation, conversationDags, subagent, conversationByRef } = await getEndpoints();
   setBaseUrl("");
   const originalWindow = globalThis.window;
@@ -106,22 +106,22 @@ test("endpoint builders infer the local FastAPI origin when the frontend runs on
   });
 
   try {
-    assert.equal(projects(), "http://localhost:30000/projects");
+    assert.equal(projects(), "/projects");
     assert.equal(
       conversation("-Users-tony-Code-helaicopter", "session-123"),
-      "http://localhost:30000/conversations/-Users-tony-Code-helaicopter/session-123"
+      "/conversations/-Users-tony-Code-helaicopter/session-123"
     );
     assert.equal(
       conversationDags({ project: "repo", days: 7, provider: "all" }),
-      "http://localhost:30000/conversation-dags?project=repo&days=7"
+      "/conversation-dags?project=repo&days=7"
     );
     assert.equal(
       subagent("-Users-tony-Code-helaicopter", "session-123", "agent-1"),
-      "http://localhost:30000/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
+      "/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
     );
     assert.equal(
       conversationByRef("review-the-backend-rollout--claude-claude-session-1"),
-      "http://localhost:30000/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1"
+      "/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1"
     );
   } finally {
     Object.defineProperty(globalThis, "window", {
@@ -944,17 +944,6 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         load: [],
         tables: [],
       },
-      prefect_postgres: {
-        key: "prefect_postgres",
-        label: "Prefect Postgres",
-        engine: "Postgres",
-        role: "orchestration",
-        availability: "ready",
-        operational_status: "Prefect API responding",
-        table_count: 0,
-        load: [],
-        tables: [],
-      },
     },
   });
 
@@ -968,7 +957,6 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].defaultValue, null);
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].isPrimaryKey, true);
   assert.equal(normalized.databases.duckdb.key, "duckdb");
-  assert.equal(normalized.databases.prefectPostgres.key, "prefect_postgres");
 });
 
 test("normalizeDatabaseStatus still accepts legacy duckdb field names during transition", async () => {
@@ -1609,16 +1597,6 @@ test("database status schema parses current backend shapes and rejects silent fa
         load: [],
         tables: [],
       },
-      prefect_postgres: {
-        key: "prefect_postgres",
-        label: "Prefect Postgres",
-        engine: "Postgres",
-        role: "orchestration",
-        availability: "ready",
-        table_count: 0,
-        load: [],
-        tables: [],
-      },
     },
   });
 
@@ -1661,16 +1639,6 @@ test("database status schema parses current backend shapes and rejects silent fa
             engine: "DuckDB",
             role: "inspection",
             availability: "missing",
-            table_count: 0,
-            load: [],
-            tables: [],
-          },
-          prefect_postgres: {
-            key: "prefect_postgres",
-            label: "Prefect Postgres",
-            engine: "Postgres",
-            role: "orchestration",
-            availability: "ready",
             table_count: 0,
             load: [],
             tables: [],

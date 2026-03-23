@@ -3,6 +3,8 @@ import { Container } from "@/components/layout/container";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, "");
+
 const artifactLinks = [
   {
     href: "/openapi/helaicopter-api.json",
@@ -15,9 +17,11 @@ const artifactLinks = [
     description: "Generated YAML variant for inspection, copy/paste, and downstream tooling.",
   },
   {
-    href: "http://127.0.0.1:30000/openapi.json",
+    href: configuredApiBaseUrl ? `${configuredApiBaseUrl}/openapi.json` : "/openapi/helaicopter-api.json",
     label: "Live backend schema",
-    description: "Runtime schema served directly by the FastAPI process during local development.",
+    description: configuredApiBaseUrl
+      ? "Runtime schema served by the configured backend origin."
+      : "Set NEXT_PUBLIC_API_BASE_URL to expose the runtime schema from the active backend.",
   },
 ];
 
