@@ -4,9 +4,42 @@ from __future__ import annotations
 
 from functools import cached_property
 from pathlib import Path
+import subprocess
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_project_root() -> Path:
+    cwd = Path.cwd().resolve()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return cwd
+
+    if result.returncode != 0:
+        return cwd
+
+    raw_path = result.stdout.strip()
+    if not raw_path:
+        return cwd
+
+    git_common_dir = Path(raw_path)
+    if not git_common_dir.is_absolute():
+        git_common_dir = (cwd / git_common_dir).resolve()
+    else:
+        git_common_dir = git_common_dir.resolve()
+
+    if git_common_dir.name == ".git":
+        return git_common_dir.parent
+
+    return cwd
 
 
 class CliSettings(BaseModel):
@@ -125,7 +158,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HELA_")
 
     project_root: Path = Field(
-        default_factory=lambda: Path.cwd(),
+        default_factory=_default_project_root,
         description="Root of the helaicopter project checkout.",
     )
     oats_runtime_dir: Path | None = Field(

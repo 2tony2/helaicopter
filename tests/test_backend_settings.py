@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 from pydantic import ValidationError
 
+from helaicopter_api.application.analytics import get_analytics
+from helaicopter_api.bootstrap.services import build_services
 from helaicopter_api.server.config import Settings
 from helaicopter_db import refresh as refresh_module
 from helaicopter_db import settings as db_settings
@@ -143,6 +146,139 @@ def test_settings_parse_hela_prefixed_environment_values(monkeypatch, tmp_path) 
     assert settings.project_root == tmp_path
     assert settings.runtime_dir == runtime_dir
     assert settings.debug is True
+
+
+def test_settings_default_to_git_common_root_when_running_inside_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    worktree_root = repo_root / ".worktrees" / "feature"
+    worktree_root.mkdir(parents=True)
+    (repo_root / ".git").mkdir()
+    monkeypatch.chdir(worktree_root)
+    monkeypatch.delenv("HELA_PROJECT_ROOT", raising=False)
+
+    def fake_run(command: list[str], **kwargs: object):
+        assert command == ["git", "rev-parse", "--git-common-dir"]
+
+        class Completed:
+            returncode = 0
+            stdout = str(repo_root / ".git") + "\n"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setattr("helaicopter_api.server.config.subprocess.run", fake_run)
+
+    settings = Settings()
+
+    assert settings.project_root == repo_root
+    assert settings.app_sqlite_path == (
+        repo_root / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+    )
+
+
+def test_analytics_reads_shared_repo_artifacts_when_started_from_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    worktree_root = repo_root / ".worktrees" / "feature"
+    db_path = repo_root / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
+    worktree_root.mkdir(parents=True)
+    db_path.parent.mkdir(parents=True)
+    (repo_root / ".git").mkdir()
+    monkeypatch.chdir(worktree_root)
+    monkeypatch.delenv("HELA_PROJECT_ROOT", raising=False)
+
+    def fake_run(command: list[str], **kwargs: object):
+        assert command == ["git", "rev-parse", "--git-common-dir"]
+
+        class Completed:
+            returncode = 0
+            stdout = str(repo_root / ".git") + "\n"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setattr("helaicopter_api.server.config.subprocess.run", fake_run)
+
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE conversations (
+              conversation_id TEXT PRIMARY KEY,
+              provider TEXT NOT NULL,
+              session_id TEXT NOT NULL,
+              project_path TEXT NOT NULL,
+              project_name TEXT NOT NULL,
+              thread_type TEXT NOT NULL DEFAULT 'main',
+              first_message TEXT NOT NULL,
+              route_slug TEXT,
+              started_at TEXT NOT NULL,
+              ended_at TEXT NOT NULL,
+              message_count INTEGER NOT NULL DEFAULT 0,
+              model TEXT,
+              git_branch TEXT,
+              reasoning_effort TEXT,
+              speed TEXT,
+              total_input_tokens INTEGER NOT NULL DEFAULT 0,
+              total_output_tokens INTEGER NOT NULL DEFAULT 0,
+              total_cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+              total_cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+              total_reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+              tool_use_count INTEGER NOT NULL DEFAULT 0,
+              subagent_count INTEGER NOT NULL DEFAULT 0,
+              task_count INTEGER NOT NULL DEFAULT 0
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO conversations (
+              conversation_id,
+              provider,
+              session_id,
+              project_path,
+              project_name,
+              thread_type,
+              first_message,
+              route_slug,
+              started_at,
+              ended_at,
+              message_count,
+              model,
+              total_input_tokens
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "claude-1",
+                "claude",
+                "session-1",
+                "-Users-tony-Code-helaicopter",
+                "helaicopter",
+                "main",
+                "Ship the analytics fix",
+                "ship-the-analytics-fix",
+                "2026-03-23T08:00:00Z",
+                "2026-03-23T09:00:00Z",
+                3,
+                "claude-sonnet-4-5-20250929",
+                1000,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    services = build_services(Settings())
+
+    analytics = get_analytics(services, days=7)
+
+    assert analytics.total_conversations == 1
+    assert analytics.total_input_tokens == 1000
 
 
 def test_settings_reject_invalid_hela_environment_values(monkeypatch) -> None:
