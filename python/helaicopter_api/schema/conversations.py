@@ -68,6 +68,7 @@ class ConversationSummaryResponse(BaseModel):
     """Summary of a single Claude, Codex, or OpenClaw conversation session."""
 
     session_id: SessionId
+    provider: ProviderName | None = None
     project_path: EncodedProjectKey
     project_name: ProjectDisplayPath
     route_slug: str
@@ -245,10 +246,35 @@ class ConversationContextWindowResponse(BaseModel):
     cumulative_tokens: int = 0
 
 
+class OpenClawConversationDetailResponse(BaseModel):
+    """Provider-specific OpenClaw detail sections."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_inventory: dict[str, object] = {}
+    session_store: dict[str, object] = {}
+    skills: dict[str, object] = {}
+    system_prompt: dict[str, object] = {}
+    transcript_diagnostics: dict[str, object] = {}
+    usage_reconciliation: dict[str, object] = {}
+    memory_store: dict[str, object] = {}
+    raw: dict[str, object] = {}
+
+
+class ConversationProviderDetailResponse(BaseModel):
+    """Provider-specific detail envelope."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["openclaw"]
+    openclaw: OpenClawConversationDetailResponse
+
+
 class ConversationDetailResponse(BaseModel):
     """Structured detail response for one conversation."""
 
     session_id: SessionId
+    provider: ProviderName | None = None
     project_path: EncodedProjectKey
     route_slug: str
     conversation_ref: str
@@ -270,6 +296,7 @@ class ConversationDetailResponse(BaseModel):
     context_window: ConversationContextWindowResponse = Field(
         default_factory=ConversationContextWindowResponse
     )
+    provider_detail: ConversationProviderDetailResponse | None = None
     reasoning_effort: str | None = None
     speed: str | None = None
     total_reasoning_tokens: int | None = None

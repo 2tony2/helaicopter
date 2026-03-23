@@ -47,6 +47,7 @@ const swrOptions = {
 
 const liveConversationSwrOptions = {
   ...swrOptions,
+  // Detail polling remains at 5s; backend discovery caching keeps OpenClaw refreshes bounded.
   refreshInterval: 5_000,
 };
 

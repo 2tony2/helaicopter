@@ -133,7 +133,6 @@ def test_settings_parse_hela_prefixed_environment_values(monkeypatch, tmp_path) 
     assert settings.web_port == 32506
     assert settings.debug is True
 
-
 def test_checkout_instance_derives_stable_ports_from_project_root(tmp_path) -> None:
     a = build_checkout_instance(tmp_path / "helaicopter")
     b = build_checkout_instance(tmp_path / "helaicopter")
@@ -152,8 +151,6 @@ def test_settings_expose_derived_checkout_ports_and_runtime_root(tmp_path) -> No
     assert settings.api_port == build_checkout_instance(tmp_path).api_port
     assert settings.web_port == build_checkout_instance(tmp_path).web_port
     assert settings.database.runtime_dir.parent == tmp_path / ".helaicopter"
-
-
 def test_settings_default_to_git_common_root_when_running_inside_worktree(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

@@ -44,6 +44,38 @@ def _default_project_root() -> Path:
     return cwd
 
 
+def _default_project_root() -> Path:
+    cwd = Path.cwd().resolve()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return cwd
+
+    if result.returncode != 0:
+        return cwd
+
+    raw_path = result.stdout.strip()
+    if not raw_path:
+        return cwd
+
+    git_common_dir = Path(raw_path)
+    if not git_common_dir.is_absolute():
+        git_common_dir = (cwd / git_common_dir).resolve()
+    else:
+        git_common_dir = git_common_dir.resolve()
+
+    if git_common_dir.name == ".git":
+        return git_common_dir.parent
+
+    return cwd
+
+
 class CliSettings(BaseModel):
     """Filesystem roots owned by local Claude and Codex integrations."""
 
@@ -87,6 +119,10 @@ class CliSettings(BaseModel):
     @property
     def openclaw_agent_sessions_glob(self) -> str:
         return str(self.openclaw_agents_dir / "*" / "sessions")
+
+    @property
+    def openclaw_memory_sqlite_path(self) -> Path:
+        return self.openclaw_dir / "memory" / "main.sqlite"
 
     @property
     def opencloud_sqlite_path(self) -> Path:
@@ -298,6 +334,10 @@ class Settings(BaseSettings):
     @property
     def openclaw_agent_sessions_glob(self) -> str:
         return self.cli.openclaw_agent_sessions_glob
+
+    @property
+    def openclaw_memory_sqlite_path(self) -> Path:
+        return self.cli.openclaw_memory_sqlite_path
 
     @property
     def opencloud_sqlite_path(self) -> Path:

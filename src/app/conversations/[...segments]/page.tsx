@@ -199,11 +199,13 @@ export function createConversationPageHandler(deps: ConversationPageDependencies
       return deps.notFound();
     }
 
-    if (
-      initialDecision.messageId === undefined &&
-      initialDecision.planId === undefined &&
-      initialDecision.agentId === undefined
-    ) {
+    const requiresConversationDetail =
+      initialDecision.tab === "openclaw" ||
+      initialDecision.messageId !== undefined ||
+      initialDecision.planId !== undefined ||
+      initialDecision.agentId !== undefined;
+
+    if (!requiresConversationDetail) {
       return buildRenderResult(initialDecision, resolution);
     }
 
@@ -215,6 +217,25 @@ export function createConversationPageHandler(deps: ConversationPageDependencies
     );
     if (!conversation) {
       return deps.notFound();
+    }
+    if (
+      initialDecision.tab === "openclaw" &&
+      !(conversation.provider === "openclaw" && conversation.providerDetail?.kind === "openclaw")
+    ) {
+      return deps.notFound();
+    }
+
+    if (
+      initialDecision.messageId === undefined &&
+      initialDecision.planId === undefined &&
+      initialDecision.agentId === undefined
+    ) {
+      return buildRenderResult(
+        initialDecision,
+        resolution,
+        conversation.projectPath,
+        conversation.sessionId
+      );
     }
 
     const validatedDecision = decideConversationRoute(route, {

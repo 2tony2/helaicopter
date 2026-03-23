@@ -39,14 +39,12 @@ def test_openclaw_conversation_refs_include_project_path_for_uniqueness() -> Non
     main_ref = build_conversation_ref(
         "shared-session",
         "openclaw",
-        "shared-session-id",
-        "openclaw:agent:main",
+        "openclaw:agent:main::shared-session-id",
     )
     secondary_ref = build_conversation_ref(
         "shared-session",
         "openclaw",
-        "shared-session-id",
-        "openclaw:agent:secondary",
+        "openclaw:agent:secondary::shared-session-id",
     )
 
     assert main_ref != secondary_ref
@@ -64,7 +62,7 @@ def test_openclaw_legacy_conversation_refs_still_parse() -> None:
 
 
 def test_merge_summary_keeps_openclaw_sessions_separate_per_project_path() -> None:
-    summaries: dict[tuple[str, str], ConversationSummaryResponse] = {}
+    summaries: dict[tuple[str, str, str | None], ConversationSummaryResponse] = {}
     _merge_summary(
         summaries,
         _summary(
@@ -73,8 +71,7 @@ def test_merge_summary_keeps_openclaw_sessions_separate_per_project_path() -> No
             conversation_ref=build_conversation_ref(
                 "shared-session",
                 "openclaw",
-                "shared-session-id",
-                "openclaw:agent:main",
+                "openclaw:agent:main::shared-session-id",
             ),
         ),
     )
@@ -86,10 +83,10 @@ def test_merge_summary_keeps_openclaw_sessions_separate_per_project_path() -> No
             conversation_ref=build_conversation_ref(
                 "shared-session",
                 "openclaw",
-                "shared-session-id",
-                "openclaw:agent:secondary",
+                "openclaw:agent:secondary::shared-session-id",
             ),
         ),
     )
     assert len(summaries) == 2
-    assert summaries[0].conversation_ref != summaries[1].conversation_ref
+    conversation_refs = {summary.conversation_ref for summary in summaries.values()}
+    assert len(conversation_refs) == 2

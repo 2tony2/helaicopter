@@ -16,6 +16,7 @@ export const conversationDetailTabs = [
   "dag",
   "subagents",
   "tasks",
+  "openclaw",
   "raw",
 ] as const;
 

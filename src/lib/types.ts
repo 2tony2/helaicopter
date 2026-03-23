@@ -504,6 +504,7 @@ export interface ProcessedConversation {
   sessionId: string;
   projectPath: string;
   provider?: FrontendProvider;
+  providerDetail?: ProviderDetail;
   routeSlug?: string;
   conversationRef?: string;
   threadType?: "main" | "subagent";
@@ -524,6 +525,74 @@ export interface ProcessedConversation {
   speed?: string; // Claude: "standard" | "fast"
   totalReasoningTokens?: number; // Codex only
 }
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+
+export interface JsonObject {
+  [key: string]: JsonValue | undefined;
+}
+
+export interface OpenClawArtifactRecord extends JsonObject {
+  kind?: string;
+  path?: string;
+  status?: string;
+  canonicalSessionId?: string;
+}
+
+export interface OpenClawArtifactInventory extends JsonObject {
+  liveTranscript?: OpenClawArtifactRecord;
+  attachedArchives: OpenClawArtifactRecord[];
+}
+
+export interface OpenClawSkillsDetail extends JsonObject {
+  prompt?: string;
+  declared?: JsonObject[];
+  resolved?: JsonObject[];
+}
+
+export interface OpenClawSystemPromptDetail extends JsonObject {
+  workspaceDir?: string;
+  sandboxMode?: string;
+}
+
+export interface OpenClawUsageReconciliation extends JsonObject {
+  transcriptTotalTokens?: number;
+  storeTotalTokens?: number;
+}
+
+export interface OpenClawMemoryWorkspaceLink extends JsonObject {
+  workspaceDir?: string;
+  matchedPrefix?: string;
+  confidence?: string;
+}
+
+export interface OpenClawMemoryStoreDetail extends JsonObject {
+  path?: string;
+  tables?: string[];
+  counts?: Record<string, number>;
+  coverage?: JsonObject;
+  workspaceLink?: OpenClawMemoryWorkspaceLink;
+  rawRows?: JsonObject[];
+}
+
+export interface OpenClawProviderDetail extends JsonObject {
+  artifactInventory: OpenClawArtifactInventory;
+  sessionStore?: JsonObject;
+  skills?: OpenClawSkillsDetail;
+  systemPrompt?: OpenClawSystemPromptDetail;
+  transcriptDiagnostics?: JsonObject;
+  usageReconciliation?: OpenClawUsageReconciliation;
+  memoryStore?: OpenClawMemoryStoreDetail;
+  raw?: JsonObject;
+}
+
+export interface OpenClawConversationProviderDetail {
+  kind: "openclaw";
+  openclaw: OpenClawProviderDetail;
+}
+
+export type ProviderDetail = OpenClawConversationProviderDetail;
 
 export interface ProcessedMessage {
   id: string;
