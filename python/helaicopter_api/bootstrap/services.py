@@ -150,6 +150,10 @@ def invalidate_backend_read_caches(services: BackendServices) -> None:
         "opencloud_sessions",
         "codex_session_artifacts",
         "codex_threads_by_id",
+        "openclaw_session_artifacts",
+        "openclaw_transcript_artifacts",
+        "openclaw_discovery_snapshot",
+        "openclaw_memory_store_metadata",
         "database_status",
         "projects",
     ]
@@ -159,6 +163,7 @@ def invalidate_backend_read_caches(services: BackendServices) -> None:
         "conversation_ref:",
         "conversation_dags:",
         "conversation_dag:",
+        "openclaw_session_store:",
     )
     cache_keys = []
     if hasattr(services.cache, "keys"):
@@ -213,7 +218,10 @@ def build_services(settings: Settings) -> BackendServices:
         db_path=settings.codex_sqlite_path,
         history_file=settings.codex_history_file,
     )
-    openclaw_store = FileOpenClawStore(agents_dir=settings.openclaw_agents_dir)
+    openclaw_store = FileOpenClawStore(
+        agents_dir=settings.openclaw_agents_dir,
+        memory_sqlite_path=settings.openclaw_memory_sqlite_path,
+    )
     opencloud_store = FileOpenCloudStore(db_path=settings.opencloud_sqlite_path)
     prefect_client = PrefectHttpAdapter.from_settings(settings.prefect)
     oats_run_store = FileOatsRunStore(

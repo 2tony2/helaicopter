@@ -49,6 +49,9 @@ import type {
   ProcessedMessage,
   ProjectInfo,
   FrontendProvider,
+  JsonObject,
+  ProviderDetail,
+  OpenClawProviderDetail,
   ProviderBreakdown,
   SubagentInfo,
   SubscriptionSettings,
@@ -86,6 +89,10 @@ function camelToSnake(value: string): string {
   return value.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
+function camelizeKey(value: string): string {
+  return value.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
 function asRecord(value: unknown): JsonRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {};
@@ -115,6 +122,23 @@ function asRecord(value: unknown): JsonRecord {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function camelizeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(camelizeJsonValue);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as JsonRecord).map(([key, nestedValue]) => [
+      camelizeKey(key),
+      camelizeJsonValue(nestedValue),
+    ])
+  );
 }
 
 function stringOr(value: unknown, fallback = ""): string {
@@ -258,10 +282,12 @@ function normalizeMessageRole(value: unknown): "user" | "assistant" | "tool" {
 function normalizeUsage(value: unknown): TokenUsage {
   const item = asRecord(value);
   return {
-    input_tokens: numberOr(item.input_tokens),
-    output_tokens: numberOr(item.output_tokens),
-    cache_creation_input_tokens: numberOr(item.cache_creation_tokens),
-    cache_read_input_tokens: numberOr(item.cache_read_tokens),
+    input_tokens: numberOr(field(item, "inputTokens", "input_tokens")),
+    output_tokens: numberOr(field(item, "outputTokens", "output_tokens")),
+    cache_creation_input_tokens: numberOr(
+      field(item, "cacheCreationTokens", "cache_creation_tokens")
+    ),
+    cache_read_input_tokens: numberOr(field(item, "cacheReadTokens", "cache_read_tokens")),
   };
 }
 
@@ -285,12 +311,12 @@ function normalizeConversationPlan(value: unknown): ConversationPlan {
     content: stringOr(item.content),
     provider: normalizeProvider(item.provider),
     timestamp: numberOr(item.timestamp),
-    sessionId: stringOr(item.session_id),
-    projectPath: stringOr(item.project_path),
-    routeSlug: nullableStringOrNull(item.route_slug),
-    conversationRef: nullableStringOrNull(item.conversation_ref),
+    sessionId: stringOr(field(item, "sessionId", "session_id")),
+    projectPath: stringOr(field(item, "projectPath", "project_path")),
+    routeSlug: nullableStringOrNull(field(item, "routeSlug", "route_slug")),
+    conversationRef: nullableStringOrNull(field(item, "conversationRef", "conversation_ref")),
     model: nullableString(item.model),
-    sourcePath: nullableString(item.source_path),
+    sourcePath: nullableString(field(item, "sourcePath", "source_path")),
     explanation: nullableString(item.explanation),
     steps: normalizeConversationPlanSteps(item.steps),
   };
@@ -304,18 +330,21 @@ function normalizeBlock(value: unknown): DisplayBlock {
     return {
       type: "thinking",
       thinking: stringOr(item.thinking),
-      charCount: numberOr(item.char_count),
+      charCount: numberOr(field(item, "charCount", "char_count")),
     };
   }
 
   if (type === "tool_call") {
     return {
       type: "tool_call",
-      toolUseId: stringOr(item.tool_use_id),
-      toolName: stringOr(item.tool_name),
+      toolUseId: stringOr(field(item, "toolUseId", "tool_use_id")),
+      toolName: stringOr(field(item, "toolName", "tool_name")),
       input: asRecord(item.input),
       result: nullableString(item.result),
-      isError: typeof item.is_error === "boolean" ? item.is_error : undefined,
+      isError:
+        typeof field(item, "isError", "is_error") === "boolean"
+          ? (field(item, "isError", "is_error") as boolean)
+          : undefined,
     };
   }
 
@@ -335,7 +364,9 @@ function normalizeMessage(value: unknown): ProcessedMessage {
     usage: item.usage ? normalizeUsage(item.usage) : undefined,
     model: nullableString(item.model),
     reasoningTokens:
-      item.reasoning_tokens === undefined ? undefined : numberOr(item.reasoning_tokens),
+      field(item, "reasoningTokens", "reasoning_tokens") === undefined
+        ? undefined
+        : numberOr(field(item, "reasoningTokens", "reasoning_tokens")),
     speed: nullableString(item.speed),
   };
 }
@@ -343,15 +374,15 @@ function normalizeMessage(value: unknown): ProcessedMessage {
 function normalizeSubagent(value: unknown): SubagentInfo {
   const item = asRecord(value);
   return {
-    agentId: stringOr(item.agent_id),
+    agentId: stringOr(field(item, "agentId", "agent_id")),
     description: nullableString(item.description),
-    subagentType: nullableString(item.subagent_type),
+    subagentType: nullableString(field(item, "subagentType", "subagent_type")),
     nickname: nullableString(item.nickname),
-    hasFile: booleanOr(item.has_file),
-    projectPath: stringOr(item.project_path),
-    sessionId: stringOr(item.session_id),
-    routeSlug: nullableStringOrNull(item.route_slug),
-    conversationRef: nullableStringOrNull(item.conversation_ref),
+    hasFile: booleanOr(field(item, "hasFile", "has_file")),
+    projectPath: stringOr(field(item, "projectPath", "project_path")),
+    sessionId: stringOr(field(item, "sessionId", "session_id")),
+    routeSlug: nullableStringOrNull(field(item, "routeSlug", "route_slug")),
+    conversationRef: nullableStringOrNull(field(item, "conversationRef", "conversation_ref")),
   };
 }
 
@@ -361,11 +392,11 @@ function normalizeContextBucket(value: unknown): ContextBucket {
     label: stringOr(item.label),
     category:
       stringOr(item.category) as ContextBucket["category"],
-    inputTokens: numberOr(item.input_tokens),
-    outputTokens: numberOr(item.output_tokens),
-    cacheWriteTokens: numberOr(item.cache_write_tokens),
-    cacheReadTokens: numberOr(item.cache_read_tokens),
-    totalTokens: numberOr(item.total_tokens),
+    inputTokens: numberOr(field(item, "inputTokens", "input_tokens")),
+    outputTokens: numberOr(field(item, "outputTokens", "output_tokens")),
+    cacheWriteTokens: numberOr(field(item, "cacheWriteTokens", "cache_write_tokens")),
+    cacheReadTokens: numberOr(field(item, "cacheReadTokens", "cache_read_tokens")),
+    totalTokens: numberOr(field(item, "totalTokens", "total_tokens")),
     calls: numberOr(item.calls),
   };
 }
@@ -373,17 +404,17 @@ function normalizeContextBucket(value: unknown): ContextBucket {
 function normalizeContextStep(value: unknown): ContextStep {
   const item = asRecord(value);
   return {
-    messageId: stringOr(item.message_id),
+    messageId: stringOr(field(item, "messageId", "message_id")),
     index: numberOr(item.index),
     role: normalizeMessageRole(item.role),
     label: stringOr(item.label),
     category: stringOr(item.category) as ContextStep["category"],
     timestamp: numberOr(item.timestamp),
-    inputTokens: numberOr(item.input_tokens),
-    outputTokens: numberOr(item.output_tokens),
-    cacheWriteTokens: numberOr(item.cache_write_tokens),
-    cacheReadTokens: numberOr(item.cache_read_tokens),
-    totalTokens: numberOr(item.total_tokens),
+    inputTokens: numberOr(field(item, "inputTokens", "input_tokens")),
+    outputTokens: numberOr(field(item, "outputTokens", "output_tokens")),
+    cacheWriteTokens: numberOr(field(item, "cacheWriteTokens", "cache_write_tokens")),
+    cacheReadTokens: numberOr(field(item, "cacheReadTokens", "cache_read_tokens")),
+    totalTokens: numberOr(field(item, "totalTokens", "total_tokens")),
   };
 }
 
@@ -398,9 +429,34 @@ function normalizeContextAnalytics(value: unknown): ContextAnalytics {
 function normalizeContextWindow(value: unknown): ContextWindowStats {
   const item = asRecord(value);
   return {
-    peakContextWindow: numberOr(item.peak_context_window),
-    apiCalls: numberOr(item.api_calls),
-    cumulativeTokens: numberOr(item.cumulative_tokens),
+    peakContextWindow: numberOr(field(item, "peakContextWindow", "peak_context_window")),
+    apiCalls: numberOr(field(item, "apiCalls", "api_calls")),
+    cumulativeTokens: numberOr(field(item, "cumulativeTokens", "cumulative_tokens")),
+  };
+}
+
+function normalizeProviderDetail(value: unknown): ProviderDetail | undefined {
+  const item = asRecord(value);
+  if (item.kind !== "openclaw") {
+    return undefined;
+  }
+
+  const openclaw = asRecord(item.openclaw);
+  const { raw, ...rest } = openclaw;
+  const normalizedOpenClaw = camelizeJsonValue(rest) as OpenClawProviderDetail;
+  const artifactInventory = asRecord(normalizedOpenClaw.artifactInventory);
+
+  return {
+    kind: "openclaw",
+    openclaw: {
+      ...normalizedOpenClaw,
+      artifactInventory: {
+        ...artifactInventory,
+        liveTranscript: artifactInventory.liveTranscript as OpenClawProviderDetail["artifactInventory"]["liveTranscript"],
+        attachedArchives: asArray(artifactInventory.attachedArchives) as OpenClawProviderDetail["artifactInventory"]["attachedArchives"],
+      },
+      raw: asRecord(raw) as JsonObject,
+    },
   };
 }
 
@@ -560,30 +616,35 @@ export function normalizeConversationDagSummaries(value: unknown): ConversationD
 export function normalizeConversationDetail(value: unknown): ProcessedConversation {
   const item = asRecord(value);
   return {
-    sessionId: stringOr(item.session_id),
-    projectPath: stringOr(item.project_path),
+    sessionId: stringOr(field(item, "sessionId", "session_id")),
+    projectPath: stringOr(field(item, "projectPath", "project_path")),
     provider: normalizeOptionalProvider(item.provider),
-    routeSlug: nullableString(item.route_slug),
-    conversationRef: nullableString(item.conversation_ref),
+    providerDetail: normalizeProviderDetail(field(item, "providerDetail", "provider_detail")),
+    routeSlug: nullableString(field(item, "routeSlug", "route_slug")),
+    conversationRef: nullableString(field(item, "conversationRef", "conversation_ref")),
     threadType:
-      item.thread_type === undefined ? undefined : normalizeThreadType(item.thread_type),
-    createdAt: numberOr(item.created_at),
-    lastUpdatedAt: numberOr(item.last_updated_at),
-    isRunning: booleanOr(item.is_running),
+      field(item, "threadType", "thread_type") === undefined
+        ? undefined
+        : normalizeThreadType(field(item, "threadType", "thread_type")),
+    createdAt: numberOr(field(item, "createdAt", "created_at")),
+    lastUpdatedAt: numberOr(field(item, "lastUpdatedAt", "last_updated_at")),
+    isRunning: booleanOr(field(item, "isRunning", "is_running")),
     messages: asArray(item.messages).map(normalizeMessage),
     plans: asArray(item.plans).map(normalizeConversationPlan),
-    totalUsage: normalizeUsage(item.total_usage),
+    totalUsage: normalizeUsage(field(item, "totalUsage", "total_usage")),
     model: nullableString(item.model),
-    gitBranch: nullableString(item.git_branch),
-    startTime: numberOr(item.start_time),
-    endTime: numberOr(item.end_time),
+    gitBranch: nullableString(field(item, "gitBranch", "git_branch")),
+    startTime: numberOr(field(item, "startTime", "start_time")),
+    endTime: numberOr(field(item, "endTime", "end_time")),
     subagents: asArray(item.subagents).map(normalizeSubagent),
-    contextAnalytics: normalizeContextAnalytics(item.context_analytics),
-    contextWindow: normalizeContextWindow(item.context_window),
-    reasoningEffort: nullableString(item.reasoning_effort),
+    contextAnalytics: normalizeContextAnalytics(field(item, "contextAnalytics", "context_analytics")),
+    contextWindow: normalizeContextWindow(field(item, "contextWindow", "context_window")),
+    reasoningEffort: nullableString(field(item, "reasoningEffort", "reasoning_effort")),
     speed: nullableString(item.speed),
     totalReasoningTokens:
-      item.total_reasoning_tokens === undefined ? undefined : numberOr(item.total_reasoning_tokens),
+      field(item, "totalReasoningTokens", "total_reasoning_tokens") === undefined
+        ? undefined
+        : numberOr(field(item, "totalReasoningTokens", "total_reasoning_tokens")),
   };
 }
 

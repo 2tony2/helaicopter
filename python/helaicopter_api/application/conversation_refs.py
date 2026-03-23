@@ -14,6 +14,7 @@ _KNOWN_CONVERSATION_REF_PROVIDERS = ("claude", "codex", "openclaw", "opencloud")
 class ConversationRouteTarget:
     provider: str
     session_id: str
+    ref_session_id: str
     route_slug: str
     conversation_ref: str
 
@@ -37,7 +38,13 @@ def derive_route_slug(first_message: str) -> str:
     return slug or _ROUTE_SLUG_FALLBACK
 
 
-def build_conversation_route_target(route_slug: str, provider: str, session_id: str) -> ConversationRouteTarget:
+def build_conversation_route_target(
+    route_slug: str,
+    provider: str,
+    session_id: str,
+    *,
+    ref_session_id: str | None = None,
+) -> ConversationRouteTarget:
     """Construct a ``ConversationRouteTarget`` from its constituent parts.
 
     Args:
@@ -52,8 +59,9 @@ def build_conversation_route_target(route_slug: str, provider: str, session_id: 
     return ConversationRouteTarget(
         provider=provider,
         session_id=session_id,
+        ref_session_id=ref_session_id or session_id,
         route_slug=route_slug,
-        conversation_ref=build_conversation_ref(route_slug, provider, session_id),
+        conversation_ref=build_conversation_ref(route_slug, provider, ref_session_id or session_id),
     )
 
 
@@ -106,6 +114,7 @@ def parse_conversation_ref(conversation_ref: str) -> ConversationRouteTarget | N
         return ConversationRouteTarget(
             provider=provider,
             session_id=session_id,
+            ref_session_id=session_id,
             route_slug=route_slug,
             conversation_ref=conversation_ref,
         )

@@ -57,6 +57,7 @@ test("requestJson disables browser caching by default for repeated live reads", 
   });
 
   try {
+    const { requestJson } = await getFetcher();
     const payload = await requestJson(
       "https://api.example.test/conversations?days=7",
       undefined,
