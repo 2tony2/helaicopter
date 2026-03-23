@@ -68,7 +68,7 @@ def get_analytics(
 def _normalize_provider(provider: str | None) -> ProviderName | None:
     if provider is None or provider == "all":
         return None
-    if provider in {"claude", "codex"}:
+    if provider in {"claude", "codex", "openclaw"}:
         return cast(ProviderName, provider)
     raise ValueError(f"Unsupported analytics provider: {provider}")
 

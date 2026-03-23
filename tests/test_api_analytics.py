@@ -138,17 +138,31 @@ class TestAnalyticsEndpoint:
                 model="gpt-5",
                 total_input_tokens=20_000,
             ),
+            _summary(
+                "openclaw-recent",
+                provider="openclaw",
+                project_path="openclaw:agent:main",
+                started_at=(now - timedelta(hours=3)).isoformat().replace("+00:00", "Z"),
+                ended_at=(now - timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
+                model="openclaw-v1",
+                total_input_tokens=15_000,
+            ),
         ]
 
         with analytics_client(rows) as (client, _store):
             response = client.get("/analytics", params={"provider": "all"})
+            openclaw = client.get("/analytics", params={"provider": "openclaw"})
             invalid_provider = client.get("/analytics", params={"provider": "openai"})
+            unsupported_provider = client.get("/analytics", params={"provider": "opencloud"})
             invalid_days = client.get("/analytics", params={"days": 0})
 
         assert response.status_code == 200
-        assert response.json()["total_conversations"] == 2
+        assert response.json()["total_conversations"] == 3
+        assert openclaw.status_code == 200
+        assert openclaw.json()["total_conversations"] == 1
 
         assert invalid_provider.status_code == 422
+        assert unsupported_provider.status_code == 422
         assert invalid_days.status_code == 422
 
     def test_endpoint_supplements_recent_window_from_sqlite_without_double_counting(self) -> None:
@@ -209,7 +223,12 @@ class TestAnalyticsEndpoint:
         parameters = {param["name"]: param for param in analytics_get["parameters"]}
         assert set(parameters) == {"days", "provider"}
         assert parameters["days"]["schema"]["anyOf"][0]["minimum"] == 1
-        assert parameters["provider"]["schema"]["anyOf"][0]["enum"] == ["all", "claude", "codex"]
+        assert parameters["provider"]["schema"]["anyOf"][0]["enum"] == [
+            "all",
+            "claude",
+            "codex",
+            "openclaw",
+        ]
         assert analytics_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/AnalyticsDataResponse"
         )
