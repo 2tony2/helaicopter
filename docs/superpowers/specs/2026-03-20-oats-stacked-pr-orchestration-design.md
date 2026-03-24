@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Helaicopter already vendors Oats, exposes authoritative Oats runtime artifacts through the FastAPI backend, renders an orchestration DAG in the UI, and runs execution through Prefect-backed task worktrees. What it does not yet have is a first-class git and pull-request control plane. Branch naming, task PR creation, and merge automation exist as helpers, but they are not the persisted orchestration model, they are not resumable as a run-owned graph, and they are not surfaced coherently in the UI.
+Helaicopter already vendors Oats, exposes authoritative Oats runtime artifacts through the FastAPI backend, renders an orchestration DAG in the UI, and runs execution through legacy orchestration-backed task worktrees. What it does not yet have is a first-class git and pull-request control plane. Branch naming, task PR creation, and merge automation exist as helpers, but they are not the persisted orchestration model, they are not resumable as a run-owned graph, and they are not surfaced coherently in the UI.
 
 The target state is an artifact-first stacked-PR orchestration model:
 - one Oats run owns one long-lived feature branch
@@ -10,17 +10,17 @@ The target state is an artifact-first stacked-PR orchestration model:
 - task PRs stack according to task dependencies instead of always targeting the feature branch
 - Codex CLI sessions handle merge operations and conflict resolution
 - the final feature PR to `main` is always a human approval gate
-- Oats runtime artifacts and Prefect local artifacts are the source of truth for branch and PR lifecycle
+- Oats runtime artifacts and legacy orchestration local artifacts are the source of truth for branch and PR lifecycle
 - Helaicopter backend and frontend consume that persisted graph directly
 
-This design extends the current Oats runtime and Prefect artifact contracts instead of introducing a separate git-operations ledger as the primary control plane.
+This design extends the current Oats runtime and legacy orchestration artifact contracts instead of introducing a separate git-operations ledger as the primary control plane.
 
 ## Goals
 
 - Make git worktree, branch, PR, merge, and conflict-resolution lifecycle first-class orchestration state.
-- Let one Oats run own a single long-lived feature branch and PR stack across Prefect retries and resumes.
+- Let one Oats run own a single long-lived feature branch and PR stack across legacy orchestration retries and resumes.
 - Support dependency-aware stacked task PRs instead of forcing every task PR to target the feature branch directly.
-- Persist the branch and PR graph locally in Oats and Prefect artifacts so Helaicopter can render and orchestrate from repo-local truth.
+- Persist the branch and PR graph locally in Oats and legacy orchestration artifacts so Helaicopter can render and orchestrate from repo-local truth.
 - Use Codex CLI sessions for merge operations and conflict-resolution steps.
 - Keep a mandatory human approval gate for the final feature PR into `main`.
 - Extend backend and frontend contracts so the orchestration UI can show both execution state and branch / PR progression.
@@ -41,8 +41,8 @@ This design extends the current Oats runtime and Prefect artifact contracts inst
 - `python/oats/planner.py` creates one integration branch per run and currently assigns every task PR the same base branch.
 - `python/oats/pr.py` can build task PRs, create a final PR, and optionally invoke a merge operator, but PR state is recorded only as command execution output.
 - `python/oats/runtime_state.py` persists run and task execution status under `.oats/runtime/<run_id>/`, but it does not persist a branch / PR graph.
-- `python/oats/prefect/worktree.py` already prepares stable task worktrees and branch names for Prefect task execution.
-- `python/oats/prefect/artifacts.py` persists local Prefect task checkpoints, but those checkpoints do not yet carry first-class branch / PR state.
+- `python/oats/legacy-orchestration/worktree.py` already prepares stable task worktrees and branch names for legacy orchestration task execution.
+- `python/oats/legacy-orchestration/artifacts.py` persists local legacy orchestration task checkpoints, but those checkpoints do not yet carry first-class branch / PR state.
 
 ### Helaicopter backend and frontend
 
@@ -59,7 +59,7 @@ The existing `integration_branch` concept becomes the run-owned feature branch i
 - one final PR from that feature branch to `main`
 - one branch / PR graph for all tasks in the run
 
-Prefect flow runs may resume and reuse the same run-owned graph, but they do not create a new feature branch or a new PR stack unless a new Oats run is created.
+legacy orchestration flow runs may resume and reuse the same run-owned graph, but they do not create a new feature branch or a new PR stack unless a new Oats run is created.
 
 ### 2. Task PRs stack according to dependency structure
 
@@ -79,18 +79,18 @@ When a parent task PR merges:
 
 Because multi-dependency tasks do not open a branch or PR until their dependencies have merged, the first rollout only needs retargeting logic for direct single-parent child PRs.
 
-### 3. Oats and Prefect artifacts are the source of truth
+### 3. Oats and legacy orchestration artifacts are the source of truth
 
 The canonical operational record lives in repo-local artifacts:
 - `.oats/runtime/<run_id>/state.json`
 - `.oats/runtime/<run_id>/events.jsonl`
-- `.oats/prefect/flow-runs/<flow_run_id>/metadata.json`
-- `.oats/prefect/flow-runs/<flow_run_id>/tasks/*.json`
-- `.oats/prefect/flow-runs/<flow_run_id>/attempts/*`
+- `.oats/legacy-orchestration/flow-runs/<flow_run_id>/metadata.json`
+- `.oats/legacy-orchestration/flow-runs/<flow_run_id>/tasks/*.json`
+- `.oats/legacy-orchestration/flow-runs/<flow_run_id>/attempts/*`
 
 GitHub state may enrich those records, but it must not replace them as the authoritative orchestration model.
 
-GitHub-derived fields such as mergeability, checks summary, review state, and merge result are stored as persisted snapshots inside the Oats and Prefect artifacts. The persisted snapshot is the control-plane truth; GitHub is the observation source.
+GitHub-derived fields such as mergeability, checks summary, review state, and merge result are stored as persisted snapshots inside the Oats and legacy orchestration artifacts. The persisted snapshot is the control-plane truth; GitHub is the observation source.
 
 ### 4. Codex handles merge operations and conflict resolution
 
@@ -145,23 +145,23 @@ Oats owns:
 - merge attempts and conflict-resolution attempts
 - run-scoped branch / PR snapshots and operation history
 
-### Prefect execution layer
+### legacy orchestration execution layer
 
-Prefect owns:
+legacy orchestration owns:
 - task execution retries and resume behavior
 - scheduling and worker routing
 - execution attempt identities (`flow_run_id`, task attempt numbers)
 - local attempt snapshots that point back to the shared `run_id`
 
-Prefect does not own the meaning of the branch stack. It executes against it and records attempt-level observations.
+legacy orchestration does not own the meaning of the branch stack. It executes against it and records attempt-level observations.
 
 ### Helaicopter serving layer
 
-FastAPI normalizes runtime state, final run records, and Prefect local artifacts into one orchestration response model. The frontend consumes one normalized run object that includes both execution state and the branch / PR graph.
+FastAPI normalizes runtime state, final run records, and legacy orchestration local artifacts into one orchestration response model. The frontend consumes one normalized run object that includes both execution state and the branch / PR graph.
 
 ### Historical data-model layer
 
-Control-plane truth stays file-backed in Oats and Prefect artifacts. Historical analytics and database facts may derive:
+Control-plane truth stays file-backed in Oats and legacy orchestration artifacts. Historical analytics and database facts may derive:
 - feature-branch lifecycle metrics
 - task PR counts and durations
 - merge-attempt counts
@@ -314,14 +314,14 @@ Final PR completion detection:
 
 Multi-dependency execution gating:
 - a multi-dependency task remains execution-`blocked` until all upstream task PRs are merged into the feature branch
-- Prefect scheduling for that task is therefore merge-gated, not merely upstream-task-completion-gated
+- legacy orchestration scheduling for that task is therefore merge-gated, not merely upstream-task-completion-gated
 - only after that merge gate clears may the task branch be created and the task transition back to execution-`pending`
 
 ## Runtime Flow
 
 1. Oats planning builds the task DAG and the branch-stack plan.
 2. Runtime initialization creates or validates the run-owned feature branch state.
-3. Prefect task execution prepares or reuses the task worktree and task branch using the persisted parent-branch rule.
+3. legacy orchestration task execution prepares or reuses the task worktree and task branch using the persisted parent-branch rule.
 4. The executor agent performs code changes in the task worktree.
 5. Validation runs for the task.
 6. Oats creates or updates the task PR and records the PR snapshot.
@@ -352,7 +352,7 @@ The initial serving path should remain `GET /orchestration/oats`. A separate end
 The backend should:
 - merge runtime state and final run record views without losing the run-owned branch / PR graph
 - prefer live runtime snapshots when a run is active
-- merge Prefect attempt artifacts by `run_id` plus task ID
+- merge legacy orchestration attempt artifacts by `run_id` plus task ID
 - carry linked Codex session IDs into operation-history responses for merge and conflict-resolution steps
 - expose enough parent-branch and base-branch information that the frontend does not need to reconstruct the stack heuristically
 
@@ -413,7 +413,7 @@ Add or extend tests for:
 - operation-history event emission
 - conflict-resolution retry paths
 
-### Prefect artifact handling
+### legacy orchestration artifact handling
 
 Add tests for:
 - `run_id` propagation into local flow-run metadata
@@ -443,7 +443,7 @@ Add tests for:
 
 Implement the additive v2 models, planner changes, runtime persistence, and PR operation recording.
 
-### Phase 2: Prefect attempt integration
+### Phase 2: legacy orchestration attempt integration
 
 Propagate `run_id`, persist branch / PR attempt snapshots, and make resume semantics reuse the same stack.
 
@@ -457,8 +457,8 @@ Treat derived analytics as an explicitly later follow-on after the first impleme
 
 ## Open Questions Resolved By This Design
 
-- Source of truth: Oats and Prefect artifacts, not live GitHub state.
+- Source of truth: Oats and legacy orchestration artifacts, not live GitHub state.
 - Merge operator: Codex CLI sessions.
 - Conflict handling: automatic conflict-resolution step before surfacing blocked state.
 - Final gate: manual human approval on the feature PR to `main`.
-- Resume semantics: one Oats run owns one long-lived feature branch stack across Prefect resumes.
+- Resume semantics: one Oats run owns one long-lived feature branch stack across legacy orchestration resumes.

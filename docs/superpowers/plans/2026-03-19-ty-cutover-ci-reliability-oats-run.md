@@ -1,6 +1,6 @@
 # Run: ty Cutover And CI Reliability
 
-This run spec operationalizes `/Users/tony/Code/helaicopter/docs/superpowers/plans/2026-03-19-ty-cutover-ci-reliability.md` as six OATS tasks executed through Prefect. Treat that implementation plan as authoritative for file scope, exact verification commands, and sequencing details.
+This run spec operationalizes `/Users/tony/Code/helaicopter/docs/superpowers/plans/2026-03-19-ty-cutover-ci-reliability.md` as six OATS tasks executed through legacy orchestration. Treat that implementation plan as authoritative for file scope, exact verification commands, and sequencing details.
 
 ## Tasks
 
@@ -33,11 +33,11 @@ Depends on: contract_flip
 
 Implement Task 2 from `/Users/tony/Code/helaicopter/docs/superpowers/plans/2026-03-19-ty-cutover-ci-reliability.md`.
 
-Remove the currently reproduced low-risk blockers: unused imports, the missing `RunRuntimeState` import, the Prefect port `tags` inference issue, stale `type: ignore` comments in `server/dependencies.py`, and the FastAPI middleware typing mismatch in `server/main.py`.
+Remove the currently reproduced low-risk blockers: unused imports, the missing `RunRuntimeState` import, the legacy orchestration port `tags` inference issue, stale `type: ignore` comments in `server/dependencies.py`, and the FastAPI middleware typing mismatch in `server/main.py`.
 
 Acceptance criteria:
 - the initial `ruff` failures are removed
-- the narrow `ty` failures in the Prefect port and FastAPI server files are removed
+- the narrow `ty` failures in the legacy orchestration port and FastAPI server files are removed
 - the FastAPI smoke/bootstrap tests still pass
 
 Notes:
@@ -46,8 +46,8 @@ Notes:
 
 Validation override:
 - uv run --group dev pytest -q tests/test_api_bootstrap.py tests/test_api_smoke.py
-- uv run --group dev ruff check python/helaicopter_api/application/gateway.py python/helaicopter_api/application/orchestration.py python/helaicopter_api/application/prefect_orchestration.py python/helaicopter_api/ports/prefect.py python/helaicopter_api/server/dependencies.py python/helaicopter_api/server/main.py tests/oats/test_prefect_deployments.py
-- uv run --group dev ty check python/helaicopter_api/ports/prefect.py python/helaicopter_api/server/dependencies.py python/helaicopter_api/server/main.py --error-on-warning
+- uv run --group dev ruff check python/helaicopter_api/application/gateway.py python/helaicopter_api/application/orchestration.py python/helaicopter_api/application/legacy-orchestration_orchestration.py python/helaicopter_api/ports/legacy-orchestration.py python/helaicopter_api/server/dependencies.py python/helaicopter_api/server/main.py tests/oats/test_legacy-orchestration_deployments.py
+- uv run --group dev ty check python/helaicopter_api/ports/legacy-orchestration.py python/helaicopter_api/server/dependencies.py python/helaicopter_api/server/main.py --error-on-warning
 
 ### api_type_narrowing
 Title: T003 Fix API Adapter And Application ty Narrowing
@@ -95,18 +95,18 @@ Validation override:
 - uv run --group dev ty check python/helaicopter_api/application/database.py python/helaicopter_db/refresh.py python/helaicopter_db/status.py python/helaicopter_db/utils.py --output-format concise --error-on-warning
 
 ### oats_runtime_typing
-Title: T005 Make OATS Runtime And Prefect Modules ty-Clean
+Title: T005 Make OATS Runtime And legacy orchestration Modules ty-Clean
 Depends on: contract_flip
 
 Implement Task 5 from `/Users/tony/Code/helaicopter/docs/superpowers/plans/2026-03-19-ty-cutover-ci-reliability.md`.
 
-Fix the `python/oats/**` type backlog: provider and status literal narrowing, runner event TypedDicts, `SessionId`/`TaskId` wrapping, Prefect overload typing, runtime imports, and the `python/oats/runner.py` stream-handle/write diagnostics.
+Fix the `python/oats/**` type backlog: provider and status literal narrowing, runner event TypedDicts, `SessionId`/`TaskId` wrapping, legacy orchestration overload typing, runtime imports, and the `python/oats/runner.py` stream-handle/write diagnostics.
 
 Acceptance criteria:
 - OATS runtime modules stop assigning generic `str` where domain `Literal` or `NewType` values are declared
 - runner TypedDicts match the event keys the code reads
 - runner stream-handle annotations and writes satisfy `ty`
-- OATS/Prefect tests still pass
+- OATS/legacy orchestration tests still pass
 - `ty` passes for `python/oats`
 
 Notes:
@@ -114,7 +114,7 @@ Notes:
 - use explicit annotations or casts only where they reflect the actual runtime surface, not as blanket suppression
 
 Validation override:
-- uv run --group dev pytest -q tests/test_cli_runtime.py tests/test_runner.py tests/oats/test_prefect_compiler.py tests/oats/test_prefect_flows.py tests/oats/test_prefect_tasks.py tests/oats/test_prefect_worktree.py
+- uv run --group dev pytest -q tests/test_cli_runtime.py tests/test_runner.py tests/oats/test_legacy-orchestration_compiler.py tests/oats/test_legacy-orchestration_flows.py tests/oats/test_legacy-orchestration_tasks.py tests/oats/test_legacy-orchestration_worktree.py
 - uv run --group dev ty check python/oats --output-format concise --error-on-warning
 
 ### final_burndown

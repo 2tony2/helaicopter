@@ -90,7 +90,7 @@ This makes it easier to change HTTP or adapter-facing contracts without implying
 
 ### 5. Keep external dependencies behind ports and adapters
 
-Filesystem access, SQLite access, Prefect integration, and artifact reads stay in `adapters/` behind interfaces defined by `ports/`. Neither domain nor request-layer code should know external layout details directly.
+Filesystem access, SQLite access, legacy orchestration integration, and artifact reads stay in `adapters/` behind interfaces defined by `ports/`. Neither domain nor request-layer code should know external layout details directly.
 
 ## Target Structure
 
@@ -149,7 +149,7 @@ python/helaicopter_api/
   application/   # use cases and workflow orchestration
   domain/        # business concepts and rules
   ports/         # interfaces owned by the inner layers
-  adapters/      # filesystem/sqlite/prefect/artifact implementations
+  adapters/      # filesystem/sqlite/legacy-orchestration/artifact implementations
   contracts/     # request/response schemas and DTOs
   bootstrap/     # wiring and dependency assembly
   server/        # FastAPI app entrypoints and config

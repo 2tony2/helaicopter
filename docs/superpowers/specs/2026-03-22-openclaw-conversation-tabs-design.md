@@ -52,7 +52,7 @@ This makes the current conversation tabs feel bare-bones for OpenClaw sessions e
 
 ### Non-Functional
 
-- Keep the shared transport contract stable for Claude, Codex, and OpenCloud
+- Keep the shared transport contract stable for Claude, Codex, and legacy provider
 - Make OpenClaw-specific extensions typed rather than opaque blobs
 - Preserve unknown or currently-unused OpenClaw event data instead of silently dropping it
 - Avoid forcing an app-SQLite persistence refactor in the first pass

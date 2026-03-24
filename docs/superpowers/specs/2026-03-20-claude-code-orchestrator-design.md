@@ -2,17 +2,17 @@
 
 **Date:** 2026-03-20
 **Status:** Draft
-**Replaces:** Oats CLI, Prefect integration, all associated infrastructure
+**Replaces:** Oats CLI and all associated infrastructure
 
 ## Overview
 
-Replace the entire Oats + Prefect orchestration stack with a single Claude Code superpowers skill that acts as the orchestrator. A human starts a Claude Code session, invokes the skill, points it at a markdown run spec, and the skill handles task expansion, dispatch, monitoring, and completion — all within one session.
+Replace the entire Oats orchestration stack with a single Claude Code superpowers skill that acts as the orchestrator. A human starts a Claude Code session, invokes the skill, points it at a markdown run spec, and the skill handles task expansion, dispatch, monitoring, and completion — all within one session.
 
-This eliminates: the Oats Python CLI, the Prefect control plane (Docker, Postgres, Redis), the macOS launchd worker, artifact reconciliation, and ~5000 lines of orchestration Python. It replaces them with one skill file, one Alembic migration, a small Python DB helper, six API routes, and rebuilt frontend components.
+This eliminates: the Oats Python CLI, the orchestration control plane (Docker, Postgres, Redis), the macOS launchd worker, artifact reconciliation, and ~5000 lines of orchestration Python. It replaces them with one skill file, one Alembic migration, a small Python DB helper, six API routes, and rebuilt frontend components.
 
 ## Motivation
 
-The current system requires Docker containers, a Prefect server, launchd workers, a custom Python CLI, dual data stores (Prefect API + local filesystem artifacts), and complex reconciliation logic. All of this exists to do one thing: run AI agent tasks in parallel with dependency ordering. Claude Code can do this natively via CLI-spawned processes and `/loop` polling.
+The current system requires Docker containers, an orchestration server, launchd workers, a custom Python CLI, dual data stores (orchestration API + local filesystem artifacts), and complex reconciliation logic. All of this exists to do one thing: run AI agent tasks in parallel with dependency ordering. Claude Code can do this natively via CLI-spawned processes and `/loop` polling.
 
 ## System Flow
 
@@ -259,7 +259,7 @@ All commands use parameterized queries. No raw string interpolation into SQL.
 
 ## SQLite Schema
 
-Four new tables in the existing database, replacing `FactOrchestrationRun`, `FactOrchestrationTaskAttempt`, and all Prefect-specific tables.
+Four new tables in the existing database, replacing `FactOrchestrationRun` and `FactOrchestrationTaskAttempt`.
 
 ```sql
 CREATE TABLE orchestration_run (
@@ -374,7 +374,7 @@ Expandable or drill-down view:
 - Worktree path, branch name
 - Error text if failed
 
-**Removed components:** Prefect iframe embed, overnight-oats-panel, oats-pr-stack.
+**Removed components:** overnight-oats-panel, oats-pr-stack.
 **Kept/rebuilt:** orchestration-hub (shell), orchestration page, tabs.
 
 ## File System Layout
@@ -426,39 +426,39 @@ Run specs live in the repo, conventionally under `docs/runs/` or alongside the p
 ## Deletion Scope
 
 ### Entire packages/directories removed
-- `python/oats/` — orchestration CLI, models, parser, planner, runner, runtime state, prefect bridge
-- `ops/prefect/` — Docker compose, env files
+- `python/oats/` — orchestration CLI, models, parser, planner, runner, runtime state, legacy-orchestration bridge
+- `ops/legacy-orchestration/` — Docker compose, env files
 - `ops/launchd/` — worker plist template
-- `ops/scripts/prefect-worker.sh`
-- `bin/oats-prefect-up`
-- `.oats/` — config, runtime, runs, prefect artifacts
+- `ops/scripts/legacy-orchestration-worker.sh`
+- `bin/oats-legacy-orchestration-up`
+- `.oats/` — config, runtime, runs, legacy-orchestration artifacts
 - `.oats-worktrees/`
 
 ### Backend code removed
 - `python/helaicopter_api/router/orchestration.py`
-- `python/helaicopter_api/router/prefect_orchestration.py`
-- `python/helaicopter_api/router/router.py` — remove orchestration/prefect router imports and includes
+- `python/helaicopter_api/router/legacy-orchestration_orchestration.py`
+- `python/helaicopter_api/router/router.py` — remove orchestration/legacy-orchestration router imports and includes
 - `python/helaicopter_api/application/orchestration.py`
-- `python/helaicopter_api/application/prefect_orchestration.py`
+- `python/helaicopter_api/application/legacy-orchestration_orchestration.py`
 - `python/helaicopter_api/application/oats_run_actions.py`
 - `python/helaicopter_api/schema/orchestration.py`
-- `python/helaicopter_api/schema/prefect_orchestration.py`
+- `python/helaicopter_api/schema/legacy-orchestration_orchestration.py`
 - `python/helaicopter_api/ports/orchestration.py`
-- `python/helaicopter_api/ports/prefect.py`
-- `python/helaicopter_api/adapters/prefect_http.py`
+- `python/helaicopter_api/ports/legacy-orchestration.py`
+- `python/helaicopter_api/adapters/legacy-orchestration_http.py`
 - `python/helaicopter_api/pure/orchestration_analytics.py`
 - `python/helaicopter_db/orchestration_facts.py`
-- All Prefect dependencies from `pyproject.toml`
+- All legacy orchestration dependencies from `pyproject.toml`
 
 ### Frontend code removed
 - `src/components/orchestration/overnight-oats-panel.tsx`
 - `src/components/orchestration/oats-pr-stack.tsx`
-- `src/components/orchestration/prefect-ui-embed.tsx`
+- `src/components/orchestration/legacy-orchestration-ui-embed.tsx`
 - `src/components/orchestration/oats-view-model.ts`
 - `src/components/orchestration/oats-view-model.test.ts`
 - `src/components/orchestration/tabs.ts` — rewrite for new tab structure
 - `src/components/orchestration/tabs.test.ts` — rewrite
-- `src/lib/client/prefect-normalize.test.ts`
+- `src/lib/client/legacy-orchestration-normalize.test.ts`
 - Orchestration-specific code in `src/lib/client/endpoints.ts` — replace with new endpoints
 - Orchestration-specific code in `src/lib/client/normalize.ts` — replace with new normalizers
 - Orchestration-specific Zod schemas in `src/lib/client/schemas/`
@@ -466,16 +466,16 @@ Run specs live in the repo, conventionally under `docs/runs/` or alongside the p
 ### Database tables deprecated (via Alembic migration)
 - `FactOrchestrationRun` → drop
 - `FactOrchestrationTaskAttempt` → drop
-- Prefect-specific columns/tables → drop
+- legacy orchestration-specific columns/tables → drop
 - `python/alembic/versions/20260319_0009_orchestration_analytics_facts.py` — superseded by new migration
 
 ### Docs removed/archived
-- `docs/oats-prefect-cutover.md`
-- `docs/prefect-local-ops.md`
-- `docs/orchestration/` (Prefect-specific content)
-- Prefect/Oats-related design specs in `docs/superpowers/specs/`
-- Prefect/Oats-related plans in `docs/superpowers/plans/`
-- `examples/prefect_native_oats_orchestration_run.md` — replace with new format example
+- `docs/oats-legacy-orchestration-cutover.md`
+- `docs/legacy-orchestration-local-ops.md`
+- `docs/orchestration/` (legacy orchestration-specific content)
+- legacy orchestration/Oats-related design specs in `docs/superpowers/specs/`
+- legacy orchestration/Oats-related plans in `docs/superpowers/plans/`
+- `examples/legacy-orchestration_native_oats_orchestration_run.md` — replace with new format example
 
 ### What stays
 - The frontend orchestration page shell (`src/app/orchestration/page.tsx`) — rebuilt

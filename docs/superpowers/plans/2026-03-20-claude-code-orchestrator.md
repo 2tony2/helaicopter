@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the Oats + Prefect orchestration stack with a Claude Code skill-driven orchestrator, SQLite tracking, and rebuilt frontend.
+**Goal:** Replace the Oats + legacy orchestration orchestration stack with a Claude Code skill-driven orchestrator, SQLite tracking, and rebuilt frontend.
 
 **Architecture:** A superpowers skill acts as the orchestrator within a Claude Code session. It parses markdown run specs, expands tasks into attack plans, dispatches CLI sessions (`claude`/`codex`), and monitors via `/loop`. A small Python DB helper handles all SQLite writes. Six FastAPI endpoints serve the frontend. Four new tables replace the old schema.
 
@@ -30,11 +30,11 @@
 - `examples/sample_orchestration_run.md` — Example run spec in new format
 
 ### Files to Modify
-- `python/helaicopter_api/router/router.py` — Remove old orchestration/prefect imports, add new router
-- `python/helaicopter_api/bootstrap/services.py` — Remove oats/prefect services
-- `python/helaicopter_api/server/config.py` — Remove Prefect settings if any
+- `python/helaicopter_api/router/router.py` — Remove old orchestration/legacy-orchestration imports, add new router
+- `python/helaicopter_api/bootstrap/services.py` — Remove oats/legacy-orchestration services
+- `python/helaicopter_api/server/config.py` — Remove legacy orchestration settings if any
 - `python/helaicopter_db/models/oltp.py` — Add new SQLAlchemy models
-- `pyproject.toml` — Remove Prefect dependency
+- `pyproject.toml` — Remove legacy orchestration dependency
 - `src/app/orchestration/page.tsx` — Rebuild page with new components
 - `src/components/orchestration/orchestration-hub.tsx` — Rebuild hub
 - `src/lib/client/endpoints.ts` — Remove old orchestration endpoints, add new
@@ -47,16 +47,16 @@ See deletion scope in spec. ~30 files across backend, frontend, ops, docs.
 ## Task 1: Delete Old Orchestration Infrastructure
 
 **Files:**
-- Delete: `ops/prefect/`, `ops/launchd/`, `ops/scripts/prefect-worker.sh`, `bin/oats-prefect-up`
+- Delete: `ops/legacy-orchestration/`, `ops/launchd/`, `ops/scripts/legacy-orchestration-worker.sh`, `bin/oats-legacy-orchestration-up`
 - Delete: `python/oats/` (entire package)
 - Delete: `.oats/`, `.oats-worktrees/` (if tracked)
-- Modify: `pyproject.toml` — remove `prefect` dependency and oats entry points
+- Modify: `pyproject.toml` — remove `legacy-orchestration` dependency and oats entry points
 
 - [ ] **Step 1: Remove ops infrastructure**
 
 Delete the following directories and files:
 ```bash
-rm -rf ops/prefect/ ops/launchd/ ops/scripts/prefect-worker.sh bin/oats-prefect-up
+rm -rf ops/legacy-orchestration/ ops/launchd/ ops/scripts/legacy-orchestration-worker.sh bin/oats-legacy-orchestration-up
 ```
 
 - [ ] **Step 2: Remove the oats Python package**
@@ -65,9 +65,9 @@ rm -rf ops/prefect/ ops/launchd/ ops/scripts/prefect-worker.sh bin/oats-prefect-
 rm -rf python/oats/
 ```
 
-- [ ] **Step 3: Remove Prefect dependency from pyproject.toml**
+- [ ] **Step 3: Remove legacy orchestration dependency from pyproject.toml**
 
-In `pyproject.toml`, remove `"prefect>=3.0.0"` (or similar) from the dependencies list. Also remove any oats-related `[project.scripts]` entry points if present.
+In `pyproject.toml`, remove `"legacy-orchestration>=3.0.0"` (or similar) from the dependencies list. Also remove any oats-related `[project.scripts]` entry points if present.
 
 - [ ] **Step 4: Verify the project still loads**
 
@@ -75,12 +75,12 @@ In `pyproject.toml`, remove `"prefect>=3.0.0"` (or similar) from the dependencie
 cd /Users/tony/Code/helaicopter && uv run python -c "import helaicopter_api; print('ok')"
 ```
 
-Expected: `ok` (no import errors from removed oats/prefect code — if there are, fix them in next task)
+Expected: `ok` (no import errors from removed oats/legacy-orchestration code — if there are, fix them in next task)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "chore: remove oats CLI and prefect infrastructure"
+git add -A && git commit -m "chore: remove oats CLI and legacy-orchestration infrastructure"
 ```
 
 ---
@@ -89,15 +89,15 @@ git add -A && git commit -m "chore: remove oats CLI and prefect infrastructure"
 
 **Files:**
 - Delete: `python/helaicopter_api/router/orchestration.py`
-- Delete: `python/helaicopter_api/router/prefect_orchestration.py`
+- Delete: `python/helaicopter_api/router/legacy-orchestration_orchestration.py`
 - Delete: `python/helaicopter_api/application/orchestration.py`
-- Delete: `python/helaicopter_api/application/prefect_orchestration.py`
+- Delete: `python/helaicopter_api/application/legacy-orchestration_orchestration.py`
 - Delete: `python/helaicopter_api/application/oats_run_actions.py`
 - Delete: `python/helaicopter_api/schema/orchestration.py`
-- Delete: `python/helaicopter_api/schema/prefect_orchestration.py`
+- Delete: `python/helaicopter_api/schema/legacy-orchestration_orchestration.py`
 - Delete: `python/helaicopter_api/ports/orchestration.py`
-- Delete: `python/helaicopter_api/ports/prefect.py`
-- Delete: `python/helaicopter_api/adapters/prefect_http.py`
+- Delete: `python/helaicopter_api/ports/legacy-orchestration.py`
+- Delete: `python/helaicopter_api/adapters/legacy-orchestration_http.py`
 - Delete: `python/helaicopter_api/pure/orchestration_analytics.py`
 - Delete: `python/helaicopter_db/orchestration_facts.py`
 - Modify: `python/helaicopter_api/router/router.py`
@@ -107,15 +107,15 @@ git add -A && git commit -m "chore: remove oats CLI and prefect infrastructure"
 
 ```bash
 rm -f python/helaicopter_api/router/orchestration.py \
-      python/helaicopter_api/router/prefect_orchestration.py \
+      python/helaicopter_api/router/legacy-orchestration_orchestration.py \
       python/helaicopter_api/application/orchestration.py \
-      python/helaicopter_api/application/prefect_orchestration.py \
+      python/helaicopter_api/application/legacy-orchestration_orchestration.py \
       python/helaicopter_api/application/oats_run_actions.py \
       python/helaicopter_api/schema/orchestration.py \
-      python/helaicopter_api/schema/prefect_orchestration.py \
+      python/helaicopter_api/schema/legacy-orchestration_orchestration.py \
       python/helaicopter_api/ports/orchestration.py \
-      python/helaicopter_api/ports/prefect.py \
-      python/helaicopter_api/adapters/prefect_http.py \
+      python/helaicopter_api/ports/legacy-orchestration.py \
+      python/helaicopter_api/adapters/legacy-orchestration_http.py \
       python/helaicopter_api/pure/orchestration_analytics.py \
       python/helaicopter_db/orchestration_facts.py
 ```
@@ -124,7 +124,7 @@ rm -f python/helaicopter_api/router/orchestration.py \
 
 Open `python/helaicopter_api/router/router.py`. Remove imports and `include_router()` calls for:
 - `orchestration_router` (from `.orchestration`)
-- `prefect_orchestration_router` (from `.prefect_orchestration`)
+- `legacy-orchestration_orchestration_router` (from `.legacy-orchestration_orchestration`)
 
 Keep all other routers.
 
@@ -132,18 +132,18 @@ Keep all other routers.
 
 Open `python/helaicopter_api/bootstrap/services.py`. Remove:
 - `oats_run_store` field and its construction in `build_services()`
-- `prefect_client` field and its construction
+- `legacy-orchestration_client` field and its construction
 - Any imports from deleted modules
 
 - [ ] **Step 4: Delete old orchestration test files**
 
 ```bash
-rm -f tests/test_api_orchestration.py tests/test_api_prefect_orchestration.py tests/test_orchestration_analytics.py
+rm -f tests/test_api_orchestration.py tests/test_api_legacy-orchestration_orchestration.py tests/test_orchestration_analytics.py
 ```
 
 - [ ] **Step 5: Clean up server/config.py**
 
-Open `python/helaicopter_api/server/config.py`. Remove any Prefect-related settings fields (e.g. `prefect_api_url`, `prefect_work_pool`, etc.). Check `build_services()` in `bootstrap/services.py` — if it references `settings.prefect` or similar, remove those references.
+Open `python/helaicopter_api/server/config.py`. Remove any legacy orchestration-related settings fields (e.g. `legacy-orchestration_api_url`, `legacy-orchestration_work_pool`, etc.). Check `build_services()` in `bootstrap/services.py` — if it references `settings.legacy-orchestration` or similar, remove those references.
 
 - [ ] **Step 6: Fix any remaining import errors**
 
@@ -168,12 +168,12 @@ git add -A && git commit -m "chore: remove old orchestration backend code"
 **Files:**
 - Delete: `src/components/orchestration/overnight-oats-panel.tsx`
 - Delete: `src/components/orchestration/oats-pr-stack.tsx`
-- Delete: `src/components/orchestration/prefect-ui-embed.tsx`
+- Delete: `src/components/orchestration/legacy-orchestration-ui-embed.tsx`
 - Delete: `src/components/orchestration/oats-view-model.ts`
 - Delete: `src/components/orchestration/oats-view-model.test.ts`
 - Delete: `src/components/orchestration/tabs.ts`
 - Delete: `src/components/orchestration/tabs.test.ts`
-- Delete: `src/lib/client/prefect-normalize.test.ts`
+- Delete: `src/lib/client/legacy-orchestration-normalize.test.ts`
 - Modify: `src/lib/client/endpoints.ts` — remove orchestration endpoints
 - Modify: `src/lib/client/normalize.ts` — remove orchestration normalizers
 - Modify: `src/components/orchestration/orchestration-hub.tsx` — stub placeholder
@@ -184,21 +184,21 @@ git add -A && git commit -m "chore: remove old orchestration backend code"
 ```bash
 rm -f src/components/orchestration/overnight-oats-panel.tsx \
       src/components/orchestration/oats-pr-stack.tsx \
-      src/components/orchestration/prefect-ui-embed.tsx \
+      src/components/orchestration/legacy-orchestration-ui-embed.tsx \
       src/components/orchestration/oats-view-model.ts \
       src/components/orchestration/oats-view-model.test.ts \
       src/components/orchestration/tabs.ts \
       src/components/orchestration/tabs.test.ts \
-      src/lib/client/prefect-normalize.test.ts
+      src/lib/client/legacy-orchestration-normalize.test.ts
 ```
 
 - [ ] **Step 2: Remove orchestration endpoints from endpoints.ts**
 
-Open `src/lib/client/endpoints.ts`. Remove all functions related to oats/prefect orchestration (e.g. `listOatsRuns`, `getOatsRun`, `getPrefectDeployments`, etc.). Keep non-orchestration endpoints.
+Open `src/lib/client/endpoints.ts`. Remove all functions related to oats/legacy-orchestration orchestration (e.g. `listOatsRuns`, `getOatsRun`, `getlegacy orchestrationDeployments`, etc.). Keep non-orchestration endpoints.
 
 - [ ] **Step 3: Remove orchestration normalizers from normalize.ts**
 
-Open `src/lib/client/normalize.ts`. Remove orchestration-related normalizer functions. If `prefect-normalize.ts` exists as a separate file, delete it.
+Open `src/lib/client/normalize.ts`. Remove orchestration-related normalizer functions. If `legacy-orchestration-normalize.ts` exists as a separate file, delete it.
 
 - [ ] **Step 4: Stub the orchestration hub**
 
@@ -240,45 +240,45 @@ git add -A && git commit -m "chore: remove old frontend orchestration code"
 ## Task 4: Delete Old Docs and Examples
 
 **Files:**
-- Delete: `docs/oats-prefect-cutover.md`
-- Delete: `docs/prefect-local-ops.md`
+- Delete: `docs/oats-legacy-orchestration-cutover.md`
+- Delete: `docs/legacy-orchestration-local-ops.md`
 - Delete: `docs/orchestration/` (directory)
-- Delete: `examples/prefect_native_oats_orchestration_run.md`
-- Delete: Old oats/prefect design specs and plans in `docs/superpowers/specs/` and `docs/superpowers/plans/`
+- Delete: `examples/legacy-orchestration_native_oats_orchestration_run.md`
+- Delete: Old oats/legacy-orchestration design specs and plans in `docs/superpowers/specs/` and `docs/superpowers/plans/`
 
 - [ ] **Step 1: Delete old orchestration docs**
 
 ```bash
-rm -f docs/oats-prefect-cutover.md docs/prefect-local-ops.md
+rm -f docs/oats-legacy-orchestration-cutover.md docs/legacy-orchestration-local-ops.md
 rm -rf docs/orchestration/
-rm -f examples/prefect_native_oats_orchestration_run.md
+rm -f examples/legacy-orchestration_native_oats_orchestration_run.md
 ```
 
-- [ ] **Step 2: Delete old oats/prefect specs and plans**
+- [ ] **Step 2: Delete old oats/legacy-orchestration specs and plans**
 
-Remove specs and plans that are oats/prefect-specific. Keep the new claude-code-orchestrator spec. Read each file name and delete only those that reference oats, prefect, or overnight:
+Remove specs and plans that are oats/legacy-orchestration-specific. Keep the new claude-code-orchestrator spec. Read each file name and delete only those that reference oats, legacy-orchestration, or overnight:
 
 ```bash
-rm -f docs/superpowers/specs/2026-03-18-prefect-native-oats-orchestration-design.md \
-      docs/superpowers/specs/2026-03-19-full-program-oats-prefect-overnight-run-design.md \
+rm -f docs/superpowers/specs/2026-03-18-legacy-orchestration-native-oats-orchestration-design.md \
+      docs/superpowers/specs/2026-03-19-full-program-oats-legacy-orchestration-overnight-run-design.md \
       docs/superpowers/specs/2026-03-20-oats-stacked-pr-orchestration-design.md \
       docs/superpowers/specs/2026-03-19-data-modeling-design-agents-oats-design.md
 ```
 
 ```bash
-rm -f docs/superpowers/plans/2026-03-18-prefect-native-oats-orchestration.md \
-      docs/superpowers/plans/2026-03-19-full-program-oats-prefect-pipeline.md \
+rm -f docs/superpowers/plans/2026-03-18-legacy-orchestration-native-oats-orchestration.md \
+      docs/superpowers/plans/2026-03-19-full-program-oats-legacy-orchestration-pipeline.md \
       docs/superpowers/plans/2026-03-20-oats-stacked-pr-orchestration.md \
       docs/superpowers/plans/2026-03-20-oats-authoritative-orchestration-tab.md \
       docs/superpowers/plans/2026-03-18-python-backend-type-system-oats-run.md
 ```
 
-**Note:** Review each file before deleting — only delete oats/prefect-specific ones. Keep plans unrelated to orchestration.
+**Note:** Review each file before deleting — only delete oats/legacy-orchestration-specific ones. Keep plans unrelated to orchestration.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add -A && git commit -m "chore: remove old oats/prefect docs and specs"
+git add -A && git commit -m "chore: remove old oats/legacy-orchestration docs and specs"
 ```
 
 ---
@@ -380,7 +380,7 @@ class OrchestrationDependency(OltpBase):
 - [ ] **Step 2: Generate the Alembic migration**
 
 ```bash
-cd /Users/tony/Code/helaicopter && uv run alembic -x target=oltp revision --autogenerate -m "orchestration v2: replace oats/prefect with skill-driven schema"
+cd /Users/tony/Code/helaicopter && uv run alembic -x target=oltp revision --autogenerate -m "orchestration v2: replace oats/legacy-orchestration with skill-driven schema"
 ```
 
 - [ ] **Step 3: Review and edit the generated migration**
