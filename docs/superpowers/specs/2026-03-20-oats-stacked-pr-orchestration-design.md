@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Helaicopter already vendors Oats, exposes authoritative Oats runtime artifacts through the FastAPI backend, renders an orchestration DAG in the UI, and runs execution through legacy orchestration-backed task worktrees. What it does not yet have is a first-class git and pull-request control plane. Branch naming, task PR creation, and merge automation exist as helpers, but they are not the persisted orchestration model, they are not resumable as a run-owned graph, and they are not surfaced coherently in the UI.
+Helaicopter already vendors Oats, exposes authoritative Oats runtime artifacts through the FastAPI backend, renders an orchestration DAG in the UI, and runs execution through task worktrees. What it does not yet have is a first-class git and pull-request control plane. Branch naming, task PR creation, and merge automation exist as helpers, but they are not the persisted orchestration model, they are not resumable as a run-owned graph, and they are not surfaced coherently in the UI.
 
 The target state is an artifact-first stacked-PR orchestration model:
 - one Oats run owns one long-lived feature branch
@@ -10,17 +10,17 @@ The target state is an artifact-first stacked-PR orchestration model:
 - task PRs stack according to task dependencies instead of always targeting the feature branch
 - Codex CLI sessions handle merge operations and conflict resolution
 - the final feature PR to `main` is always a human approval gate
-- Oats runtime artifacts and legacy orchestration local artifacts are the source of truth for branch and PR lifecycle
+- Oats runtime artifacts are the source of truth for branch and PR lifecycle
 - Helaicopter backend and frontend consume that persisted graph directly
 
-This design extends the current Oats runtime and legacy orchestration artifact contracts instead of introducing a separate git-operations ledger as the primary control plane.
+This design extends the current Oats runtime artifact contracts instead of introducing a separate git-operations ledger as the primary control plane.
 
 ## Goals
 
 - Make git worktree, branch, PR, merge, and conflict-resolution lifecycle first-class orchestration state.
-- Let one Oats run own a single long-lived feature branch and PR stack across legacy orchestration retries and resumes.
+- Let one Oats run own a single long-lived feature branch and PR stack across retries and resumes.
 - Support dependency-aware stacked task PRs instead of forcing every task PR to target the feature branch directly.
-- Persist the branch and PR graph locally in Oats and legacy orchestration artifacts so Helaicopter can render and orchestrate from repo-local truth.
+- Persist the branch and PR graph locally in Oats artifacts so Helaicopter can render and orchestrate from repo-local truth.
 - Use Codex CLI sessions for merge operations and conflict-resolution steps.
 - Keep a mandatory human approval gate for the final feature PR into `main`.
 - Extend backend and frontend contracts so the orchestration UI can show both execution state and branch / PR progression.
@@ -41,8 +41,8 @@ This design extends the current Oats runtime and legacy orchestration artifact c
 - `python/oats/planner.py` creates one integration branch per run and currently assigns every task PR the same base branch.
 - `python/oats/pr.py` can build task PRs, create a final PR, and optionally invoke a merge operator, but PR state is recorded only as command execution output.
 - `python/oats/runtime_state.py` persists run and task execution status under `.oats/runtime/<run_id>/`, but it does not persist a branch / PR graph.
-- `python/oats/legacy-orchestration/worktree.py` already prepares stable task worktrees and branch names for legacy orchestration task execution.
-- `python/oats/legacy-orchestration/artifacts.py` persists local legacy orchestration task checkpoints, but those checkpoints do not yet carry first-class branch / PR state.
+- `python/oats/worktree.py` already prepares stable task worktrees and branch names for task execution.
+- `python/oats/artifacts.py` persists local task checkpoints, but those checkpoints do not yet carry first-class branch / PR state.
 
 ### Helaicopter backend and frontend
 

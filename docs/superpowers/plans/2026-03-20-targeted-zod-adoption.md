@@ -104,14 +104,12 @@
   Add tests for:
   - invalid `NEXT_PUBLIC_API_BASE_URL`
   - valid absolute base URL normalization
-  - invalid `legacy-orchestrationPath` rejection or safe fallback
   - unsupported tab values resolving predictably
   Put base-URL coverage in `src/lib/client/normalize.test.ts` alongside the existing endpoint/base-URL assertions, and keep route-state coverage in `src/lib/routes.test.ts`.
 
 - [x] **Step 2: Implement runtime/env schema parsing**
   In `src/lib/client/schemas/runtime.ts`, define schemas for:
   - API base URL
-  - legacy orchestration path
   - conversation detail tabs
   - orchestration tabs
 
@@ -269,7 +267,6 @@
   npm run lint
   node --test src/lib/client/normalize.test.ts
   node --test src/lib/client/mutations.test.ts
-  node --test src/lib/client/legacy-orchestration-normalize.test.ts
   node --test src/lib/routes.test.ts
   node --test src/lib/client/fetcher.test.ts
   node --test src/lib/client/schemas/shared.test.ts
