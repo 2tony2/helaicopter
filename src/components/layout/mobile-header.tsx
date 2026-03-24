@@ -14,7 +14,7 @@ export function MobileHeader({ className }: { className?: string }) {
       <button
         type="button"
         onClick={toggle}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-accent"
+        className="inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
         aria-label="Toggle navigation menu"
       >
         <Menu className="h-5 w-5" />
