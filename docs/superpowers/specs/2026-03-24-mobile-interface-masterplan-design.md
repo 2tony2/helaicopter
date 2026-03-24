@@ -260,7 +260,7 @@ iPhone (Capacitor WebView)
     │  HTTP over Tailscale VPN
     │
     ▼
-Mac (FastAPI :30000 + Next.js)
+Mac (Next.js :3000 → proxies API to FastAPI :30000)
     │
     ├── ~/.claude/ (Claude Code data)
     ├── ~/.codex/ (Codex data)
