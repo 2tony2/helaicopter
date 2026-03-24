@@ -747,7 +747,7 @@ export function ConversationViewer({
           <div className="mt-4">
             {tasks && tasks.length > 0 ? (
               <ScrollArea className="max-h-[600px]">
-                <pre className="text-sm bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap">
+                <pre className="text-sm bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-x-auto">
                   {JSON.stringify(tasks, null, 2)}
                 </pre>
               </ScrollArea>
@@ -784,7 +784,7 @@ export function ConversationViewer({
               </Button>
             </div>
             <ScrollArea className="h-[calc(100vh-16rem)]">
-              <pre className="text-xs bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-auto">
+              <pre className="text-xs bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-x-auto">
                 {JSON.stringify(conversation, null, 2)}
               </pre>
             </ScrollArea>

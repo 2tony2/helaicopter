@@ -211,7 +211,7 @@ export default function AnalyticsPage() {
           </div>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <CardTitle className="text-sm">Subscription Settings</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -318,14 +318,14 @@ export default function AnalyticsPage() {
 
           <Tabs value={granularity} onValueChange={(value) => setGranularity(value as typeof granularity)}>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <CardTitle className="text-sm">Time Bucket Analytics</CardTitle>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Compare spend, token mix, and conversation activity by hour, day, week, or month.
                   </p>
                 </div>
-                <TabsList>
+                <TabsList className="overflow-x-auto">
                   <TabsTrigger value="hourly">Hour</TabsTrigger>
                   <TabsTrigger value="daily">Day</TabsTrigger>
                   <TabsTrigger value="weekly">Week</TabsTrigger>

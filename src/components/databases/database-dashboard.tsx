@@ -246,7 +246,7 @@ export function DatabaseDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Refresh Status</CardTitle>

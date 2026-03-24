@@ -129,8 +129,8 @@ export function ConversationList() {
                   "transition-colors",
                 ].join(" ")}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4">
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
                         {conv.firstMessage || "(empty conversation)"}
@@ -178,7 +178,7 @@ export function ConversationList() {
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
+                    <div className="flex flex-col sm:items-end gap-1 shrink-0">
                       <span className="text-xs text-muted-foreground">
                         updated{" "}
                         {conv.lastUpdatedAt
@@ -191,7 +191,7 @@ export function ConversationList() {
                           ? formatDistanceToNow(conv.createdAt, { addSuffix: true })
                           : ""}
                       </span>
-                      <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2.5 text-xs text-muted-foreground flex-wrap">
                         <span className="flex items-center gap-1" title="Messages">
                           <MessageSquare className="h-3 w-3" />
                           {conv.messageCount}
