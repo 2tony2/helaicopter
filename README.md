@@ -25,16 +25,11 @@ This repo vendors the `overnight-oats` orchestration CLI as the `oats` Python pa
 # inspect a run spec
 uv run oats plan examples/sample_run.md
 
-# primary orchestration path: register and launch through Prefect
-uv run oats prefect deploy examples/prefect_native_oats_orchestration_run.md
-uv run oats prefect run examples/prefect_native_oats_orchestration_run.md
-
-# legacy compatibility path: local runtime state under .oats-worktrees
+# run orchestration locally under .oats-worktrees
 uv run oats run examples/sample_run.md
 ```
 
 The default repo policy lives in `.oats/config.toml`, sample run specs live in `examples/`, and the Python implementation lives in `python/oats/`.
-Use `docs/prefect-local-ops.md` for local control-plane setup and `docs/oats-prefect-cutover.md` for the cutover and rollback checklist.
 
 ## Requirements
 
@@ -139,7 +134,7 @@ Plus a **cost badge** (amber) showing estimated dollar cost with full breakdown 
 Browse and view saved implementation plans from `~/.claude/plans/` rendered as markdown.
 
 ### Orchestration
-View and manage Prefect orchestration runs and Oats workflow artifacts through the orchestration hub page.
+View and manage Oats workflow artifacts through the orchestration hub page.
 
 ### Databases
 Inspect local database artifacts (SQLite, DuckDB) through the Databases page.
@@ -164,11 +159,10 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 
 ## Runtime Architecture
 
-- **FastAPI** is the single network gateway for the product. The Next.js frontend, Prefect orchestration views, database artifact inspection, and repo-local Oats artifact reads all flow through backend-owned routes.
+- **FastAPI** is the single network gateway for the product. The Next.js frontend, database artifact inspection, and repo-local Oats artifact reads all flow through backend-owned routes.
 - **SQLite** stores app-local metadata, refresh bookkeeping, evaluations, and historical detail tables.
 - **DuckDB** is available as a local analytics and inspection artifact surfaced through the Databases API and page; it is not on the primary serving path.
-- **Prefect** is the primary orchestration control plane and is exposed through `/orchestration/prefect/*`.
-- **Oats local runtime** remains a compatibility and artifact-inspection surface under `/orchestration/oats`.
+- **Oats local runtime** is the orchestration and artifact-inspection surface under `/orchestration/oats`.
 
 ## Frontend/Backend Split
 

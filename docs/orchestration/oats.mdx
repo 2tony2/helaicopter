@@ -27,29 +27,13 @@ uv run oats plan examples/my-spec.md
 
 Shows the task DAG, execution order, and estimated parallelism without running anything.
 
-### Run locally (legacy)
+### Run locally
 
 ```bash
 uv run oats run examples/my-spec.md
 ```
 
 Executes tasks directly using the local OATS runtime. Each task spawns a Claude or Codex process.
-
-### Deploy to Prefect
-
-```bash
-uv run oats prefect deploy examples/my-spec.md
-```
-
-Compiles the run spec into a Prefect deployment. The OATS compiler translates tasks into Prefect flow tasks with proper dependency wiring.
-
-### Trigger a Prefect run
-
-```bash
-uv run oats prefect run examples/my-spec.md
-```
-
-Triggers execution of a previously deployed spec through Prefect's scheduling system.
 
 ## Task lifecycle
 

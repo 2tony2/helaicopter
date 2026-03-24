@@ -1,25 +1,20 @@
 ---
 title: Orchestration Overview
-description: How Helaicopter monitors and visualizes agent workflow execution.
+description: How Helaicopter monitors and visualizes OATS workflow execution.
 ---
 
-## Two orchestration systems
+## Orchestration model
 
-Helaicopter supports two complementary orchestration approaches:
+Helaicopter currently documents one orchestration approach:
 
 ### OATS (Overnight Automated Task Specs)
 A repo-local CLI tool bundled in the repository (`python/oats/`). OATS lets you define multi-step agent workflows as markdown run specs. Each task becomes a Claude Code or Codex invocation, with dependency tracking and parallel execution.
 
 **Best for:** ad-hoc multi-agent tasks, development workflows, local experimentation.
 
-### Prefect
-A production-grade workflow orchestration platform. OATS run specs can be compiled into Prefect deployments for scheduled, monitored execution with worker pools, retries, and observability.
-
-**Best for:** recurring workflows, production scheduling, team-wide visibility.
-
 ## The orchestration hub
 
-Navigate to `/orchestration` for a unified view with three tabs:
+Navigate to `/orchestration` for a unified view with two tabs:
 
 ### Conversation DAGs tab
 Cross-session DAG browser showing which conversations spawned subagents:
@@ -34,19 +29,11 @@ Live and historical OATS run records:
 - Activity indicators (active, stale, timed out)
 - Direct links to the underlying conversation threads
 
-### Prefect tab
-Prefect platform status:
-- **Deployments** — registered workflow definitions with schedules
-- **Flow runs** — execution history with status, duration, and logs
-- **Workers** — active worker processes with heartbeat monitoring
-- **Work pools** — pool configuration and capacity utilization
-
 ## Data sources
 
 | Source | Endpoint | What it provides |
 |--------|----------|-----------------|
 | OATS runtime files | `GET /orchestration/oats` | Live task state, run records, DAGs |
-| Prefect REST API | `GET /orchestration/prefect/*` | Deployments, runs, workers, pools |
 | Conversation files | `GET /conversations/*/dag` | Per-session subagent DAGs |
 
-The backend joins data from these sources, enriching Prefect records with OATS metadata and adding status tones (`running`, `success`, `error`, `pending`, `unknown`) for consistent UI rendering.
+The backend joins these sources and normalizes run status tones (`running`, `success`, `error`, `pending`, `unknown`) for consistent UI rendering.

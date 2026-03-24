@@ -43,7 +43,7 @@ Local reproduction before the migration shows:
 
 - `uv run --group dev pytest -q` passes.
 - `uv run --group dev ruff check python tests` fails on unused imports and an undefined type name.
-- `uv run --group dev pyright` fails on an unknown-type issue in the Prefect port models.
+- `uv run --group dev pyright` fails on an unknown-type issue in the port models.
 - `uvx ty check` over the current backend subset fails on a different but manageable set of diagnostics, primarily FastAPI middleware typing and stale suppression comments.
 
 This indicates the CI failures are currently driven by static-quality lanes rather than runtime test regressions.

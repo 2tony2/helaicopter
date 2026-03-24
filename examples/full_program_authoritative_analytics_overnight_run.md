@@ -103,7 +103,7 @@ Notes:
 - focus on analytical ingestion and serving, not a storage format rewrite
 
 Validation override:
-- uv run --group dev pytest -q tests/oats/test_prefect_flows.py tests/test_api_prefect_orchestration.py
+- uv run --group dev pytest -q tests/oats/test_legacy-orchestration_flows.py tests/test_api_legacy-orchestration_orchestration.py
 
 ### frontend_simplification
 Title: T006 Frontend Removal Of Authoritative Business Logic
@@ -122,7 +122,7 @@ Notes:
 - do not reintroduce proxy masking to hide backend drift
 
 Validation override:
-- node --import tsx --test src/lib/client/normalize.test.ts src/lib/client/prefect-normalize.test.ts
+- node --import tsx --test src/lib/client/normalize.test.ts src/lib/client/legacy-orchestration-normalize.test.ts
 - npm run lint -- src/components/orchestration src/components/analytics src/lib/client src/hooks
 
 ### near_realtime_polish

@@ -69,9 +69,8 @@ open http://127.0.0.1:30000/openapi.json
 
 FastAPI is the single backend gateway for the runtime platform:
 
-- The Next.js frontend calls FastAPI directly rather than talking to Prefect, DuckDB, or repo-local artifacts on its own.
-- Prefect is the primary orchestration surface and is exposed through `/orchestration/prefect/*`.
-- The legacy repo-local Oats runtime remains available under `/orchestration/oats` as a compatibility and inspection surface.
+- The Next.js frontend calls FastAPI directly rather than talking to DuckDB or repo-local artifacts on its own.
+- The OATS runtime is exposed through `/orchestration/oats` for orchestration inspection.
 - SQLite-backed app metadata remains the primary backend read/write store.
 - DuckDB remains inspection-only and is intentionally surfaced through the Databases API rather than treated as a peer application backend.
 

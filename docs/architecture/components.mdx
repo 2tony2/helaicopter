@@ -36,7 +36,6 @@ Domain-grouped `APIRouter` modules. Each router defines HTTP endpoints and deleg
 | `history.py` | Merged CLI histories | Command history |
 | `subscriptions.py` | Get/update settings | Subscription config |
 | `orchestration.py` | OATS run records | OATS monitoring |
-| `prefect_orchestration.py` | Deployments, runs, workers, pools | Prefect proxy |
 | `ops.py` | Health, docs, OpenAPI | Operations |
 | `gateway.py` | Root landing, deployment info | Gateway |
 
@@ -48,7 +47,6 @@ Pure business logic with no HTTP or database imports:
 - `analytics.py` — aggregates tokens, costs, and model breakdown across providers
 - `evaluations.py` — spawns evaluation subprocess, tracks execution
 - `database.py` — orchestrates the refresh pipeline across both databases
-- `prefect_orchestration.py` — adds status tones and joins OATS metadata to Prefect records
 - `codex_payloads.py` — Codex-specific message format parsing
 
 ### Schema layer (`schema/`)
@@ -71,7 +69,6 @@ Protocol classes (Python `typing.Protocol`) that define interfaces for external 
 | `codex_sqlite.py` | Codex SQLite session reader |
 | `app_sqlite.py` | App metadata store (evaluations, subscriptions) |
 | `orchestration.py` | OATS artifact storage |
-| `prefect.py` | Prefect HTTP API client |
 | `evaluations.py` | Evaluation job runner |
 
 ### Adapter layer (`adapters/`)
@@ -82,7 +79,6 @@ Concrete implementations of the port interfaces:
 - `codex_sqlite/` — reads Codex SQLite schema for sessions
 - `app_sqlite/` — SQLAlchemy ORM for the app metadata database
 - `oats_artifacts/` — parses `.oats/runtime/` files for run records
-- `prefect_http.py` — HTTP client wrapping Prefect's REST API
 - `evaluation_jobs.py` — spawns CLI subprocess for LLM evaluation
 
 ### Bootstrap (`bootstrap/`)
@@ -145,7 +141,6 @@ Concrete implementations of the port interfaces:
 ### Orchestration (`orchestration/`)
 - `orchestration-hub.tsx` — unified interface with tab switching
 - `overnight-oats-panel.tsx` — OATS run records with DAG visualization
-- `prefect-ui-embed.tsx` — embedded Prefect UI iframe
 
 ### Databases (`databases/`)
 - `database-dashboard.tsx` — health status, refresh controls, table inspection
