@@ -363,12 +363,6 @@ test("provider schemas accept openclaw", async () => {
   assert.equal(shared.providerFilterSchema.parse("openclaw"), "openclaw");
 });
 
-test("provider schemas accept opencloud", async () => {
-  const shared = await import(new URL("./schemas/shared.ts", import.meta.url).href);
-  assert.equal(shared.providerSchema.parse("opencloud"), "opencloud");
-  assert.equal(shared.providerFilterSchema.parse("opencloud"), "opencloud");
-});
-
 test("normalizeConversations preserves openclaw providers from summary payloads", async () => {
   const { normalizeConversations } = await getNormalize();
   const normalized = normalizeConversations([
@@ -405,40 +399,6 @@ test("normalizeConversations preserves openclaw providers from summary payloads"
   ]);
 
   assert.equal(normalized[0].provider, "openclaw");
-});
-
-test("normalizeConversations preserves opencloud providers from summary payloads", async () => {
-  const { normalizeConversations } = await getNormalize();
-  const normalized = normalizeConversations([
-    {
-      session_id: "opencloud-session-1",
-      project_path: "opencloud:-Users-tony-Code-helaicopter",
-      project_name: "Code/helaicopter",
-      route_slug: "integrate-opencloud-data",
-      conversation_ref: "integrate-opencloud-data--opencloud-opencloud-session-1",
-      thread_type: "main",
-      first_message: "Integrate OpenCloud data",
-      timestamp: 1,
-      created_at: 1,
-      last_updated_at: 2,
-      is_running: false,
-      provider: "opencloud",
-      message_count: 3,
-      model: "gpt-5",
-      total_input_tokens: 130,
-      total_output_tokens: 90,
-      total_cache_creation_tokens: 2,
-      total_cache_read_tokens: 48,
-      tool_use_count: 2,
-      failed_tool_call_count: 1,
-      tool_breakdown: { bash: 1, patch: 1 },
-      subagent_count: 0,
-      subagent_type_breakdown: {},
-      task_count: 0,
-    },
-  ]);
-
-  assert.equal(normalized[0].provider, "opencloud");
 });
 
 test("normalizePlan rejects unknown providers instead of coercing them to claude", async () => {

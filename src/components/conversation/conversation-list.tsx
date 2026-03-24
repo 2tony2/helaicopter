@@ -25,7 +25,6 @@ function formatTokens(n: number): string {
 function inferProviderFromProjectPath(projectPath: string): FrontendProvider {
   if (projectPath.startsWith("codex:")) return "codex";
   if (projectPath.startsWith("openclaw:")) return "openclaw";
-  if (projectPath.startsWith("opencloud:")) return "opencloud";
   return "claude";
 }
 

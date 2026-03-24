@@ -734,7 +734,6 @@ function normalizeProviderBreakdown(value: unknown): ProviderBreakdown {
     claude: numberOr(field(item, "claude")),
     codex: numberOr(field(item, "codex")),
     openclaw: numberOr(field(item, "openclaw")),
-    opencloud: numberOr(field(item, "opencloud")),
   };
 }
 
@@ -779,9 +778,6 @@ function normalizeTimeSeriesPoint(value: unknown): AnalyticsTimeSeriesPoint {
     codexEstimatedCost: numberOr(field(item, "codexEstimatedCost", "codex_estimated_cost")),
     openclawEstimatedCost: numberOr(
       field(item, "openclawEstimatedCost", "openclaw_estimated_cost")
-    ),
-    opencloudEstimatedCost: numberOr(
-      field(item, "opencloudEstimatedCost", "opencloud_estimated_cost")
     ),
     inputTokens: numberOr(field(item, "inputTokens", "input_tokens")),
     outputTokens: numberOr(field(item, "outputTokens", "output_tokens")),
@@ -848,35 +844,6 @@ function normalizeTimeSeriesPoint(value: unknown): AnalyticsTimeSeriesPoint {
       field(item, "openclawToolErrorRatePct", "openclaw_tool_error_rate_pct")
     ),
     openclawSubagents: numberOr(field(item, "openclawSubagents", "openclaw_subagents")),
-    opencloudInputTokens: numberOr(
-      field(item, "opencloudInputTokens", "opencloud_input_tokens")
-    ),
-    opencloudOutputTokens: numberOr(
-      field(item, "opencloudOutputTokens", "opencloud_output_tokens")
-    ),
-    opencloudCacheWriteTokens: numberOr(
-      field(item, "opencloudCacheWriteTokens", "opencloud_cache_write_tokens")
-    ),
-    opencloudCacheReadTokens: numberOr(
-      field(item, "opencloudCacheReadTokens", "opencloud_cache_read_tokens")
-    ),
-    opencloudReasoningTokens: numberOr(
-      field(item, "opencloudReasoningTokens", "opencloud_reasoning_tokens")
-    ),
-    opencloudTotalTokens: numberOr(
-      field(item, "opencloudTotalTokens", "opencloud_total_tokens")
-    ),
-    opencloudConversations: numberOr(
-      field(item, "opencloudConversations", "opencloud_conversations")
-    ),
-    opencloudToolCalls: numberOr(field(item, "opencloudToolCalls", "opencloud_tool_calls")),
-    opencloudFailedToolCalls: numberOr(
-      field(item, "opencloudFailedToolCalls", "opencloud_failed_tool_calls")
-    ),
-    opencloudToolErrorRatePct: numberOr(
-      field(item, "opencloudToolErrorRatePct", "opencloud_tool_error_rate_pct")
-    ),
-    opencloudSubagents: numberOr(field(item, "opencloudSubagents", "opencloud_subagents")),
     codexInputTokens: numberOr(field(item, "codexInputTokens", "codex_input_tokens")),
     codexOutputTokens: numberOr(field(item, "codexOutputTokens", "codex_output_tokens")),
     codexCacheWriteTokens: numberOr(
@@ -961,22 +928,6 @@ function normalizeDailyUsage(value: unknown): DailyUsage {
       field(item, "openclawConversations", "openclaw_conversations")
     ),
     openclawSubagents: numberOr(field(item, "openclawSubagents", "openclaw_subagents")),
-    opencloudInputTokens: numberOr(
-      field(item, "opencloudInputTokens", "opencloud_input_tokens")
-    ),
-    opencloudOutputTokens: numberOr(
-      field(item, "opencloudOutputTokens", "opencloud_output_tokens")
-    ),
-    opencloudCacheWriteTokens: numberOr(
-      field(item, "opencloudCacheWriteTokens", "opencloud_cache_write_tokens")
-    ),
-    opencloudCacheReadTokens: numberOr(
-      field(item, "opencloudCacheReadTokens", "opencloud_cache_read_tokens")
-    ),
-    opencloudConversations: numberOr(
-      field(item, "opencloudConversations", "opencloud_conversations")
-    ),
-    opencloudSubagents: numberOr(field(item, "opencloudSubagents", "opencloud_subagents")),
   };
 }
 

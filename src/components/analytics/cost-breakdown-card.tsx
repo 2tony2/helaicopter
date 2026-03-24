@@ -36,7 +36,6 @@ function providerLabel(provider: string): string {
   if (provider === "claude") return "Claude";
   if (provider === "codex") return "Codex";
   if (provider === "openclaw") return "OpenClaw";
-  if (provider === "opencloud") return "OpenCloud";
   return provider;
 }
 

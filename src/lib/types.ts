@@ -531,7 +531,7 @@ export interface ContextWindowStats {
   cumulativeTokens: number;
 }
 
-export type FrontendProvider = "claude" | "codex" | "openclaw" | "opencloud";
+export type FrontendProvider = "claude" | "codex" | "openclaw";
 
 export type PlanProvider = FrontendProvider;
 
@@ -765,7 +765,6 @@ export interface ProviderBreakdown {
   claude: number;
   codex: number;
   openclaw?: number;
-  opencloud?: number;
 }
 
 export interface AnalyticsRateValue {
@@ -831,18 +830,6 @@ export interface AnalyticsTimeSeriesPoint {
   openclawFailedToolCalls?: number;
   openclawToolErrorRatePct?: number;
   openclawSubagents?: number;
-  opencloudEstimatedCost?: number;
-  opencloudInputTokens?: number;
-  opencloudOutputTokens?: number;
-  opencloudCacheWriteTokens?: number;
-  opencloudCacheReadTokens?: number;
-  opencloudReasoningTokens?: number;
-  opencloudTotalTokens?: number;
-  opencloudConversations?: number;
-  opencloudToolCalls?: number;
-  opencloudFailedToolCalls?: number;
-  opencloudToolErrorRatePct?: number;
-  opencloudSubagents?: number;
   codexInputTokens: number;
   codexOutputTokens: number;
   codexCacheWriteTokens: number;
@@ -927,12 +914,6 @@ export interface DailyUsage {
   openclawCacheReadTokens?: number;
   openclawConversations?: number;
   openclawSubagents?: number;
-  opencloudInputTokens?: number;
-  opencloudOutputTokens?: number;
-  opencloudCacheWriteTokens?: number;
-  opencloudCacheReadTokens?: number;
-  opencloudConversations?: number;
-  opencloudSubagents?: number;
 }
 
 export interface DatabaseColumnSchema {
