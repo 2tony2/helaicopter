@@ -2,7 +2,7 @@
 
 import { formatDistanceToNowStrict } from "date-fns";
 import { type ReactNode, useState } from "react";
-import { Database, HardDrive, Layers2, RefreshCw, Server, TriangleAlert } from "lucide-react";
+import { Database, HardDrive, Layers2, RefreshCw, TriangleAlert } from "lucide-react";
 import { useDatabaseStatus } from "@/hooks/use-conversations";
 import { refreshDatabase } from "@/lib/client/mutations";
 import { Badge } from "@/components/ui/badge";
@@ -214,8 +214,7 @@ export function DatabaseDashboard() {
             <h1 className="text-2xl font-bold">Databases and Caches Overview</h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
               Health, inventory, size, and operational load for the frontend short-term cache,
-              the app SQLite store, the DuckDB inspection snapshot, and the Prefect Postgres
-              backing service.
+              the app SQLite store, and the DuckDB inspection snapshot.
             </p>
             <p className="text-sm text-muted-foreground">
               {data.scopeLabel ?? "Historical conversations before today from the last 365 days"}.
@@ -289,20 +288,6 @@ export function DatabaseDashboard() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Prefect Postgres</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <Badge variant={availabilityVariant(data.databases.prefectPostgres.availability)}>
-              {data.databases.prefectPostgres.availability}
-            </Badge>
-            <div>{data.databases.prefectPostgres.operationalStatus ?? "Not reported"}</div>
-            <div className="font-mono text-xs break-all">
-              {data.databases.prefectPostgres.target ?? "Target unavailable"}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
             <CardTitle className="text-base">DuckDB</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
@@ -351,11 +336,6 @@ export function DatabaseDashboard() {
           title="SQLite Conversation Store"
           icon={<HardDrive className="h-5 w-5" />}
           database={data.databases.sqlite}
-        />
-        <ResourceCard
-          title="Prefect Postgres"
-          icon={<Server className="h-5 w-5" />}
-          database={data.databases.prefectPostgres}
         />
         <ResourceCard
           title="DuckDB Inspection Snapshot"

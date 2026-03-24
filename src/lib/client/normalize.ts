@@ -38,11 +38,6 @@ import type {
   OrchestrationTaskRecord,
   OrchestrationTaskPullRequest,
   OvernightOatsRunRecord,
-  PrefectDeploymentRecord,
-  PrefectFlowRunRecord,
-  PrefectOatsMetadata,
-  PrefectWorkPoolRecord,
-  PrefectWorkerRecord,
   PlanDetail,
   PlanSummary,
   ProcessedConversation,
@@ -230,42 +225,6 @@ function toRepoHref(path?: string, repoRoot?: string): string | undefined {
 
   const relativePath = normalizedPath.slice(normalizedRoot.length);
   return relativePath ? relativePath : "/";
-}
-
-function normalizePrefectRunTone(value?: string): PrefectFlowRunRecord["statusTone"] {
-  const normalized = value?.toUpperCase();
-  if (normalized === "RUNNING" || normalized === "PENDING") {
-    return "running";
-  }
-  if (normalized === "COMPLETED") {
-    return "success";
-  }
-  if (
-    normalized === "FAILED" ||
-    normalized === "CRASHED" ||
-    normalized === "CANCELLED" ||
-    normalized === "CANCELLING"
-  ) {
-    return "error";
-  }
-  if (normalized === "SCHEDULED" || normalized === "PAUSED") {
-    return "pending";
-  }
-  return "unknown";
-}
-
-function normalizeInfraTone(value?: string): PrefectWorkerRecord["statusTone"] {
-  const normalized = value?.toUpperCase();
-  if (normalized === "ONLINE" || normalized === "READY") {
-    return "healthy";
-  }
-  if (normalized === "OFFLINE") {
-    return "offline";
-  }
-  if (normalized === "PAUSED" || normalized === "NOT_READY") {
-    return "warning";
-  }
-  return "unknown";
 }
 
 function normalizeThreadType(value: unknown): "main" | "subagent" {
@@ -1190,9 +1149,6 @@ export function normalizeDatabaseStatus(value: DatabaseStatusPayload): DatabaseS
       duckdb: normalizeDatabaseArtifact(
         value.databases.duckdb ?? value.databases.legacy_duckdb ?? value.databases.legacyDuckdb
       ),
-      prefectPostgres: normalizeDatabaseArtifact(
-        value.databases.prefect_postgres ?? value.databases.prefectPostgres
-      ),
     },
   };
 }
@@ -1287,38 +1243,6 @@ export function normalizeSubscriptionSettings(
     claude: normalizeProviderSubscription(value.claude),
     codex: normalizeProviderSubscription(value.codex),
   };
-}
-
-function normalizePrefectOatsMetadata(value: unknown): PrefectOatsMetadata | undefined {
-  const item = asRecord(value);
-  if (Object.keys(item).length === 0) {
-    return undefined;
-  }
-
-  const repoRoot = nullableString(field(item, "repoRoot", "repo_root"));
-  const sourcePath = nullableString(field(item, "sourcePath", "source_path"));
-  const configPath = nullableString(field(item, "configPath", "config_path"));
-  const localMetadataPath = nullableString(field(item, "localMetadataPath", "local_metadata_path"));
-  const artifactRoot = nullableString(field(item, "artifactRoot", "artifact_root"));
-
-  const metadata: PrefectOatsMetadata = {
-    runTitle: nullableString(field(item, "runTitle", "run_title")),
-    sourcePath,
-    repoRoot,
-    configPath,
-    localMetadataPath,
-    artifactRoot,
-    repoLabel: basename(repoRoot),
-    sourceLabel: basename(sourcePath),
-    sourceHref: toRepoHref(sourcePath, repoRoot),
-    configHref: toRepoHref(configPath, repoRoot),
-    metadataHref: toRepoHref(localMetadataPath, repoRoot),
-    artifactHref: toRepoHref(artifactRoot, repoRoot),
-  };
-
-  return Object.fromEntries(
-    Object.entries(metadata).filter(([, entry]) => entry !== undefined)
-  ) as PrefectOatsMetadata;
 }
 
 function normalizeBooleanLike(value: unknown): boolean | undefined {
@@ -1673,113 +1597,6 @@ export function normalizeOvernightOatsRun(value: unknown): OvernightOatsRunRecor
 
 export function normalizeOvernightOatsRuns(value: unknown): OvernightOatsRunRecord[] {
   return asArray(value).map(normalizeOvernightOatsRun);
-}
-
-export function normalizePrefectDeployments(value: unknown): PrefectDeploymentRecord[] {
-  return asArray(value).map((entry) => {
-    const item = asRecord(entry);
-    return {
-      deploymentId: stringOr(field(item, "deploymentId", "deployment_id")),
-      deploymentName: stringOr(field(item, "deploymentName", "deployment_name")),
-      flowId: nullableString(field(item, "flowId", "flow_id")),
-      flowName: nullableString(field(item, "flowName", "flow_name")),
-      workPoolName: nullableString(field(item, "workPoolName", "work_pool_name")),
-      workQueueName: nullableString(field(item, "workQueueName", "work_queue_name")),
-      status: nullableString(field(item, "status")),
-      updatedAt: nullableString(field(item, "updatedAt", "updated_at")),
-      tags: asArray(field(item, "tags")).map((tag) => stringOr(tag)).filter(Boolean),
-      oatsMetadata: normalizePrefectOatsMetadata(field(item, "oatsMetadata", "oats_metadata")),
-    };
-  });
-}
-
-export function normalizePrefectFlowRuns(value: unknown): PrefectFlowRunRecord[] {
-  return asArray(value).map((entry) => {
-    const item = asRecord(entry);
-    const stateName = nullableString(field(item, "stateName", "state_name"));
-    const stateType = nullableString(field(item, "stateType", "state_type"));
-    const backendStatusTone = nullableString(field(item, "statusTone", "status_tone"));
-    const backendStatusLabel = nullableString(field(item, "statusLabel", "status_label"));
-    const backendIsActive = normalizeBooleanLike(field(item, "isActive", "is_active"));
-    return {
-      flowRunId: stringOr(field(item, "flowRunId", "flow_run_id")),
-      flowRunName: nullableString(field(item, "flowRunName", "flow_run_name")),
-      deploymentId: nullableString(field(item, "deploymentId", "deployment_id")),
-      deploymentName: nullableString(field(item, "deploymentName", "deployment_name")),
-      flowId: nullableString(field(item, "flowId", "flow_id")),
-      flowName: nullableString(field(item, "flowName", "flow_name")),
-      workPoolName: nullableString(field(item, "workPoolName", "work_pool_name")),
-      workQueueName: nullableString(field(item, "workQueueName", "work_queue_name")),
-      stateType,
-      stateName,
-      createdAt: nullableString(field(item, "createdAt", "created_at")),
-      updatedAt: nullableString(field(item, "updatedAt", "updated_at")),
-      oatsMetadata: normalizePrefectOatsMetadata(field(item, "oatsMetadata", "oats_metadata")),
-      statusTone:
-        (backendStatusTone as PrefectFlowRunRecord["statusTone"] | undefined) ??
-        normalizePrefectRunTone(stateType),
-      statusLabel: backendStatusLabel ?? stateName ?? stateType ?? "Unknown",
-      isActive: backendIsActive ?? (stateType === "RUNNING" || stateType === "PENDING"),
-    };
-  });
-}
-
-export function normalizePrefectWorkers(value: unknown): PrefectWorkerRecord[] {
-  return asArray(value).map((entry) => {
-    const item = asRecord(entry);
-    const status = nullableString(field(item, "status"));
-    const backendStatusTone = nullableString(field(item, "statusTone", "status_tone"));
-    const backendIsOnline = normalizeBooleanLike(field(item, "isOnline", "is_online"));
-    return {
-      workerId: stringOr(field(item, "workerId", "worker_id")),
-      workerName: stringOr(field(item, "workerName", "worker_name")),
-      workPoolName: nullableString(field(item, "workPoolName", "work_pool_name")),
-      status,
-      lastHeartbeatAt: nullableString(field(item, "lastHeartbeatAt", "last_heartbeat_at")),
-      statusTone:
-        (backendStatusTone as PrefectWorkerRecord["statusTone"] | undefined) ??
-        normalizeInfraTone(status),
-      isOnline: backendIsOnline ?? status?.toUpperCase() === "ONLINE",
-    };
-  });
-}
-
-export function normalizePrefectWorkPools(
-  value: unknown,
-  workers: PrefectWorkerRecord[] = []
-): PrefectWorkPoolRecord[] {
-  return asArray(value).map((entry) => {
-    const item = asRecord(entry);
-    const workPoolName = stringOr(field(item, "workPoolName", "work_pool_name"));
-    const attachedWorkers = workers.filter((worker) => worker.workPoolName === workPoolName);
-    const status = nullableString(field(item, "status"));
-    const isPaused = booleanOr(field(item, "isPaused", "is_paused"));
-    const backendWorkerCount = nullableNumber(field(item, "workerCount", "worker_count"));
-    const backendOnlineWorkerCount = nullableNumber(
-      field(item, "onlineWorkerCount", "online_worker_count")
-    );
-    const backendStatusTone = nullableString(field(item, "statusTone", "status_tone"));
-    return {
-      workPoolId: stringOr(field(item, "workPoolId", "work_pool_id")),
-      workPoolName,
-      type: nullableString(field(item, "type")),
-      status,
-      isPaused,
-      concurrencyLimit:
-        field(item, "concurrencyLimit", "concurrency_limit") === null
-          ? undefined
-          : (nullableString(field(item, "concurrencyLimit", "concurrency_limit")) !== undefined ||
-            typeof field(item, "concurrencyLimit", "concurrency_limit") === "number")
-          ? numberOr(field(item, "concurrencyLimit", "concurrency_limit"))
-          : undefined,
-      workerCount: backendWorkerCount ?? attachedWorkers.length,
-      onlineWorkerCount:
-        backendOnlineWorkerCount ?? attachedWorkers.filter((worker) => worker.isOnline).length,
-      statusTone:
-        (backendStatusTone as PrefectWorkPoolRecord["statusTone"] | undefined) ??
-        (isPaused ? "warning" : normalizeInfraTone(status)),
-    };
-  });
 }
 
 export function normalizeTasks(value: unknown): unknown[] {
