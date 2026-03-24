@@ -1286,17 +1286,6 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
         load: [],
         tables: [],
       },
-      prefect_postgres: {
-        key: "prefect_postgres",
-        label: "Prefect Postgres",
-        engine: "Postgres",
-        role: "orchestration",
-        availability: "ready",
-        operational_status: "Prefect API responding",
-        table_count: 0,
-        load: [],
-        tables: [],
-      },
     },
   });
 
@@ -1310,7 +1299,6 @@ test("normalizeDatabaseStatus tolerates snake_case payloads for refresh response
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].defaultValue, null);
   assert.equal(normalized.databases.sqlite.tables[0].columns[0].isPrimaryKey, true);
   assert.equal(normalized.databases.duckdb.key, "duckdb");
-  assert.equal(normalized.databases.prefectPostgres.key, "prefect_postgres");
 });
 
 test("normalizeDatabaseStatus still accepts legacy duckdb field names during transition", async () => {
@@ -1951,16 +1939,6 @@ test("database status schema parses current backend shapes and rejects silent fa
         load: [],
         tables: [],
       },
-      prefect_postgres: {
-        key: "prefect_postgres",
-        label: "Prefect Postgres",
-        engine: "Postgres",
-        role: "orchestration",
-        availability: "ready",
-        table_count: 0,
-        load: [],
-        tables: [],
-      },
     },
   });
 
@@ -2003,16 +1981,6 @@ test("database status schema parses current backend shapes and rejects silent fa
             engine: "DuckDB",
             role: "inspection",
             availability: "missing",
-            table_count: 0,
-            load: [],
-            tables: [],
-          },
-          prefect_postgres: {
-            key: "prefect_postgres",
-            label: "Prefect Postgres",
-            engine: "Postgres",
-            role: "orchestration",
-            availability: "ready",
             table_count: 0,
             load: [],
             tables: [],

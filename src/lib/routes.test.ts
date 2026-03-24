@@ -13,7 +13,6 @@ import {
   decideConversationRoute,
   getConversationRouteState,
   getOrchestrationRouteState,
-  normalizePrefectUiPath,
   parseConversationRouteSegments,
   resolveConversationDetailTab,
   translateLegacyConversationRouteTarget,
@@ -387,35 +386,26 @@ test("route decisions render valid canonical nested routes and 404 invalid canon
   );
 });
 
-test("orchestration routes preserve Prefect iframe state", () => {
+test("orchestration route builder produces clean paths", () => {
   assert.equal(
-    buildOrchestrationRoute({
-      tab: "prefect-ui",
-      flowRunId: "flow-run-1",
-      prefectPath: "flow-runs/flow-run/flow-run-1",
-    }),
-    "/orchestration?tab=prefect-ui&flowRunId=flow-run-1&prefectPath=%2Fflow-runs%2Fflow-run%2Fflow-run-1"
+    buildOrchestrationRoute({ flowRunId: "flow-run-1" }),
+    "/orchestration?flowRunId=flow-run-1"
   );
-  assert.equal(normalizePrefectUiPath("flow-runs"), "/flow-runs");
-  assert.equal(normalizePrefectUiPath(""), undefined);
-  assert.equal(normalizePrefectUiPath("https://prefect.example.test/flow-runs"), undefined);
   assert.equal(buildOrchestrationRoute(), "/orchestration");
 });
 
 test("orchestration route state prefers current query params over stale initial props", () => {
   const state = getOrchestrationRouteState(
-    new URLSearchParams("tab=prefect-ui&flowRunId=flow-run-2&prefectPath=/flow-runs/flow-run/flow-run-2"),
+    new URLSearchParams("tab=orchestration&flowRunId=flow-run-2"),
     {
       tab: "orchestration",
       flowRunId: "flow-run-1",
-      prefectPath: "/flow-runs",
     }
   );
 
   assert.deepEqual(state, {
-    tab: "prefect-ui",
+    tab: "orchestration",
     flowRunId: "flow-run-2",
-    prefectPath: "/flow-runs/flow-run/flow-run-2",
   });
 });
 
@@ -437,17 +427,15 @@ test("unsupported tab values fall back to stable defaults", () => {
 
   assert.deepEqual(
     getOrchestrationRouteState(
-      new URLSearchParams("tab=unknown&prefectPath=https://prefect.example.test/flow-runs"),
+      new URLSearchParams("tab=unknown"),
       {
-        tab: "prefect-ui",
+        tab: "orchestration",
         flowRunId: "flow-run-1",
-        prefectPath: "/flow-runs",
       }
     ),
     {
       tab: "orchestration",
       flowRunId: "flow-run-1",
-      prefectPath: undefined,
     }
   );
 });

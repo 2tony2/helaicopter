@@ -9,7 +9,6 @@ const databaseStatusKeySchema = z.enum([
   "frontend_cache",
   "sqlite",
   "duckdb",
-  "prefect_postgres",
 ]);
 const databaseRoleSchema = z.enum([
   "cache",
@@ -165,8 +164,6 @@ const databaseCollectionSchema = z.object({
   duckdb: databaseArtifactSchema.optional(),
   legacyDuckdb: databaseArtifactSchema.optional(),
   legacy_duckdb: databaseArtifactSchema.optional(),
-  prefectPostgres: databaseArtifactSchema.optional(),
-  prefect_postgres: databaseArtifactSchema.optional(),
 }).superRefine((value, ctx) => {
   if (!value.frontendCache && !value.frontend_cache) {
     ctx.addIssue({
@@ -184,13 +181,6 @@ const databaseCollectionSchema = z.object({
     });
   }
 
-  if (!value.prefectPostgres && !value.prefect_postgres) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["prefectPostgres"],
-      message: "Expected prefectPostgres or prefect_postgres.",
-    });
-  }
 });
 
 export const databaseStatusSchema = z.object({

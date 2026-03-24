@@ -1,7 +1,6 @@
 import {
   conversationDetailTabs,
   orchestrationTabs,
-  parsePrefectPath,
   resolveConversationDetailTab,
   resolveOrchestrationInitialTab,
   type ConversationDetailTab,
@@ -74,8 +73,6 @@ export type ConversationRouteDecision =
   | {
       kind: "not-found";
     };
-export const PREFECT_UI_URL = "http://127.0.0.1:4200";
-
 const canonicalConversationProviders = ["claude", "codex", "openclaw", "opencloud"] as const;
 
 type ParsedConversationRef = {
@@ -101,15 +98,6 @@ type ConversationRouteDecisionOptions = {
   validPlanIds?: Iterable<string>;
   validAgentIds?: Iterable<string>;
 };
-export function normalizePrefectUiPath(value?: string): string | undefined {
-  return parsePrefectPath(value);
-}
-
-export function buildPrefectUiUrl(prefectPath?: string): string {
-  const normalizedPath = normalizePrefectUiPath(prefectPath);
-  return normalizedPath ? `${PREFECT_UI_URL}${normalizedPath}` : PREFECT_UI_URL;
-}
-
 function normalizeLegacyEntityId(value?: string | null): string | undefined {
   if (!value) {
     return undefined;
@@ -592,7 +580,6 @@ export function buildConversationSubagentRoute(
 export function buildOrchestrationRoute(opts?: {
   tab?: OrchestrationTab;
   flowRunId?: string;
-  prefectPath?: string;
 }): string {
   const params = new URLSearchParams();
   if (opts?.tab && opts.tab !== "orchestration") {
@@ -600,10 +587,6 @@ export function buildOrchestrationRoute(opts?: {
   }
   if (opts?.flowRunId) {
     params.set("flowRunId", opts.flowRunId);
-  }
-  const normalizedPrefectPath = normalizePrefectUiPath(opts?.prefectPath);
-  if (normalizedPrefectPath) {
-    params.set("prefectPath", normalizedPrefectPath);
   }
   const query = params.toString();
   return query ? `/orchestration?${query}` : "/orchestration";
@@ -614,21 +597,15 @@ export function getOrchestrationRouteState(
   initial?: {
     tab?: string;
     flowRunId?: string;
-    prefectPath?: string;
   }
 ): {
   tab: OrchestrationTab;
   flowRunId?: string;
-  prefectPath?: string;
 } {
-  const prefectPath = searchParams.has("prefectPath")
-    ? normalizePrefectUiPath(searchParams.get("prefectPath") ?? undefined)
-    : normalizePrefectUiPath(initial?.prefectPath);
   const flowRunId = searchParams.get("flowRunId") ?? initial?.flowRunId;
 
   return {
     tab: resolveOrchestrationInitialTab(searchParams.get("tab") ?? initial?.tab),
     flowRunId: flowRunId ?? undefined,
-    prefectPath,
   };
 }
