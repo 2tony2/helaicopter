@@ -426,39 +426,29 @@ Run specs live in the repo, conventionally under `docs/runs/` or alongside the p
 ## Deletion Scope
 
 ### Entire packages/directories removed
-- `python/oats/` — orchestration CLI, models, parser, planner, runner, runtime state, legacy-orchestration bridge
-- `ops/legacy-orchestration/` — Docker compose, env files
+- `python/oats/` — orchestration CLI, models, parser, planner, runner, runtime state
 - `ops/launchd/` — worker plist template
-- `ops/scripts/legacy-orchestration-worker.sh`
-- `bin/oats-legacy-orchestration-up`
-- `.oats/` — config, runtime, runs, legacy-orchestration artifacts
+- `.oats/` — config, runtime, runs, artifacts
 - `.oats-worktrees/`
 
 ### Backend code removed
 - `python/helaicopter_api/router/orchestration.py`
-- `python/helaicopter_api/router/legacy-orchestration_orchestration.py`
-- `python/helaicopter_api/router/router.py` — remove orchestration/legacy-orchestration router imports and includes
+- `python/helaicopter_api/router/router.py` — remove orchestration router imports and includes
 - `python/helaicopter_api/application/orchestration.py`
-- `python/helaicopter_api/application/legacy-orchestration_orchestration.py`
 - `python/helaicopter_api/application/oats_run_actions.py`
 - `python/helaicopter_api/schema/orchestration.py`
-- `python/helaicopter_api/schema/legacy-orchestration_orchestration.py`
 - `python/helaicopter_api/ports/orchestration.py`
-- `python/helaicopter_api/ports/legacy-orchestration.py`
-- `python/helaicopter_api/adapters/legacy-orchestration_http.py`
 - `python/helaicopter_api/pure/orchestration_analytics.py`
 - `python/helaicopter_db/orchestration_facts.py`
-- All legacy orchestration dependencies from `pyproject.toml`
+- All orchestration dependencies from `pyproject.toml`
 
 ### Frontend code removed
 - `src/components/orchestration/overnight-oats-panel.tsx`
 - `src/components/orchestration/oats-pr-stack.tsx`
-- `src/components/orchestration/legacy-orchestration-ui-embed.tsx`
 - `src/components/orchestration/oats-view-model.ts`
 - `src/components/orchestration/oats-view-model.test.ts`
 - `src/components/orchestration/tabs.ts` — rewrite for new tab structure
 - `src/components/orchestration/tabs.test.ts` — rewrite
-- `src/lib/client/legacy-orchestration-normalize.test.ts`
 - Orchestration-specific code in `src/lib/client/endpoints.ts` — replace with new endpoints
 - Orchestration-specific code in `src/lib/client/normalize.ts` — replace with new normalizers
 - Orchestration-specific Zod schemas in `src/lib/client/schemas/`
@@ -466,16 +456,12 @@ Run specs live in the repo, conventionally under `docs/runs/` or alongside the p
 ### Database tables deprecated (via Alembic migration)
 - `FactOrchestrationRun` → drop
 - `FactOrchestrationTaskAttempt` → drop
-- legacy orchestration-specific columns/tables → drop
 - `python/alembic/versions/20260319_0009_orchestration_analytics_facts.py` — superseded by new migration
 
 ### Docs removed/archived
-- `docs/oats-legacy-orchestration-cutover.md`
-- `docs/legacy-orchestration-local-ops.md`
-- `docs/orchestration/` (legacy orchestration-specific content)
-- legacy orchestration/Oats-related design specs in `docs/superpowers/specs/`
-- legacy orchestration/Oats-related plans in `docs/superpowers/plans/`
-- `examples/legacy-orchestration_native_oats_orchestration_run.md` — replace with new format example
+- `docs/orchestration/` (orchestration-specific content)
+- Oats-related design specs in `docs/superpowers/specs/`
+- Oats-related plans in `docs/superpowers/plans/`
 
 ### What stays
 - The frontend orchestration page shell (`src/app/orchestration/page.tsx`) — rebuilt
