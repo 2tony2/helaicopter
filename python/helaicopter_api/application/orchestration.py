@@ -49,13 +49,9 @@ from oats.models import (
     TaskExecutionRecord,
     TaskRuntimeRecord,
 )
-from oats.prefect.analytics import StoredLocalFlowRunArtifacts, load_local_flow_run_artifacts
 
 ACTIVE_RUN_STATUSES: set[RunRuntimeStatus] = {"pending", "planning", "running"}
 STALE_RUNTIME_AFTER_SECONDS = 300
-_PREFECT_ACTIVE_STATES = {"RUNNING"}
-_PREFECT_PENDING_STATES = {"PENDING", "SCHEDULED", "LATE"}
-_PREFECT_FAILED_STATES = {"FAILED", "CRASHED", "CANCELLED", "CANCELED", "CANCELLING"}
 _SAMPLE_RUN_SPEC_NAMES = {"sample_run.md"}
 
 
@@ -103,7 +99,7 @@ def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationR
 
     Args:
         services: Initialised backend services providing the OATS run store
-            and optional Prefect client.
+            and optional backend services.
 
     Returns:
         List of ``OrchestrationRunResponse`` objects sorted by last-updated
@@ -253,8 +249,6 @@ def _list_persisted_oats_runs(services: BackendServices) -> list[OrchestrationRu
     for row in attempt_rows:
         attempts_by_run.setdefault(str(row["run_fact_id"]), []).append(row)
 
-    prefect_by_run_id = _prefect_flow_runs_by_id(services)
-    prefect_artifacts_by_run_id = load_local_flow_run_artifacts(settings.project_root)
     conversation_paths = _build_conversation_path_lookup(services)
     responses: list[OrchestrationRunResponse] = []
     for row in run_rows:
@@ -263,8 +257,6 @@ def _list_persisted_oats_runs(services: BackendServices) -> list[OrchestrationRu
         response = _shape_persisted_run(
             row,
             attempts_by_run.get(str(row["run_fact_id"]), []),
-            prefect_by_run_id.get(str(row["run_id"])),
-            prefect_artifacts_by_run_id.get(str(row["run_id"])),
             conversation_paths=conversation_paths,
         )
         responses.append(response)
@@ -289,17 +281,6 @@ def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
-def _prefect_flow_runs_by_id(services: BackendServices) -> dict[str, object]:
-    prefect_client = getattr(services, "prefect_client", None)
-    if prefect_client is None or not hasattr(prefect_client, "list_flow_runs"):
-        return {}
-    try:
-        flow_runs = prefect_client.list_flow_runs()
-    except Exception:
-        return {}
-    return {str(item.flow_run_id): item for item in flow_runs}
-
-
 def _should_exclude_persisted_run(row: sqlite3.Row) -> bool:
     source_path = row["source_path"]
     if source_path is None:
@@ -310,22 +291,15 @@ def _should_exclude_persisted_run(row: sqlite3.Row) -> bool:
 def _shape_persisted_run(
     row: sqlite3.Row,
     attempts: list[sqlite3.Row],
-    prefect_flow_run: object | None,
-    prefect_artifacts: StoredLocalFlowRunArtifacts | None,
     *,
     conversation_paths: _ConversationPathLookup,
 ) -> OrchestrationRunResponse:
-    repo_root = (
-        prefect_artifacts.metadata.repo_root
-        if prefect_artifacts is not None
-        else Path(str(row["repo_root"]))
-    )
-    run_status = _normalize_persisted_run_status(row, prefect_flow_run)
+    repo_root = Path(str(row["repo_root"]))
+    run_status = _normalize_persisted_run_status(row)
     tasks = _shape_persisted_tasks(
         attempts,
         repo_root=repo_root,
         run_status=run_status,
-        prefect_artifacts=prefect_artifacts,
         conversation_paths=conversation_paths,
     )
     active_task_id = next((task.task_id for task in tasks if task.status == "running"), None)
@@ -352,7 +326,7 @@ def _shape_persisted_run(
         repo_root=str(repo_root),
         config_path=config_path,
         run_spec_path=source_path,
-        mode="prefect" if str(row["run_source"]) == "prefect_local" else "persisted",
+        mode="persisted",
         integration_branch="",
         task_pr_target="",
         final_pr_target="",
@@ -386,7 +360,6 @@ def _shape_persisted_tasks(
     *,
     repo_root: Path,
     run_status: RunRuntimeStatus,
-    prefect_artifacts: StoredLocalFlowRunArtifacts | None,
     conversation_paths: _ConversationPathLookup,
 ) -> list[OrchestrationTaskResponse]:
     latest_attempts: dict[str, sqlite3.Row] = {}
@@ -394,8 +367,6 @@ def _shape_persisted_tasks(
         task_id = str(row["task_id"])
         if task_id not in latest_attempts:
             latest_attempts[task_id] = row
-
-    prefect_attempts = _prefect_attempts_by_task_id(prefect_artifacts)
 
     tasks: list[OrchestrationTaskResponse] = []
     for task_id in sorted(latest_attempts):
@@ -410,7 +381,6 @@ def _shape_persisted_tasks(
                 invocation=_shape_persisted_invocation(
                     row,
                     repo_root=repo_root,
-                    prefect_attempt=prefect_attempts.get(task_id),
                     conversation_paths=conversation_paths,
                 ),
             )
@@ -422,30 +392,12 @@ def _shape_persisted_invocation(
     row: sqlite3.Row,
     *,
     repo_root: Path,
-    prefect_attempt: object | None = None,
     conversation_paths: _ConversationPathLookup,
 ) -> OrchestrationInvocationResponse | None:
     agent_value = row["agent"]
     session_id = str(row["session_id"]) if row["session_id"] is not None else None
     output_text = str(row["output_text"] or "")
     error_text = str(row["error"] or "")
-    if prefect_attempt is not None:
-        result = getattr(prefect_attempt, "result", None)
-        if agent_value is None and isinstance(result, dict):
-            agent_value = result.get("agent")
-        if session_id is None:
-            checkpoint_session_id = getattr(prefect_attempt, "session_id", None)
-            requested_session_id = getattr(prefect_attempt, "requested_session_id", None)
-            if isinstance(checkpoint_session_id, str) and checkpoint_session_id:
-                session_id = checkpoint_session_id
-            elif isinstance(result, dict) and isinstance(result.get("session_id"), str):
-                session_id = str(result["session_id"])
-            elif isinstance(requested_session_id, str) and requested_session_id:
-                session_id = requested_session_id
-        if not output_text and isinstance(result, dict) and isinstance(result.get("output_text"), str):
-            output_text = str(result["output_text"])
-        if not error_text and getattr(prefect_attempt, "error", None):
-            error_text = str(getattr(prefect_attempt, "error"))
     if agent_value not in {"claude", "codex"}:
         return None
     agent = cast(ProviderName, str(agent_value))
@@ -484,23 +436,7 @@ def _parse_upstream_ids(raw: object) -> list[str]:
     return [str(item) for item in parsed if isinstance(item, str)]
 
 
-def _prefect_attempts_by_task_id(
-    prefect_artifacts: StoredLocalFlowRunArtifacts | None,
-) -> dict[str, object]:
-    if prefect_artifacts is None:
-        return {}
-    attempts_by_task_id: dict[str, object] = {}
-    for checkpoint in prefect_artifacts.attempts:
-        task_id = checkpoint.task_id
-        if task_id not in attempts_by_task_id:
-            attempts_by_task_id[task_id] = checkpoint
-    return attempts_by_task_id
-
-
-def _normalize_persisted_run_status(row: sqlite3.Row, prefect_flow_run: object | None) -> RunRuntimeStatus:
-    prefect_status = _normalize_prefect_flow_run_status(prefect_flow_run)
-    if prefect_status is not None:
-        return prefect_status
+def _normalize_persisted_run_status(row: sqlite3.Row) -> RunRuntimeStatus:
     status = str(row["status"]).strip().lower()
     updated_at = _parse_datetime_value(row["updated_at"])
     if status in ACTIVE_RUN_STATUSES and updated_at is not None:
@@ -514,21 +450,6 @@ def _normalize_persisted_run_status(row: sqlite3.Row, prefect_flow_run: object |
         return cast(RunRuntimeStatus, status)
     if status in {"succeeded", "success"}:
         return "completed"
-    return "pending"
-
-
-def _normalize_prefect_flow_run_status(prefect_flow_run: object | None) -> RunRuntimeStatus | None:
-    if prefect_flow_run is None:
-        return None
-    state_type = str(getattr(prefect_flow_run, "state_type", "") or "").upper()
-    if state_type in _PREFECT_ACTIVE_STATES:
-        return "running"
-    if state_type in _PREFECT_PENDING_STATES:
-        return "pending"
-    if state_type == "COMPLETED":
-        return "completed"
-    if state_type in _PREFECT_FAILED_STATES:
-        return "failed"
     return None
 
 

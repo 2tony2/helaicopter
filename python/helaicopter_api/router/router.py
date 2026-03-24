@@ -15,7 +15,6 @@ from .history import history_router
 from .orchestration import orchestration_router
 from .ops import ops_router
 from .plans import plans_router
-from .prefect_orchestration import prefect_orchestration_router
 from .projects import projects_router
 from .subagents import subagents_router
 from .subscriptions import subscriptions_router
@@ -40,7 +39,6 @@ root_router.include_router(evaluation_prompts_router)
 root_router.include_router(gateway_router)
 root_router.include_router(history_router)
 root_router.include_router(orchestration_router)
-root_router.include_router(prefect_orchestration_router)
 root_router.include_router(plans_router)
 root_router.include_router(projects_router)
 root_router.include_router(subagents_router)
