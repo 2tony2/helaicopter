@@ -89,7 +89,7 @@ export function ConversationDagList() {
             placeholder="Search DAG conversations..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="max-w-sm"
+            className="w-full sm:max-w-sm"
           />
           <select
             className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
