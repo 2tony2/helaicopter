@@ -153,7 +153,6 @@ class TestAnalyticsEndpoint:
             response = client.get("/analytics", params={"provider": "all"})
             openclaw = client.get("/analytics", params={"provider": "openclaw"})
             invalid_provider = client.get("/analytics", params={"provider": "openai"})
-            unsupported_provider = client.get("/analytics", params={"provider": "opencloud"})
             invalid_days = client.get("/analytics", params={"days": 0})
 
         assert response.status_code == 200
@@ -162,7 +161,6 @@ class TestAnalyticsEndpoint:
         assert openclaw.json()["total_conversations"] == 1
 
         assert invalid_provider.status_code == 422
-        assert unsupported_provider.status_code == 422
         assert invalid_days.status_code == 422
 
     def test_endpoint_supplements_recent_window_from_sqlite_without_double_counting(self) -> None:

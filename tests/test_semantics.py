@@ -209,14 +209,6 @@ class TestProviderResolution:
         )
         assert provider == "openclaw"
 
-    def test_explicit_opencloud_provider_field_takes_precedence(self) -> None:
-        provider = resolve_provider(
-            provider="opencloud",
-            model="gpt-5",
-            project_path="codex:-Users-tony-Code-helaicopter",
-        )
-        assert provider == "opencloud"
-
     def test_codex_project_path_prefix_identifies_codex(self) -> None:
         provider = resolve_provider(
             project_path="codex:-Users-tony-Code-helaicopter",
@@ -229,13 +221,6 @@ class TestProviderResolution:
             project_path="openclaw:-Users-tony-Code-helaicopter",
         )
         assert provider == "openclaw"
-
-    def test_opencloud_project_path_prefix_identifies_opencloud(self) -> None:
-        provider = resolve_provider(
-            model="gpt-5",
-            project_path="opencloud:-Users-tony-Code-helaicopter",
-        )
-        assert provider == "opencloud"
 
     def test_openclaw_provenance_is_not_coerced_to_codex_by_openaiish_model(self) -> None:
         provider = resolve_provider(

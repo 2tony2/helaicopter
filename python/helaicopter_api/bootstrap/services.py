@@ -27,7 +27,6 @@ from ..adapters.claude_fs import (
 from ..adapters.codex_sqlite import FileCodexStore
 from ..adapters.evaluation_jobs import LocalCliEvaluationRunner, SupportsSubprocessRun
 from ..adapters.oats_artifacts import FileOatsRunStore
-from ..adapters.opencloud_sqlite import FileOpenCloudStore
 from ..adapters.openclaw_fs.store import FileOpenClawStore
 from ..adapters.prefect_http import PrefectHttpAdapter
 from ..ports.app_sqlite import AppSqliteStore
@@ -35,7 +34,6 @@ from ..ports.claude_fs import ConversationReader, HistoryReader, PlanReader, Tas
 from ..ports.codex_sqlite import CodexStore
 from ..ports.evaluations import EvaluationJobRunner
 from ..ports.orchestration import OatsRunStore
-from ..ports.opencloud_sqlite import OpenCloudStore
 from ..ports.openclaw_fs import OpenClawStore
 from ..ports.prefect import PrefectOrchestrationPort
 from ..server.config import Settings
@@ -131,7 +129,6 @@ class BackendServices:
     claude_task_reader: TaskReader
     codex_store: CodexStore
     openclaw_store: OpenClawStore
-    opencloud_store: OpenCloudStore
     oats_run_store: OatsRunStore
     prefect_client: PrefectOrchestrationPort
     cache: LocalCache = field(default_factory=LocalCache)
@@ -147,7 +144,6 @@ def invalidate_backend_read_caches(services: BackendServices) -> None:
     """
     exact_keys = [
         "analytics",
-        "opencloud_sessions",
         "codex_session_artifacts",
         "codex_threads_by_id",
         "openclaw_session_artifacts",
@@ -222,7 +218,6 @@ def build_services(settings: Settings) -> BackendServices:
         agents_dir=settings.openclaw_agents_dir,
         memory_sqlite_path=settings.openclaw_memory_sqlite_path,
     )
-    opencloud_store = FileOpenCloudStore(db_path=settings.opencloud_sqlite_path)
     prefect_client = PrefectHttpAdapter.from_settings(settings.prefect)
     oats_run_store = FileOatsRunStore(
         project_root=settings.project_root,
@@ -240,7 +235,6 @@ def build_services(settings: Settings) -> BackendServices:
         claude_task_reader=FileTaskReader(claude_artifacts),
         codex_store=codex_store,
         openclaw_store=openclaw_store,
-        opencloud_store=opencloud_store,
         oats_run_store=oats_run_store,
         prefect_client=prefect_client,
         subprocess_runner=subprocess_runner,
