@@ -111,6 +111,7 @@ def generate_openapi_artifacts(*, settings: Settings | None = None) -> OpenApiAr
             include_path=lambda path: path == "/orchestration/oats",
         ),
     )
+
     return OpenApiArtifactOutputs(
         json_path=artifact_settings.json_path,
         yaml_path=artifact_settings.yaml_path,
