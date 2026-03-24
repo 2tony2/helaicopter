@@ -123,7 +123,7 @@ export default function AnalyticsPage() {
         title="Analytics"
         description="Token usage, costs, and model statistics"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap gap-2">
             <DateRangePicker value={days} onChange={setDays} />
             <ProviderFilter value={provider} onChange={setProvider} />
           </div>
@@ -132,7 +132,7 @@ export default function AnalyticsPage() {
 
       {isLoading ? (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-28" />
             ))}
@@ -147,7 +147,7 @@ export default function AnalyticsPage() {
       ) : analytics ? (
         <>
           {/* Top-level stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <StatsCard
               title="Conversations"
               value={analytics.totalConversations}
@@ -211,7 +211,7 @@ export default function AnalyticsPage() {
           </div>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <CardTitle className="text-sm">Subscription Settings</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -318,14 +318,14 @@ export default function AnalyticsPage() {
 
           <Tabs value={granularity} onValueChange={(value) => setGranularity(value as typeof granularity)}>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <CardTitle className="text-sm">Time Bucket Analytics</CardTitle>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Compare spend, token mix, and conversation activity by hour, day, week, or month.
                   </p>
                 </div>
-                <TabsList>
+                <TabsList className="overflow-x-auto">
                   <TabsTrigger value="hourly">Hour</TabsTrigger>
                   <TabsTrigger value="daily">Day</TabsTrigger>
                   <TabsTrigger value="weekly">Week</TabsTrigger>

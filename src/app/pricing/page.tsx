@@ -32,7 +32,7 @@ export default function PricingPage() {
   const openaiModels = Object.entries(OPENAI_PRICING);
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8 w-full max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold">Pricing Reference</h1>
         <div className="mt-2">
@@ -155,7 +155,7 @@ export default function PricingPage() {
           <CardDescription>Cache multipliers relative to base input price</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-yellow-500/10 rounded-lg p-3">
               <div className="font-medium text-yellow-600 dark:text-yellow-400">5-minute Cache Write</div>
               <div className="text-2xl font-bold mt-1">1.25x</div>
@@ -187,6 +187,7 @@ export default function PricingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -214,6 +215,7 @@ export default function PricingPage() {
               </tr>
             </tbody>
           </table>
+          </div>
           <p className="text-xs text-muted-foreground mt-3">
             The 200K threshold is based on <strong>active (non-cached) input tokens</strong> only &mdash; cached tokens
             (cache writes and reads) do not count toward the threshold.
@@ -229,6 +231,7 @@ export default function PricingPage() {
           <CardDescription>Additional input tokens added per tool invocation</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -270,6 +273,7 @@ export default function PricingPage() {
               </tr>
             </tbody>
           </table>
+          </div>
           <p className="text-xs text-muted-foreground mt-3">
             Tool overhead tokens are included in the <code>input_tokens</code> count in API responses.
             They are already reflected in the token counts shown throughout this viewer.

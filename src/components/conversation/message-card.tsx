@@ -83,7 +83,7 @@ export function MessageCard({
           switch (block.type) {
             case "text":
               return (
-                <div key={i} className="prose prose-sm dark:prose-invert max-w-none">
+                <div key={i} className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {block.text}
                   </ReactMarkdown>

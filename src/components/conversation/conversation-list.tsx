@@ -63,13 +63,13 @@ export function ConversationList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 flex-wrap items-start">
-        <div className="flex gap-3 flex-wrap items-center">
+      <div className="flex flex-col sm:flex-row gap-2 items-start">
+        <div className="flex gap-2 flex-wrap items-center w-full sm:w-auto">
           <Input
             placeholder="Search conversations..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
+            className="w-full sm:max-w-sm"
           />
           <select
             className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -91,9 +91,9 @@ export function ConversationList() {
             </span>
           )}
         </div>
-        <div className="ml-auto">
+        <div className="w-full sm:w-auto sm:ml-auto">
           <select
-            className="flex h-9 min-w-[180px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full sm:min-w-[180px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             value={threadTypeFilter}
             onChange={(e) =>
               setThreadTypeFilter(e.target.value as "all" | "main" | "subagent")
@@ -129,8 +129,8 @@ export function ConversationList() {
                   "transition-colors",
                 ].join(" ")}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4">
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
                         {conv.firstMessage || "(empty conversation)"}
@@ -178,7 +178,7 @@ export function ConversationList() {
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
+                    <div className="flex flex-col sm:items-end gap-1 shrink-0">
                       <span className="text-xs text-muted-foreground">
                         updated{" "}
                         {conv.lastUpdatedAt
@@ -191,7 +191,7 @@ export function ConversationList() {
                           ? formatDistanceToNow(conv.createdAt, { addSuffix: true })
                           : ""}
                       </span>
-                      <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2.5 text-xs text-muted-foreground flex-wrap">
                         <span className="flex items-center gap-1" title="Messages">
                           <MessageSquare className="h-3 w-3" />
                           {conv.messageCount}
