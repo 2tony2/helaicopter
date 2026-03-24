@@ -31,15 +31,6 @@ function api(path: string) {
     return `${_baseUrl}${path}`;
   }
 
-  if (typeof window === "undefined") {
-    return path;
-  }
-
-  const { protocol, hostname } = window.location;
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return `${protocol}//${hostname}:30000${path}`;
-  }
-
   return path;
 }
 

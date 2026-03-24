@@ -12,7 +12,7 @@ Helaicopter is a self-hosted analytics and operations platform that reads your A
 - **Conversation DAGs** — visualize parent/subagent relationships as directed acyclic graphs
 - **Plan viewer** — browse saved implementation plans from `~/.claude/plans/`
 - **Evaluation system** — run LLM-as-judge evaluations against conversation transcripts
-- **Orchestration hub** — monitor OATS run specs and workflow execution state
+- **Orchestration hub** — monitor repo-local OATS run specs and runtime execution
 - **Database inspector** — view schema, table inventories, and refresh status for all backing stores
 
 ## Architecture at a glance
@@ -31,7 +31,7 @@ Helaicopter is a self-hosted analytics and operations platform that reads your A
 └────┬───────┬───────┬────────────┘
      │       │       │
   ~/.claude  SQLite  OATS runtime
-  ~/.codex   DuckDB  Local artifacts
+  ~/.codex   DuckDB  Backend cache
 ```
 
 The frontend never touches the filesystem directly — all data flows through the FastAPI backend, which owns the conversation parser, analytics aggregation, and database refresh pipeline.

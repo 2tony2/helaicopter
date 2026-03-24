@@ -434,8 +434,6 @@ def _parse_upstream_ids(raw: object) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [str(item) for item in parsed if isinstance(item, str)]
-
-
 def _normalize_persisted_run_status(row: sqlite3.Row) -> RunRuntimeStatus:
     status = str(row["status"]).strip().lower()
     updated_at = _parse_datetime_value(row["updated_at"])

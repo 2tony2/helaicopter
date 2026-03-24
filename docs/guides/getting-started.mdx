@@ -27,7 +27,7 @@ cd python && uv sync && cd ..
 
 ## Starting the backend
 
-The FastAPI backend runs on port 30000 and serves all data to the frontend:
+The FastAPI backend serves all data to the frontend:
 
 ```bash
 cd python
@@ -79,7 +79,7 @@ npm run db:migrate:olap   # DuckDB migrations
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NEXT_PUBLIC_API_BASE_URL` | Auto-detected | Backend URL for the frontend |
+| `NEXT_PUBLIC_API_BASE_URL` | Unset | Backend URL for the frontend when it is not served from the same origin |
 | `HELA_CLAUDE_DIR` | `~/.claude` | Claude conversation directory |
 | `HELA_CODEX_DIR` | `~/.codex` | Codex conversation directory |
 | `HELA_PROJECT_ROOT` | Repo root | Project root for path resolution |

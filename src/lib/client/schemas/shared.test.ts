@@ -47,5 +47,6 @@ test("shared enum helpers accept only supported frontend literals", () => {
   assert.throws(() => providerSchema.parse("anthropic"));
   assert.throws(() => providerFilterSchema.parse("openai"));
   assert.throws(() => conversationDetailTabSchema.parse("unknown"));
+  assert.throws(() => orchestrationTabSchema.parse("prefect-ui"));
   assert.throws(() => orchestrationTabSchema.parse("graphs"));
 });

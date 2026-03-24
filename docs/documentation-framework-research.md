@@ -269,8 +269,6 @@ Expected first-pass shape:
 - generate API reference pages from the schema
 - migrate high-value existing docs first:
   - `docs/fastapi-backend-rollout.md`
-  - `docs/legacy-orchestration-local-ops.md`
-  - `docs/oats-legacy-orchestration-cutover.md`
 
 This keeps the change small and reversible.
 

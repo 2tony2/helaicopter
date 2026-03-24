@@ -91,6 +91,7 @@ test("refreshDatabase keeps the failed status payload from FastAPI error respons
     assert.equal(status.status, "failed");
     assert.equal(status.error, "refresh exploded");
     assert.equal(status.databases.frontendCache.key, "frontend_cache");
+    assert.equal("orchestrationPostgres" in status.databases, false);
   } finally {
     restoreFetch();
   }

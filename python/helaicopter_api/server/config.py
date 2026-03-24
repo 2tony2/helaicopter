@@ -9,6 +9,8 @@ import subprocess
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from helaicopter_api.server.dev_instance import build_checkout_instance
+
 
 def _default_project_root() -> Path:
     cwd = Path.cwd().resolve()
@@ -149,6 +151,20 @@ class Settings(BaseSettings):
         default_factory=_default_project_root,
         description="Root of the helaicopter project checkout.",
     )
+    checkout_runtime_root: Path | None = Field(
+        default=None,
+        description="Override for checkout-local generated runtime/artifact files.",
+    )
+    api_port_override: int | None = Field(
+        default=None,
+        validation_alias="HELA_API_PORT",
+        description="Override for the checkout-local FastAPI dev port.",
+    )
+    web_port_override: int | None = Field(
+        default=None,
+        validation_alias="HELA_WEB_PORT",
+        description="Override for the checkout-local Next.js dev port.",
+    )
     oats_runtime_dir: Path | None = Field(
         default=None,
         description="Override for .oats/runtime/ directory. Defaults to <project_root>/.oats/runtime.",
@@ -168,6 +184,10 @@ class Settings(BaseSettings):
     debug: bool = False
 
     @cached_property
+    def checkout_instance(self):
+        return build_checkout_instance(self.project_root)
+
+    @cached_property
     def cli(self) -> CliSettings:
         return CliSettings(
             claude_dir=self.claude_dir,
@@ -177,10 +197,11 @@ class Settings(BaseSettings):
 
     @cached_property
     def database(self) -> DatabaseSettings:
+        runtime_root = self.checkout_runtime_root or (self.project_root / ".helaicopter")
         public_dir = self.project_root / "public"
         artifacts_dir = public_dir / "database-artifacts"
         schema_docs_dir = public_dir / "database-schemas"
-        runtime_dir = self.project_root / "var" / "database-runtime"
+        runtime_dir = runtime_root / "database-runtime"
         return DatabaseSettings(
             runtime_dir=runtime_dir,
             tools_dir=runtime_dir / "tools",
@@ -227,6 +248,14 @@ class Settings(BaseSettings):
         if self.oats_runtime_dir is not None:
             return self.oats_runtime_dir
         return self.project_root / ".oats" / "runtime"
+
+    @property
+    def api_port(self) -> int:
+        return self.api_port_override or self.checkout_instance.api_port
+
+    @property
+    def web_port(self) -> int:
+        return self.web_port_override or self.checkout_instance.web_port
 
     @property
     def claude_projects_dir(self) -> Path:

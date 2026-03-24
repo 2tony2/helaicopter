@@ -64,7 +64,8 @@ from oats.runtime_state import (
 )
 app = typer.Typer(
     help=(
-        "Overnight Oats CLI. Legacy top-level commands available."
+        "Overnight Oats CLI for repo-local orchestration runs, status inspection, "
+        "and stacked PR workflows."
     )
 )
 console = Console()
@@ -87,7 +88,6 @@ def _load_execution_plan(
         config_path=config_path,
     )
     return config, config_path, execution_plan
-
 
 def _invocation_runtime_to_result(
     invocation: InvocationRuntimeRecord | None,
@@ -1070,8 +1070,7 @@ def pr_apply(
 
 @app.command(
     help=(
-        "Legacy compatibility command. "
-        "Use `oats run`."
+        "Execute a repo-local OATS run and persist runtime state."
     )
 )
 def run(
@@ -1421,7 +1420,6 @@ def watch(
         }:
             break
         time.sleep(interval_seconds)
-
 
 def main() -> None:
     app()

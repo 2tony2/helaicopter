@@ -21,7 +21,10 @@ export const conversationDetailTabs = [
 
 export type ConversationDetailTab = (typeof conversationDetailTabs)[number];
 
-export const orchestrationTabs = ["conversation-dags", "orchestration"] as const;
+export const orchestrationTabs = [
+  "conversation-dags",
+  "orchestration",
+] as const;
 
 export type OrchestrationTab = (typeof orchestrationTabs)[number];
 

@@ -3,14 +3,14 @@ title: Orchestration Overview
 description: How Helaicopter monitors and visualizes OATS workflow execution.
 ---
 
-## Orchestration model
+## Orchestration runtime
 
-Helaicopter currently documents one orchestration approach:
+Helaicopter's live orchestration surface is centered on OATS (Overnight Automated Task Specs):
 
 ### OATS (Overnight Automated Task Specs)
 A repo-local CLI tool bundled in the repository (`python/oats/`). OATS lets you define multi-step agent workflows as markdown run specs. Each task becomes a Claude Code or Codex invocation, with dependency tracking and parallel execution.
 
-**Best for:** ad-hoc multi-agent tasks, development workflows, local experimentation.
+**Best for:** ad-hoc multi-agent tasks, development workflows, and local experimentation.
 
 ## The orchestration hub
 
@@ -36,4 +36,4 @@ Live and historical OATS run records:
 | OATS runtime files | `GET /orchestration/oats` | Live task state, run records, DAGs |
 | Conversation files | `GET /conversations/*/dag` | Per-session subagent DAGs |
 
-The backend joins these sources and normalizes run status tones (`running`, `success`, `error`, `pending`, `unknown`) for consistent UI rendering.
+The backend joins these sources so the orchestration hub can correlate OATS runtime activity with conversation DAG relationships.

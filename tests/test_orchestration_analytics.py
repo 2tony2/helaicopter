@@ -100,3 +100,14 @@ def test_collect_orchestration_facts_reconciles_runtime_and_terminal_records(tmp
     assert run_fact.task_attempt_count == 1
     assert task_fact.attempt == 2
     assert task_fact.status == "running"
+
+
+def test_collect_orchestration_facts_ignores_removed_legacy_artifacts(tmp_path: Path) -> None:
+    flow_run_dir = tmp_path / ".oats" / "prefect" / "flow-runs" / "flow-run-1"
+    flow_run_dir.mkdir(parents=True, exist_ok=True)
+    (flow_run_dir / "metadata.json").write_text("{}", encoding="utf-8")
+
+    run_facts, task_attempt_facts = collect_orchestration_facts(tmp_path)
+
+    assert run_facts == []
+    assert task_attempt_facts == []

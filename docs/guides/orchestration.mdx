@@ -1,11 +1,11 @@
 ---
 title: Using Orchestration
-description: Monitor OATS runs from the orchestration hub.
+description: Monitor repo-local OATS runs from the orchestration hub.
 ---
 
 ## The orchestration hub
 
-Navigate to `/orchestration` for a unified view of workflow execution. The hub has two tabs:
+Navigate to `/orchestration` for a unified view of repo-local workflow execution. The hub has two tabs:
 
 ### Conversation DAGs
 Browse DAG summaries across all conversations — see which sessions spawned subagents, how deep the tree went, and aggregate token/cost stats.
@@ -39,4 +39,4 @@ The dashboard shows real-time status:
 - **Timed out** — task exceeded its time limit
 - **Succeeded/Failed** — terminal states with result details
 
-The orchestration hub reads OATS runtime state and persisted run records directly through the backend.
+There is no separate orchestration control plane to start. The dashboard reads repo-local OATS runtime state and persisted run records directly.

@@ -199,6 +199,7 @@ class TestAppFactory:
             "helaicopter-frontend-app-api.json",
             "helaicopter-oats-orchestration-api.json",
         ]
+        assert "/orchestration/prefect/flow-runs:" not in yaml_text
 
 
 class TestApiDocsNavigation:
@@ -226,3 +227,10 @@ class TestGatewayDirection:
         assert set(surfaces) == {"fastapi", "frontend", "sqlite", "oats", "duckdb", "cache"}
         assert surfaces["oats"]["isPrimary"] is False
         assert surfaces["cache"]["servingClass"] == "internal-only"
+
+
+class TestRemovedPrefectSurface:
+    def test_removed_prefect_routes_return_not_found(self, client) -> None:
+        response = client.get("/orchestration/prefect/flow-runs")
+
+        assert response.status_code == 404

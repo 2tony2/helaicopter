@@ -9,9 +9,5 @@ export default function OrchestrationPage({
   const { tab } = searchParams;
   const initialTab = resolveOrchestrationInitialTab(tab);
 
-  return (
-    <OrchestrationHub
-      initialTab={initialTab}
-    />
-  );
+  return <OrchestrationHub initialTab={initialTab} />;
 }

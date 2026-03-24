@@ -708,6 +708,87 @@ class TestOrchestrationEndpoint:
         assert response.json()[0]["tasks"][0]["invocation"]["sessionId"] == "claude-task-missing"
         assert response.json()[0]["tasks"][0]["invocation"]["conversationPath"] is None
 
+    def test_run_list_uses_persisted_state_without_legacy_overlay(self, tmp_path: Path) -> None:
+        now = datetime.now(UTC)
+        repo_root = tmp_path
+        settings = _init_sqlite(repo_root)
+        engine = create_engine(f"sqlite:///{settings.app_sqlite_path}")
+        with Session(engine) as session:
+            session.add(
+                FactOrchestrationRun(
+                    run_fact_id="oats_local:flow-run-1",
+                    run_source="oats_local",
+                    run_id="flow-run-1",
+                    flow_run_name=None,
+                    run_title="Run: Native Oats Orchestration",
+                    source_path=str(repo_root / "examples" / "native_oats_orchestration_run.md"),
+                    repo_root=str(repo_root),
+                    config_path=str(repo_root / ".oats" / "config.toml"),
+                    artifact_root=str(repo_root / ".oats" / "runtime" / "flow-run-1"),
+                    status="running",
+                    canonical_status_source="runtime_state_active",
+                    has_runtime_snapshot=True,
+                    has_terminal_record=False,
+                    task_count=1,
+                    completed_task_count=0,
+                    running_task_count=1,
+                    failed_task_count=0,
+                    task_attempt_count=1,
+                    started_at=now - timedelta(minutes=4),
+                    updated_at=now - timedelta(minutes=1),
+                    finished_at=None,
+                )
+            )
+            session.add(
+                FactOrchestrationTaskAttempt(
+                    task_attempt_fact_id="oats_local:flow-run-1:task-api:1",
+                    run_fact_id="oats_local:flow-run-1",
+                    run_source="oats_local",
+                    run_id="flow-run-1",
+                    task_id="task-api",
+                    task_title="Implement route",
+                    attempt=1,
+                    status="running",
+                    upstream_task_ids_json="[]",
+                    agent=None,
+                    session_id=None,
+                    model=None,
+                    reasoning_effort=None,
+                    error=None,
+                    output_text=None,
+                    started_at=now - timedelta(minutes=3),
+                    updated_at=now - timedelta(minutes=1),
+                    finished_at=None,
+                    last_heartbeat_at=now - timedelta(minutes=1),
+                    last_progress_event_at=now - timedelta(minutes=1),
+                )
+            )
+            _insert_conversation_record(
+                session,
+                provider="codex",
+                session_id="persisted-thread-123",
+                project_path="codex:-repo",
+                route_slug="native-task-api",
+                started_at=now - timedelta(minutes=3),
+            )
+            session.commit()
+        engine.dispose()
+
+        with orchestration_client(
+            repo_root,
+            settings=settings,
+            app_sqlite_store=SqliteAppStore(db_path=settings.app_sqlite_path),
+        ) as client:
+            response = client.get("/orchestration/oats")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 1
+        assert payload[0]["runId"] == "flow-run-1"
+        assert payload[0]["status"] == "running"
+        assert payload[0]["isRunning"] is True
+        assert payload[0]["activeTaskId"] == "task-api"
+        assert payload[0]["tasks"][0]["invocation"] is None
 
     def test_run_record_shapes_canonical_planner_and_task_links(self, tmp_path: Path) -> None:
         now = datetime.now(UTC)
