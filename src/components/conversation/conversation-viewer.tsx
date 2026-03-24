@@ -44,15 +44,13 @@ import {
 export function providerLabel(provider: FrontendProvider): string {
   if (provider === "claude") return "Claude";
   if (provider === "codex") return "Codex";
-  if (provider === "openclaw") return "OpenClaw";
-  return "OpenCloud";
+  return "OpenClaw";
 }
 
 function providerDotClass(provider: FrontendProvider): string {
   if (provider === "claude") return "bg-emerald-500";
   if (provider === "codex") return "bg-sky-500";
-  if (provider === "openclaw") return "bg-amber-500";
-  return "bg-fuchsia-500";
+  return "bg-amber-500";
 }
 
 function formatTokens(n: number): string {
@@ -77,7 +75,6 @@ export function resolveConversationProvider(
   if (provider) return provider;
   if (projectPath.startsWith("codex:")) return "codex";
   if (projectPath.startsWith("openclaw:")) return "openclaw";
-  if (projectPath.startsWith("opencloud:")) return "opencloud";
   return "claude";
 }
 
