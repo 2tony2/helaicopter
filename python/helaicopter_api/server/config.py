@@ -130,13 +130,6 @@ class DatabaseSettings(BaseModel):
         return self.duckdb
 
 
-class PrefectApiSettings(BaseModel):
-    """Backend-owned Prefect API connection settings."""
-
-    api_url: str
-    timeout_seconds: float = 30.0
-
-
 class OpenApiArtifactSettings(BaseModel):
     """Stable repo-local OpenAPI artifact output settings."""
 
@@ -171,14 +164,6 @@ class Settings(BaseSettings):
     openclaw_dir: Path = Field(
         default_factory=lambda: Path.home() / ".openclaw",
         description="Root of the OpenClaw data directory (typically ~/.openclaw).",
-    )
-    prefect_api_url: str = Field(
-        default="http://127.0.0.1:4200/api",
-        description="Base URL for the Prefect API proxied by the backend.",
-    )
-    prefect_api_timeout_seconds: float = Field(
-        default=30.0,
-        description="Timeout for Prefect API requests made by the backend.",
     )
     debug: bool = False
 
@@ -224,13 +209,6 @@ class Settings(BaseSettings):
                 public_path="/database-artifacts/olap/helaicopter_olap.duckdb",
                 docs_url="/database-schemas/olap/index.html",
             ),
-        )
-
-    @cached_property
-    def prefect(self) -> PrefectApiSettings:
-        return PrefectApiSettings(
-            api_url=self.prefect_api_url,
-            timeout_seconds=self.prefect_api_timeout_seconds,
         )
 
     @cached_property

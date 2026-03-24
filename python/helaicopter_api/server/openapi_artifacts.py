@@ -111,18 +111,6 @@ def generate_openapi_artifacts(*, settings: Settings | None = None) -> OpenApiAr
             include_path=lambda path: path == "/orchestration/oats",
         ),
     )
-    _write_json_artifact(
-        artifact_settings.artifacts_dir / "helaicopter-prefect-orchestration-api.json",
-        _build_surface_schema(
-            schema,
-            title="Helaicopter Prefect Proxy API",
-            description=(
-                "Stable filtered view of the backend-owned Prefect proxy routes that expose "
-                "Prefect orchestration state through Helaicopter."
-            ),
-            include_path=lambda path: path.startswith("/orchestration/prefect"),
-        ),
-    )
 
     return OpenApiArtifactOutputs(
         json_path=artifact_settings.json_path,

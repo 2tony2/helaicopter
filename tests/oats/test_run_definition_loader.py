@@ -5,46 +5,6 @@ from pathlib import Path
 import pytest
 
 from oats.run_definition_loader import UnsupportedRunDefinitionInputError, load_run_definition
-
-
-def test_load_run_definition_normalizes_existing_markdown_example() -> None:
-    run_definition = load_run_definition(
-        Path("examples/prefect_native_oats_orchestration_run.md")
-    )
-
-    assert run_definition.title == "Run: Prefect Native Oats Orchestration"
-    assert run_definition.source_path == (
-        Path.cwd() / "examples" / "prefect_native_oats_orchestration_run.md"
-    )
-    assert run_definition.config_path == Path.cwd() / ".oats" / "config.toml"
-    assert run_definition.repo_root == Path.cwd()
-    assert run_definition.default_validation_commands == [
-        "npm run lint",
-        "uv run --group dev pytest -q",
-    ]
-    assert run_definition.execution.repo_base_branch == "main"
-    assert run_definition.execution.worktree_dir == ".oats-worktrees"
-    assert run_definition.execution.default_concurrency == 3
-
-    task = next(task for task in run_definition.tasks if task.task_id == "markdown_run_definition")
-
-    assert task.title == "T003 Markdown-First Canonical Run Definition Layer"
-    assert task.depends_on == ["prefect_platform_foundation"]
-    assert task.acceptance_criteria == [
-        "canonical run-definition models exist",
-        "the loader successfully converts current Markdown examples into canonical run definitions",
-        "non-Markdown run-definition inputs are explicitly rejected for this rollout",
-        "existing parser coverage still passes",
-    ]
-    assert task.notes == [
-        "preserve current Markdown semantics around task titles, dependencies, acceptance criteria, notes, and validation overrides",
-        "do not let Prefect-specific fields leak into the canonical input layer",
-    ]
-    assert task.validation_commands == [
-        "uv run --group dev pytest -q tests/oats/test_run_definition_loader.py tests/test_parser.py"
-    ]
-
-
 def test_load_run_definition_uses_repo_validation_defaults_when_no_override() -> None:
     run_definition = load_run_definition(Path("examples/sample_run.md"))
 

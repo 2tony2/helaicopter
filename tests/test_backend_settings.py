@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sqlite3
 
 import pytest
@@ -73,23 +74,23 @@ def _status_payload(path: str) -> dict[str, object]:
                 "inventorySummary": "No tables recorded",
                 "load": [],
             },
-            "prefectPostgres": {
-                "key": "prefect_postgres",
-                "label": "Prefect Postgres",
-                "engine": "Postgres",
-                "role": "orchestration",
-                "availability": "ready",
-                "health": "healthy",
-                "operationalStatus": "Prefect API responding",
-                "note": "Backing store for the local Prefect control plane.",
+            "duckdb": {
+                "key": "duckdb",
+                "label": "DuckDB Inspection Snapshot",
+                "engine": "DuckDB",
+                "role": "inspection",
+                "availability": "missing",
+                "health": "missing",
+                "operationalStatus": "DuckDB inspection snapshot has not been generated yet.",
+                "note": "DuckDB inspection snapshot",
                 "error": None,
-                "path": None,
-                "target": "postgresql://prefect@127.0.0.1:5432/prefect",
+                "path": str(Path(path).with_suffix(".duckdb")),
+                "target": None,
                 "tableCount": 0,
                 "tables": [],
                 "sizeBytes": None,
                 "sizeDisplay": None,
-                "inventorySummary": "Catalog visibility not exposed by Prefect API",
+                "inventorySummary": "No tables recorded",
                 "load": [],
             },
         },
@@ -295,8 +296,8 @@ def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> 
     loaded = status_module.load_status()
 
     assert loaded is not None
-    assert loaded["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
     assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
+    assert loaded["databases"]["duckdb"]["key"] == "duckdb"
 
 
 def test_run_migrations_uses_shared_backend_project_root(monkeypatch, tmp_path) -> None:

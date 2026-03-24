@@ -28,14 +28,12 @@ from ..adapters.codex_sqlite import FileCodexStore
 from ..adapters.evaluation_jobs import LocalCliEvaluationRunner, SupportsSubprocessRun
 from ..adapters.oats_artifacts import FileOatsRunStore
 from ..adapters.openclaw_fs.store import FileOpenClawStore
-from ..adapters.prefect_http import PrefectHttpAdapter
 from ..ports.app_sqlite import AppSqliteStore
 from ..ports.claude_fs import ConversationReader, HistoryReader, PlanReader, TaskReader
 from ..ports.codex_sqlite import CodexStore
 from ..ports.evaluations import EvaluationJobRunner
 from ..ports.orchestration import OatsRunStore
 from ..ports.openclaw_fs import OpenClawStore
-from ..ports.prefect import PrefectOrchestrationPort
 from ..server.config import Settings
 
 
@@ -130,7 +128,6 @@ class BackendServices:
     codex_store: CodexStore
     openclaw_store: OpenClawStore
     oats_run_store: OatsRunStore
-    prefect_client: PrefectOrchestrationPort
     cache: LocalCache = field(default_factory=LocalCache)
     subprocess_runner: SubprocessRunner = field(default_factory=SubprocessRunner)
     evaluation_job_runner: EvaluationJobRunner | None = None
@@ -218,7 +215,6 @@ def build_services(settings: Settings) -> BackendServices:
         agents_dir=settings.openclaw_agents_dir,
         memory_sqlite_path=settings.openclaw_memory_sqlite_path,
     )
-    prefect_client = PrefectHttpAdapter.from_settings(settings.prefect)
     oats_run_store = FileOatsRunStore(
         project_root=settings.project_root,
         runtime_dir=settings.runtime_dir,
@@ -236,7 +232,6 @@ def build_services(settings: Settings) -> BackendServices:
         codex_store=codex_store,
         openclaw_store=openclaw_store,
         oats_run_store=oats_run_store,
-        prefect_client=prefect_client,
         subprocess_runner=subprocess_runner,
         evaluation_job_runner=LocalCliEvaluationRunner(
             subprocess_runner=evaluation_subprocess_runner

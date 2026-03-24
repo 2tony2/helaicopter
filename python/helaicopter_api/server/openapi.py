@@ -21,7 +21,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "projects", "description": "Project lists derived from conversation data."},
     {"name": "subscriptions", "description": "Provider subscription settings and monthly cost controls."},
     {"name": "tasks", "description": "Task payloads associated with Claude sessions."},
-    {"name": "orchestration", "description": "Prefect-first orchestration plus legacy OATS compatibility surfaces."},
+    {"name": "orchestration", "description": "OATS orchestration surfaces and compatibility views."},
 ]
 
 TITLE = "Helaicopter API"

@@ -14,10 +14,6 @@ ConversationContextStepId = NewType("ConversationContextStepId", str)
 EvaluationId = NewType("EvaluationId", str)
 ModelId = NewType("ModelId", str)
 PlanId = NewType("PlanId", str)
-PrefectDeploymentId = NewType("PrefectDeploymentId", str)
-PrefectFlowRunId = NewType("PrefectFlowRunId", str)
-PrefectWorkPoolId = NewType("PrefectWorkPoolId", str)
-PrefectWorkerId = NewType("PrefectWorkerId", str)
 ProjectId = NewType("ProjectId", str)
 PromptId = NewType("PromptId", str)
 RunId = NewType("RunId", str)
@@ -39,10 +35,6 @@ __all__ = [
     "EvaluationId",
     "ModelId",
     "PlanId",
-    "PrefectDeploymentId",
-    "PrefectFlowRunId",
-    "PrefectWorkPoolId",
-    "PrefectWorkerId",
     "ProjectId",
     "PromptId",
     "RunId",

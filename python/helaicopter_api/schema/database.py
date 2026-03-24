@@ -79,7 +79,7 @@ class DatabaseRuntimeResponse(CamelCaseHttpResponseModel):
 
 
 class DatabaseArtifactsResponse(CamelCaseHttpResponseModel):
-    """Status snapshots for all managed database artifacts (cache, SQLite, DuckDB, Postgres)."""
+    """Status snapshots for all managed database artifacts."""
 
     frontend_cache: DatabaseArtifactStatusResponse = Field(
         validation_alias=AliasChoices("frontend_cache", "frontendCache"),
@@ -87,9 +87,6 @@ class DatabaseArtifactsResponse(CamelCaseHttpResponseModel):
     sqlite: DatabaseArtifactStatusResponse
     duckdb: DatabaseArtifactStatusResponse = Field(
         validation_alias=AliasChoices("duckdb", "legacy_duckdb", "legacyDuckdb"),
-    )
-    prefect_postgres: DatabaseArtifactStatusResponse = Field(
-        validation_alias=AliasChoices("prefect_postgres", "prefectPostgres"),
     )
 
 
