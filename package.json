@@ -14,9 +14,18 @@
     "db:refresh": "uv run python -m helaicopter_db.refresh --trigger cli",
     "db:migrate:oltp": "uv run alembic -x target=oltp upgrade head",
     "db:migrate:olap": "uv run alembic -x target=olap upgrade head",
-    "db:export": "tsx scripts/export-parsed-data.ts"
+    "db:export": "tsx scripts/export-parsed-data.ts",
+    "cap:sync": "cap sync ios",
+    "cap:open": "cap open ios",
+    "cap:run": "cap run ios"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/haptics": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.1",
     "@dagrejs/dagre": "^2.0.4",
     "@duckdb/duckdb-wasm": "^1.33.1-dev20.0",
     "@radix-ui/react-collapsible": "^1.1.12",

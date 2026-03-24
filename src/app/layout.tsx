@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { SidebarProvider } from "@/components/layout/sidebar-provider";
 import { MobileHeader } from "@/components/layout/mobile-header";
 import { SidebarDrawer } from "@/components/layout/sidebar-drawer";
+import { CapacitorInit } from "@/components/layout/capacitor-init";
 import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
@@ -39,6 +40,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <CapacitorInit />
         <TooltipProvider>
           <SidebarProvider>
             <div className="flex min-h-screen">
