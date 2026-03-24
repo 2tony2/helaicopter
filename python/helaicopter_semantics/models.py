@@ -36,8 +36,10 @@ def resolve_provider(
     # Explicit provider field takes precedence when recognized.
     if provider:
         provider_lower = provider.lower()
-        if provider_lower in {"codex", "openclaw"}:
-            return provider_lower
+        if provider_lower == "codex":
+            return "codex"
+        if provider_lower == "openclaw":
+            return "openclaw"
 
     # Project path prefix is authoritative when provenance is encoded there.
     if project_path:
