@@ -63,13 +63,13 @@ export function ConversationList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 flex-wrap items-start">
-        <div className="flex gap-3 flex-wrap items-center">
+      <div className="flex flex-col sm:flex-row gap-2 items-start">
+        <div className="flex gap-2 flex-wrap items-center w-full sm:w-auto">
           <Input
             placeholder="Search conversations..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
+            className="w-full sm:max-w-sm"
           />
           <select
             className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -91,9 +91,9 @@ export function ConversationList() {
             </span>
           )}
         </div>
-        <div className="ml-auto">
+        <div className="w-full sm:w-auto sm:ml-auto">
           <select
-            className="flex h-9 min-w-[180px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full sm:min-w-[180px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             value={threadTypeFilter}
             onChange={(e) =>
               setThreadTypeFilter(e.target.value as "all" | "main" | "subagent")

@@ -123,7 +123,7 @@ export default function AnalyticsPage() {
         title="Analytics"
         description="Token usage, costs, and model statistics"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap gap-2">
             <DateRangePicker value={days} onChange={setDays} />
             <ProviderFilter value={provider} onChange={setProvider} />
           </div>
@@ -132,7 +132,7 @@ export default function AnalyticsPage() {
 
       {isLoading ? (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-28" />
             ))}
@@ -147,7 +147,7 @@ export default function AnalyticsPage() {
       ) : analytics ? (
         <>
           {/* Top-level stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <StatsCard
               title="Conversations"
               value={analytics.totalConversations}
