@@ -223,6 +223,6 @@ class TestGatewayDirection:
 
         surfaces = {surface["key"]: surface for surface in body["surfaces"]}
         assert surfaces["fastapi"]["isPrimary"] is True
-        assert "prefect" not in surfaces
+        assert set(surfaces) == {"fastapi", "frontend", "sqlite", "oats", "duckdb", "cache"}
         assert surfaces["oats"]["isPrimary"] is False
         assert surfaces["cache"]["servingClass"] == "internal-only"

@@ -450,7 +450,7 @@ def _normalize_persisted_run_status(row: sqlite3.Row) -> RunRuntimeStatus:
         return cast(RunRuntimeStatus, status)
     if status in {"succeeded", "success"}:
         return "completed"
-    return None
+    return "pending"
 
 
 def _normalize_persisted_task_status(status: str, run_status: RunRuntimeStatus) -> TaskRuntimeStatus:

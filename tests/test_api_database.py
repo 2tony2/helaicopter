@@ -115,23 +115,6 @@ def _status_payload(
                     }
                 ],
             },
-            "prefectPostgres": {
-                "key": "prefect_postgres",
-                "label": "Prefect Postgres",
-                "engine": "Postgres",
-                "role": "orchestration",
-                "availability": "ready",
-                "health": "healthy",
-                "operationalStatus": "Prefect API responding",
-                "note": "Backing store for the local Prefect control plane.",
-                "error": None,
-                "path": None,
-                "target": "postgresql://prefect@127.0.0.1:5432/prefect",
-                "publicPath": None,
-                "docsUrl": None,
-                "tableCount": 0,
-                "tables": [],
-            },
         },
     }
 
@@ -263,7 +246,6 @@ class TestDatabaseEndpoints:
         assert body["runtime"]["analyticsReadBackend"] == "duckdb"
         assert body["databases"]["frontendCache"]["key"] == "frontend_cache"
         assert body["databases"]["duckdb"]["key"] == "duckdb"
-        assert body["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
         assert "legacyDuckdb" not in body["databases"]
         assert body["databases"]["sqlite"]["tables"][0]["servingClass"] == "fastapi-derived"
         assert body["databases"]["sqlite"]["tables"][0]["integrationType"] == "sqlalchemy"
@@ -364,7 +346,6 @@ class TestDatabaseEndpoints:
         assert body["databases"]["frontendCache"]["key"] == "frontend_cache"
         assert body["databases"]["sqlite"]["key"] == "sqlite"
         assert body["databases"]["duckdb"]["key"] == "duckdb"
-        assert body["databases"]["prefectPostgres"]["key"] == "prefect_postgres"
         assert services.cache.clear_calls == 0
         assert services.cache.deleted_keys == [
             "analytics",
@@ -409,10 +390,11 @@ class TestDatabaseEndpoints:
         assert "stale_after_seconds" not in request_schema["properties"]
         assert "lastSuccessfulRefreshAt" in status_schema["properties"]
         assert "last_successful_refresh_at" not in status_schema["properties"]
-        assert "frontendCache" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
-        assert "duckdb" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
-        assert "prefectPostgres" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
-        assert "legacyDuckdb" not in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
+        assert set(schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]) == {
+            "frontendCache",
+            "sqlite",
+            "duckdb",
+        }
         assert "servingClass" in table_schema["properties"]
         assert "integrationType" in table_schema["properties"]
         assert "fastapiRoutes" in table_schema["properties"]
