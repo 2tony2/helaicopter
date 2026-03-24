@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-03-24-mobile-interface-masterplan-design.md` (Phase 1 section)
 
-**Prerequisite:** Phase 0 (legacy provider + legacy orchestration removal) must be complete.
+**Prerequisite:** Phase 0 must be complete.
 
 ---
 

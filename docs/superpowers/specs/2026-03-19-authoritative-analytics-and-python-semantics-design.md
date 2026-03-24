@@ -222,7 +222,7 @@ The semantic layer must define the following explicitly.
 
 - canonical orchestration run statuses
 - canonical orchestration task statuses
-- mapping rules from OATS runtime state, terminal records, and any legacy orchestration state
+- mapping rules from OATS runtime state and terminal records
 - backend-owned derived display tones and stale-state interpretation
 
 ### Token field aliases
