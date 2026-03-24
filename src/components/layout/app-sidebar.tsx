@@ -33,7 +33,7 @@ const apiItems = [
 ];
 const apiSection = { label: "API" };
 
-export function AppSidebar() {
+export function AppSidebar({ onNavClick }: { onNavClick?: () => void } = {}) {
   const pathname = usePathname();
 
   return (
@@ -54,6 +54,7 @@ export function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavClick}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                 isActive
@@ -92,7 +93,7 @@ export function AppSidebar() {
           }
 
           return (
-            <Link key={item.href} href={item.href} className={linkClassName}>
+            <Link key={item.href} href={item.href} onClick={onNavClick} className={linkClassName}>
               {"icon" in item && item.icon ? <item.icon className="h-4 w-4" /> : null}
               {item.label}
             </Link>
