@@ -546,7 +546,7 @@ export function ConversationViewer({
           replaceRoute({ tab: nextTab });
         }}
       >
-        <TabsList>
+        <TabsList className="overflow-x-auto">
           <TabsTrigger value="messages">Messages</TabsTrigger>
           <TabsTrigger value="plans">
             Plans {plans.length > 0 ? `(${plans.length})` : ""}
