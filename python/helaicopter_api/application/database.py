@@ -180,7 +180,6 @@ def _status_payload_is_complete(payload: DatabaseStatusPayload | None) -> bool:
         and databases.get("frontendCache")
         and databases.get("sqlite")
         and databases.get("duckdb")
-        and databases.get("prefectPostgres")
     )
 
 
@@ -268,27 +267,6 @@ def _fallback_databases_surface(
             "sizeBytes": None,
             "sizeDisplay": None,
             "inventorySummary": "No table inventory recorded yet",
-            "load": [],
-            "tables": [],
-        },
-        "prefectPostgres": {
-            "key": "prefect_postgres",
-            "label": "Prefect Postgres",
-            "engine": "Postgres",
-            "role": "orchestration",
-            "availability": "ready",
-            "health": "healthy",
-            "operationalStatus": "Prefect control-plane database target configured.",
-            "note": "Backing store for the self-hosted Prefect API and services stack.",
-            "error": None,
-            "path": None,
-            "target": "postgresql://prefect@127.0.0.1:5432/prefect",
-            "publicPath": None,
-            "docsUrl": None,
-            "tableCount": 0,
-            "sizeBytes": None,
-            "sizeDisplay": None,
-            "inventorySummary": "Catalog visibility is managed through Prefect/Postgres.",
             "load": [],
             "tables": [],
         },

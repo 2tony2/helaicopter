@@ -36,7 +36,7 @@ _GATEWAY_SURFACES: tuple[GatewaySurfaceResponse, ...] = (
         integration_type="http-client",
         is_primary=True,
         path_prefixes=[],
-        note="Browser traffic goes through FastAPI rather than calling storage systems or Prefect directly.",
+        note="Browser traffic goes through FastAPI rather than calling storage systems directly.",
     ),
     GatewaySurfaceResponse(
         key="sqlite",
@@ -56,15 +56,6 @@ _GATEWAY_SURFACES: tuple[GatewaySurfaceResponse, ...] = (
             "/tasks",
         ],
         note="Primary app-local metadata store for FastAPI-owned reads and settings.",
-    ),
-    GatewaySurfaceResponse(
-        key="prefect",
-        owner="prefect",
-        serving_class="fastapi-proxy",
-        integration_type="backend-http-adapter",
-        is_primary=True,
-        path_prefixes=["/orchestration/prefect"],
-        note="Primary orchestration control plane exposed through backend-managed HTTP normalization.",
     ),
     GatewaySurfaceResponse(
         key="oats",
@@ -200,7 +191,7 @@ def describe_gateway_direction() -> GatewayDirectionResponse:
 
     Returns:
         A ``GatewayDirectionResponse`` listing all configured gateway surfaces
-        (FastAPI, frontend, SQLite, Prefect, OATS, DuckDB, cache).
+        (FastAPI, frontend, SQLite, OATS, DuckDB, cache).
     """
     return GatewayDirectionResponse(surfaces=list(_GATEWAY_SURFACES))
 

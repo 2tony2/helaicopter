@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import TypedDict
 
 from pydantic import TypeAdapter, ValidationError
@@ -60,7 +59,6 @@ class DatabaseArtifactPayload(TypedDict, total=False):
 class DatabaseArtifactsPayload(TypedDict, total=False):
     frontendCache: DatabaseArtifactPayload
     sqlite: DatabaseArtifactPayload
-    prefectPostgres: DatabaseArtifactPayload
     duckdb: DatabaseArtifactPayload
 
 
@@ -107,16 +105,6 @@ def _path_size(path) -> int | None:
     except OSError:
         return None
     return None
-
-
-def _prefect_postgres_target() -> str:
-    user = os.getenv("PREFECT_POSTGRES_USER", "prefect")
-    password = os.getenv("PREFECT_POSTGRES_PASSWORD")
-    host = os.getenv("PREFECT_POSTGRES_HOST", "127.0.0.1")
-    port = os.getenv("PREFECT_POSTGRES_PORT", "5432")
-    database = os.getenv("PREFECT_POSTGRES_DB", "prefect")
-    auth = user if not password else f"{user}:***"
-    return f"postgresql://{auth}@{host}:{port}/{database}"
 
 
 def _sqlite_table_summaries(engine) -> list[DatabaseTablePayload]:
@@ -393,27 +381,6 @@ def build_status_payload(
                 "inventorySummary": f"{len(duckdb_tables)} table{'s' if len(duckdb_tables) != 1 else ''}",
                 "load": [],
                 "tables": duckdb_tables,
-            },
-            "prefectPostgres": {
-                "key": "prefect_postgres",
-                "label": "Prefect Postgres",
-                "engine": "Postgres",
-                "role": "orchestration",
-                "availability": "ready",
-                "health": "healthy",
-                "operationalStatus": "Prefect control-plane database target configured for the local server stack.",
-                "note": "Backing store for the self-hosted Prefect API and services stack.",
-                "error": None,
-                "path": None,
-                "target": _prefect_postgres_target(),
-                "publicPath": None,
-                "docsUrl": None,
-                "tableCount": 0,
-                "tables": [],
-                "sizeBytes": None,
-                "sizeDisplay": None,
-                "inventorySummary": "Catalog visibility is managed through Prefect/Postgres, not local file inspection.",
-                "load": [],
             },
         },
     }
