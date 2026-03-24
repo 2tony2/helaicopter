@@ -27,14 +27,12 @@ from ..adapters.claude_fs import (
 from ..adapters.codex_sqlite import FileCodexStore
 from ..adapters.evaluation_jobs import LocalCliEvaluationRunner, SupportsSubprocessRun
 from ..adapters.oats_artifacts import FileOatsRunStore
-from ..adapters.openclaw_fs.store import FileOpenClawStore
 from ..adapters.prefect_http import PrefectHttpAdapter
 from ..ports.app_sqlite import AppSqliteStore
 from ..ports.claude_fs import ConversationReader, HistoryReader, PlanReader, TaskReader
 from ..ports.codex_sqlite import CodexStore
 from ..ports.evaluations import EvaluationJobRunner
 from ..ports.orchestration import OatsRunStore
-from ..ports.openclaw_fs import OpenClawStore
 from ..ports.prefect import PrefectOrchestrationPort
 from ..server.config import Settings
 
@@ -128,7 +126,6 @@ class BackendServices:
     claude_history_reader: HistoryReader
     claude_task_reader: TaskReader
     codex_store: CodexStore
-    openclaw_store: OpenClawStore
     oats_run_store: OatsRunStore
     prefect_client: PrefectOrchestrationPort
     cache: LocalCache = field(default_factory=LocalCache)
@@ -146,10 +143,6 @@ def invalidate_backend_read_caches(services: BackendServices) -> None:
         "analytics",
         "codex_session_artifacts",
         "codex_threads_by_id",
-        "openclaw_session_artifacts",
-        "openclaw_transcript_artifacts",
-        "openclaw_discovery_snapshot",
-        "openclaw_memory_store_metadata",
         "database_status",
         "projects",
     ]
@@ -159,7 +152,6 @@ def invalidate_backend_read_caches(services: BackendServices) -> None:
         "conversation_ref:",
         "conversation_dags:",
         "conversation_dag:",
-        "openclaw_session_store:",
     )
     cache_keys = []
     if hasattr(services.cache, "keys"):
@@ -214,10 +206,6 @@ def build_services(settings: Settings) -> BackendServices:
         db_path=settings.codex_sqlite_path,
         history_file=settings.codex_history_file,
     )
-    openclaw_store = FileOpenClawStore(
-        agents_dir=settings.openclaw_agents_dir,
-        memory_sqlite_path=settings.openclaw_memory_sqlite_path,
-    )
     prefect_client = PrefectHttpAdapter.from_settings(settings.prefect)
     oats_run_store = FileOatsRunStore(
         project_root=settings.project_root,
@@ -234,7 +222,6 @@ def build_services(settings: Settings) -> BackendServices:
         claude_history_reader=FileHistoryReader(claude_artifacts),
         claude_task_reader=FileTaskReader(claude_artifacts),
         codex_store=codex_store,
-        openclaw_store=openclaw_store,
         oats_run_store=oats_run_store,
         prefect_client=prefect_client,
         subprocess_runner=subprocess_runner,
