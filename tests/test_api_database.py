@@ -30,7 +30,6 @@ from helaicopter_db.models import ConversationRecord, FactConversation, OlapBase
 
 EXPECTED_INVALIDATED_CACHE_KEYS = [
     "analytics",
-    "opencloud_sessions",
     "codex_session_artifacts",
     "codex_threads_by_id",
     "openclaw_session_artifacts",
