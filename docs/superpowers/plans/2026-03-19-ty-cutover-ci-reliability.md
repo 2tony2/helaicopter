@@ -20,11 +20,11 @@
 - Modify: `tests/test_backend_type_system_rollout.py`
 - Modify: `python/helaicopter_api/application/gateway.py`
 - Modify: `python/helaicopter_api/application/orchestration.py`
-- Modify: `python/helaicopter_api/application/prefect_orchestration.py`
-- Modify: `python/helaicopter_api/ports/prefect.py`
+- Modify: `python/helaicopter_api/application/legacy-orchestration_orchestration.py`
+- Modify: `python/helaicopter_api/ports/legacy-orchestration.py`
 - Modify: `python/helaicopter_api/server/dependencies.py`
 - Modify: `python/helaicopter_api/server/main.py`
-- Modify: `tests/oats/test_prefect_deployments.py`
+- Modify: `tests/oats/test_legacy-orchestration_deployments.py`
 - Modify: `python/helaicopter_api/adapters/app_sqlite/store.py`
 - Modify: `python/helaicopter_api/adapters/claude_fs/conversations.py`
 - Modify: `python/helaicopter_api/adapters/evaluation_jobs.py`
@@ -42,9 +42,9 @@
 - Modify: `python/oats/cli.py`
 - Modify: `python/oats/parser.py`
 - Modify: `python/oats/pr.py`
-- Modify: `python/oats/prefect/compiler.py`
-- Modify: `python/oats/prefect/flows.py`
-- Modify: `python/oats/prefect/tasks.py`
+- Modify: `python/oats/legacy-orchestration/compiler.py`
+- Modify: `python/oats/legacy-orchestration/flows.py`
+- Modify: `python/oats/legacy-orchestration/tasks.py`
 - Modify: `python/oats/runner.py`
 
 ### Task 1: Rewrite Repository Contracts Around `ty`
@@ -182,11 +182,11 @@ git commit -m "chore: replace pyright with ty"
 **Files:**
 - Modify: `python/helaicopter_api/application/gateway.py`
 - Modify: `python/helaicopter_api/application/orchestration.py`
-- Modify: `python/helaicopter_api/application/prefect_orchestration.py`
-- Modify: `python/helaicopter_api/ports/prefect.py`
+- Modify: `python/helaicopter_api/application/legacy-orchestration_orchestration.py`
+- Modify: `python/helaicopter_api/ports/legacy-orchestration.py`
 - Modify: `python/helaicopter_api/server/dependencies.py`
 - Modify: `python/helaicopter_api/server/main.py`
-- Modify: `tests/oats/test_prefect_deployments.py`
+- Modify: `tests/oats/test_legacy-orchestration_deployments.py`
 - Test: `tests/test_api_bootstrap.py`
 - Test: `tests/test_api_smoke.py`
 
@@ -198,14 +198,14 @@ Run:
 uv run --group dev ruff check \
   python/helaicopter_api/application/gateway.py \
   python/helaicopter_api/application/orchestration.py \
-  python/helaicopter_api/application/prefect_orchestration.py \
-  python/helaicopter_api/ports/prefect.py \
+  python/helaicopter_api/application/legacy-orchestration_orchestration.py \
+  python/helaicopter_api/ports/legacy-orchestration.py \
   python/helaicopter_api/server/dependencies.py \
   python/helaicopter_api/server/main.py \
-  tests/oats/test_prefect_deployments.py
+  tests/oats/test_legacy-orchestration_deployments.py
 
 uv run --group dev ty check \
-  python/helaicopter_api/ports/prefect.py \
+  python/helaicopter_api/ports/legacy-orchestration.py \
   python/helaicopter_api/server/dependencies.py \
   python/helaicopter_api/server/main.py \
   --error-on-warning
@@ -221,12 +221,12 @@ Apply the straightforward cleanups:
 # python/helaicopter_api/application/gateway.py
 - from typing import Any
 
-# python/helaicopter_api/application/prefect_orchestration.py
-- PrefectDeploymentRecord,
-- PrefectWorkPoolRecord,
-- PrefectWorkerRecord,
+# python/helaicopter_api/application/legacy-orchestration_orchestration.py
+- legacy orchestrationDeploymentRecord,
+- legacy orchestrationWorkPoolRecord,
+- legacy orchestrationWorkerRecord,
 
-# tests/oats/test_prefect_deployments.py
+# tests/oats/test_legacy-orchestration_deployments.py
 - import pytest
 ```
 
@@ -243,7 +243,7 @@ from oats.models import (
 )
 ```
 
-- [ ] **Step 3: Fix the partially unknown `tags` list in the Prefect port model**
+- [ ] **Step 3: Fix the partially unknown `tags` list in the legacy orchestration port model**
 
 Make the default factory explicit so `ty` sees a concrete `list[str]`:
 
@@ -252,7 +252,7 @@ def _empty_tags() -> list[str]:
     return []
 
 @dataclass(frozen=True, slots=True)
-class PrefectDeploymentRecord:
+class legacy orchestrationDeploymentRecord:
     ...
     tags: list[str] = field(default_factory=_empty_tags)
 ```
@@ -297,13 +297,13 @@ uv run --group dev pytest -q tests/test_api_bootstrap.py tests/test_api_smoke.py
 uv run --group dev ruff check \
   python/helaicopter_api/application/gateway.py \
   python/helaicopter_api/application/orchestration.py \
-  python/helaicopter_api/application/prefect_orchestration.py \
-  python/helaicopter_api/ports/prefect.py \
+  python/helaicopter_api/application/legacy-orchestration_orchestration.py \
+  python/helaicopter_api/ports/legacy-orchestration.py \
   python/helaicopter_api/server/dependencies.py \
   python/helaicopter_api/server/main.py \
-  tests/oats/test_prefect_deployments.py
+  tests/oats/test_legacy-orchestration_deployments.py
 uv run --group dev ty check \
-  python/helaicopter_api/ports/prefect.py \
+  python/helaicopter_api/ports/legacy-orchestration.py \
   python/helaicopter_api/server/dependencies.py \
   python/helaicopter_api/server/main.py \
   --error-on-warning
@@ -316,11 +316,11 @@ Expected: PASS.
 ```bash
 git add python/helaicopter_api/application/gateway.py \
   python/helaicopter_api/application/orchestration.py \
-  python/helaicopter_api/application/prefect_orchestration.py \
-  python/helaicopter_api/ports/prefect.py \
+  python/helaicopter_api/application/legacy-orchestration_orchestration.py \
+  python/helaicopter_api/ports/legacy-orchestration.py \
   python/helaicopter_api/server/dependencies.py \
   python/helaicopter_api/server/main.py \
-  tests/oats/test_prefect_deployments.py
+  tests/oats/test_legacy-orchestration_deployments.py
 git commit -m "fix: clear initial ty and ruff blockers"
 ```
 
@@ -581,24 +581,24 @@ git add python/helaicopter_api/application/database.py \
 git commit -m "fix: align database payload typing for ty"
 ```
 
-### Task 5: Fix OATS Runtime And Prefect Type Errors
+### Task 5: Fix OATS Runtime And legacy orchestration Type Errors
 
 **Files:**
 - Modify: `python/oats/cli.py`
 - Modify: `python/oats/parser.py`
 - Modify: `python/oats/pr.py`
-- Modify: `python/oats/prefect/compiler.py`
-- Modify: `python/oats/prefect/flows.py`
-- Modify: `python/oats/prefect/tasks.py`
+- Modify: `python/oats/legacy-orchestration/compiler.py`
+- Modify: `python/oats/legacy-orchestration/flows.py`
+- Modify: `python/oats/legacy-orchestration/tasks.py`
 - Modify: `python/oats/runner.py`
 - Test: `tests/test_cli_runtime.py`
 - Test: `tests/test_runner.py`
-- Test: `tests/oats/test_prefect_compiler.py`
-- Test: `tests/oats/test_prefect_flows.py`
-- Test: `tests/oats/test_prefect_tasks.py`
-- Test: `tests/oats/test_prefect_worktree.py`
+- Test: `tests/oats/test_legacy-orchestration_compiler.py`
+- Test: `tests/oats/test_legacy-orchestration_flows.py`
+- Test: `tests/oats/test_legacy-orchestration_tasks.py`
+- Test: `tests/oats/test_legacy-orchestration_worktree.py`
 
-- [ ] **Step 1: Reproduce the OATS/Prefect failures**
+- [ ] **Step 1: Reproduce the OATS/legacy orchestration failures**
 
 Run:
 
@@ -609,7 +609,7 @@ uv run --group dev ty check \
   --error-on-warning
 ```
 
-Expected: FAIL on provider/status literals, `SessionId | None` narrowing, TypedDict keys in Codex runner events, `TextIO` vs `IO[str]`, and Prefect overload typing.
+Expected: FAIL on provider/status literals, `SessionId | None` narrowing, TypedDict keys in Codex runner events, `TextIO` vs `IO[str]`, and legacy orchestration overload typing.
 
 - [ ] **Step 2: Reuse the domain literal types instead of passing generic `str`**
 
@@ -640,12 +640,12 @@ class _CodexItemCompletedEvent(TypedDict, total=False):
 
 Then narrow `session_id` values before assigning them into `SessionId | None` fields.
 
-- [ ] **Step 4: Resolve the Prefect typing surfaces with explicit annotations or casts**
+- [ ] **Step 4: Resolve the legacy orchestration typing surfaces with explicit annotations or casts**
 
-For overload issues in `python/oats/prefect/flows.py` and possibly-missing submodule warnings in `python/oats/prefect/tasks.py`, use the smallest annotation or import fix that preserves behavior:
+For overload issues in `python/oats/legacy-orchestration/flows.py` and possibly-missing submodule warnings in `python/oats/legacy-orchestration/tasks.py`, use the smallest annotation or import fix that preserves behavior:
 
 ```python
-from prefect.runtime import flow_run, task_run
+from legacy-orchestration.runtime import flow_run, task_run
 ```
 
 and, if needed:
@@ -653,7 +653,7 @@ and, if needed:
 ```python
 from typing import cast
 
-submitted = cast("PrefectFuture[CompiledTaskResult]", prefect_compiled_task.submit(...))
+submitted = cast("legacy orchestrationFuture[CompiledTaskResult]", legacy-orchestration_compiled_task.submit(...))
 ```
 
 - [ ] **Step 5: Fix `python/oats/runner.py` stream-handle annotations and writes**
@@ -680,10 +680,10 @@ Run:
 uv run --group dev pytest -q \
   tests/test_cli_runtime.py \
   tests/test_runner.py \
-  tests/oats/test_prefect_compiler.py \
-  tests/oats/test_prefect_flows.py \
-  tests/oats/test_prefect_tasks.py \
-  tests/oats/test_prefect_worktree.py
+  tests/oats/test_legacy-orchestration_compiler.py \
+  tests/oats/test_legacy-orchestration_flows.py \
+  tests/oats/test_legacy-orchestration_tasks.py \
+  tests/oats/test_legacy-orchestration_worktree.py
 ```
 
 Expected: PASS.

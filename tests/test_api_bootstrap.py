@@ -193,6 +193,12 @@ class TestAppFactory:
         assert '"title": "Helaicopter API"' in json_text
         assert '"openapi": "3.1.0"' in json_text
         assert "title: Helaicopter API" in yaml_text
+        assert sorted(path.name for path in outputs.json_path.parent.iterdir()) == [
+            "helaicopter-api.json",
+            "helaicopter-api.yaml",
+            "helaicopter-frontend-app-api.json",
+            "helaicopter-oats-orchestration-api.json",
+        ]
         assert "/orchestration/prefect/flow-runs:" not in yaml_text
 
 
@@ -218,7 +224,7 @@ class TestGatewayDirection:
 
         surfaces = {surface["key"]: surface for surface in body["surfaces"]}
         assert surfaces["fastapi"]["isPrimary"] is True
-        assert "prefect" not in surfaces
+        assert set(surfaces) == {"fastapi", "frontend", "sqlite", "oats", "duckdb", "cache"}
         assert surfaces["oats"]["isPrimary"] is False
         assert surfaces["cache"]["servingClass"] == "internal-only"
 

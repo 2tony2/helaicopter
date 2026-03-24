@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a first-class stacked task-PR orchestration model in Oats, persist it through runtime and Prefect artifacts, expose it through the backend, and render / operate it from the orchestration UI.
+**Goal:** Build a first-class stacked task-PR orchestration model in Oats, persist it through runtime and legacy orchestration artifacts, expose it through the backend, and render / operate it from the orchestration UI.
 
-**Architecture:** Extend the existing Oats runtime and Prefect artifact contracts to a v2 branch / PR control plane instead of introducing a separate ledger. Keep the core orchestration truth file-backed under `.oats/`, add explicit run-scoped refresh / resume actions for GitHub snapshot advancement, and let the FastAPI + Next.js layers consume one normalized run graph that includes both execution and stacked-PR state.
+**Architecture:** Extend the existing Oats runtime and legacy orchestration artifact contracts to a v2 branch / PR control plane instead of introducing a separate ledger. Keep the core orchestration truth file-backed under `.oats/`, add explicit run-scoped refresh / resume actions for GitHub snapshot advancement, and let the FastAPI + Next.js layers consume one normalized run graph that includes both execution and stacked-PR state.
 
-**Tech Stack:** Python 3.13, Typer, Pydantic, Prefect 3, FastAPI, Next.js 16, React 19, SWR, `pytest`, `node:test`, `tsx`, ESLint
+**Tech Stack:** Python 3.13, Typer, Pydantic, legacy orchestration 3, FastAPI, Next.js 16, React 19, SWR, `pytest`, `node:test`, `tsx`, ESLint
 
 ---
 
@@ -28,20 +28,20 @@
 - `python/oats/pr.py` — PR snapshot refresh, merge-commit-only merge orchestration, child retargeting, and final-PR status capture.
 - `python/oats/runtime_state.py` — runtime v2 serialization, branch / PR event emission, and run `stack_status` handling.
 - `python/oats/cli.py` — run-scoped `refresh` / `resume` behavior, status rendering, and persisted PR action recording.
-- `python/oats/prefect/models.py` — add run-owned repo / PR context to payloads and task checkpoints.
-- `python/oats/prefect/compiler.py` — compile stacked-PR repo context into Prefect task payloads.
-- `python/oats/prefect/worktree.py` — derive / reuse parent branches and stable worktree paths from the new task repo context.
-- `python/oats/prefect/artifacts.py` — persist task PR snapshots, review snapshots, and run IDs into local flow-run artifacts.
-- `python/oats/prefect/tasks.py` — merge-gated task execution and task-level artifact updates.
-- `python/oats/prefect/flows.py` — block multi-dependency tasks until upstream PR merges, not just upstream executor success.
+- `python/oats/legacy-orchestration/models.py` — add run-owned repo / PR context to payloads and task checkpoints.
+- `python/oats/legacy-orchestration/compiler.py` — compile stacked-PR repo context into legacy orchestration task payloads.
+- `python/oats/legacy-orchestration/worktree.py` — derive / reuse parent branches and stable worktree paths from the new task repo context.
+- `python/oats/legacy-orchestration/artifacts.py` — persist task PR snapshots, review snapshots, and run IDs into local flow-run artifacts.
+- `python/oats/legacy-orchestration/tasks.py` — merge-gated task execution and task-level artifact updates.
+- `python/oats/legacy-orchestration/flows.py` — block multi-dependency tasks until upstream PR merges, not just upstream executor success.
 - `python/helaicopter_api/schema/orchestration.py` — expose feature branch, task PR, final PR, operation history, and action response fields.
-- `python/helaicopter_api/application/orchestration.py` — normalize runtime, run-record, and Prefect artifact state into one orchestration response.
+- `python/helaicopter_api/application/orchestration.py` — normalize runtime, run-record, and legacy orchestration artifact state into one orchestration response.
 - `python/helaicopter_api/router/orchestration.py` — add refresh / resume mutation routes and response wiring.
 - `tests/test_repo_config.py` — extend planning / dry-run expectations for stacked PR bases and merge policy.
 - `tests/test_runtime_state.py` — cover runtime v2 persistence and new events.
-- `tests/oats/test_prefect_worktree.py` — cover parent-branch-aware worktree prep.
-- `tests/oats/test_prefect_tasks.py` — cover task artifact snapshots and merge-gated execution details.
-- `tests/oats/test_prefect_flows.py` — cover flow-level merge gating and `run_id` propagation.
+- `tests/oats/test_legacy-orchestration_worktree.py` — cover parent-branch-aware worktree prep.
+- `tests/oats/test_legacy-orchestration_tasks.py` — cover task artifact snapshots and merge-gated execution details.
+- `tests/oats/test_legacy-orchestration_flows.py` — cover flow-level merge gating and `run_id` propagation.
 - `tests/test_api_orchestration.py` — cover enriched run payloads and refresh / resume routes.
 - `src/lib/types.ts` — add stacked-PR frontend types.
 - `src/lib/client/endpoints.ts` — add orchestration refresh / resume endpoints.
@@ -68,10 +68,10 @@
 - Modify: `python/oats/models.py`
 - Modify: `python/oats/planner.py`
 - Modify: `python/oats/run_definition.py`
-- Modify: `python/oats/prefect/models.py`
+- Modify: `python/oats/legacy-orchestration/models.py`
 - Test: `tests/test_repo_config.py`
 - Test: `tests/oats/test_stacked_prs.py`
-- Test: `tests/oats/test_prefect_worktree.py`
+- Test: `tests/oats/test_legacy-orchestration_worktree.py`
 
 - [ ] **Step 1: Write the failing planner and status-layer tests**
 
@@ -97,7 +97,7 @@ def test_multi_dependency_task_starts_merge_blocked() -> None:
 
 - [ ] **Step 2: Run the targeted Python tests and confirm they fail**
 
-Run: `uv run --group dev pytest tests/test_repo_config.py tests/oats/test_stacked_prs.py tests/oats/test_prefect_worktree.py -q`
+Run: `uv run --group dev pytest tests/test_repo_config.py tests/oats/test_stacked_prs.py tests/oats/test_legacy-orchestration_worktree.py -q`
 Expected: FAIL with missing `parent_branch`, missing stacked-PR helper functions, and mismatched `pr_base` assertions.
 
 - [ ] **Step 3: Implement the pure stacked-PR helper layer and v2 planning fields**
@@ -123,13 +123,13 @@ def derive_parent_branch(task: TaskSpec, *, feature_branch: str, upstream_branch
 
 - [ ] **Step 4: Re-run the targeted Python tests and confirm they pass**
 
-Run: `uv run --group dev pytest tests/test_repo_config.py tests/oats/test_stacked_prs.py tests/oats/test_prefect_worktree.py -q`
+Run: `uv run --group dev pytest tests/test_repo_config.py tests/oats/test_stacked_prs.py tests/oats/test_legacy-orchestration_worktree.py -q`
 Expected: PASS
 
 - [ ] **Step 5: Commit the planning-model slice**
 
 ```bash
-git add python/oats/stacked_prs.py python/oats/models.py python/oats/planner.py python/oats/run_definition.py python/oats/prefect/models.py tests/test_repo_config.py tests/oats/test_stacked_prs.py tests/oats/test_prefect_worktree.py
+git add python/oats/stacked_prs.py python/oats/models.py python/oats/planner.py python/oats/run_definition.py python/oats/legacy-orchestration/models.py tests/test_repo_config.py tests/oats/test_stacked_prs.py tests/oats/test_legacy-orchestration_worktree.py
 git commit -m "feat: model stacked PR planning"
 ```
 
@@ -313,20 +313,20 @@ git add python/oats/models.py python/oats/pr.py python/oats/runtime_state.py pyt
 git commit -m "feat: persist stacked PR runtime state"
 ```
 
-### Task 3: Gate Prefect Execution on PR Stack State and Persist Attempt Snapshots
+### Task 3: Gate legacy orchestration Execution on PR Stack State and Persist Attempt Snapshots
 
 **Files:**
-- Modify: `python/oats/prefect/models.py`
-- Modify: `python/oats/prefect/compiler.py`
-- Modify: `python/oats/prefect/worktree.py`
-- Modify: `python/oats/prefect/artifacts.py`
-- Modify: `python/oats/prefect/tasks.py`
-- Modify: `python/oats/prefect/flows.py`
-- Test: `tests/oats/test_prefect_worktree.py`
-- Test: `tests/oats/test_prefect_tasks.py`
-- Test: `tests/oats/test_prefect_flows.py`
+- Modify: `python/oats/legacy-orchestration/models.py`
+- Modify: `python/oats/legacy-orchestration/compiler.py`
+- Modify: `python/oats/legacy-orchestration/worktree.py`
+- Modify: `python/oats/legacy-orchestration/artifacts.py`
+- Modify: `python/oats/legacy-orchestration/tasks.py`
+- Modify: `python/oats/legacy-orchestration/flows.py`
+- Test: `tests/oats/test_legacy-orchestration_worktree.py`
+- Test: `tests/oats/test_legacy-orchestration_tasks.py`
+- Test: `tests/oats/test_legacy-orchestration_flows.py`
 
-- [ ] **Step 1: Write failing Prefect tests for merge-gated tasks and artifact snapshots**
+- [ ] **Step 1: Write failing legacy orchestration tests for merge-gated tasks and artifact snapshots**
 
 ```python
 def test_execute_compiled_flow_graph_blocks_multi_dependency_task_until_upstream_pr_merges(tmp_path: Path) -> None:
@@ -350,15 +350,15 @@ def test_flow_run_metadata_persists_run_id_for_backend_joining(tmp_path: Path) -
     assert metadata["flow_run_id"] == "flow-run-1"
 ```
 
-- [ ] **Step 2: Run the targeted Prefect tests and confirm they fail**
+- [ ] **Step 2: Run the targeted legacy orchestration tests and confirm they fail**
 
-Run: `uv run --group dev pytest tests/oats/test_prefect_worktree.py tests/oats/test_prefect_tasks.py tests/oats/test_prefect_flows.py -q`
+Run: `uv run --group dev pytest tests/oats/test_legacy-orchestration_worktree.py tests/oats/test_legacy-orchestration_tasks.py tests/oats/test_legacy-orchestration_flows.py -q`
 Expected: FAIL with missing `run_id`, missing parent-branch persistence, and no merge-gated task behavior.
 
-- [ ] **Step 3: Implement Prefect payload, flow, and artifact updates**
+- [ ] **Step 3: Implement legacy orchestration payload, flow, and artifact updates**
 
 ```python
-class PrefectTaskRepoContext(BaseModel):
+class legacy orchestrationTaskRepoContext(BaseModel):
     integration_branch: str
     task_branch: str
     parent_branch: str
@@ -381,16 +381,16 @@ if not upstream_prs_merged(task_node, artifact_store):
     return CompiledTaskResult(task_id=task_node.task_id, attempt=resolved_attempt, status="blocked")
 ```
 
-- [ ] **Step 4: Re-run the targeted Prefect tests and confirm they pass**
+- [ ] **Step 4: Re-run the targeted legacy orchestration tests and confirm they pass**
 
-Run: `uv run --group dev pytest tests/oats/test_prefect_worktree.py tests/oats/test_prefect_tasks.py tests/oats/test_prefect_flows.py -q`
+Run: `uv run --group dev pytest tests/oats/test_legacy-orchestration_worktree.py tests/oats/test_legacy-orchestration_tasks.py tests/oats/test_legacy-orchestration_flows.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit the Prefect slice**
+- [ ] **Step 5: Commit the legacy orchestration slice**
 
 ```bash
-git add python/oats/prefect/models.py python/oats/prefect/compiler.py python/oats/prefect/worktree.py python/oats/prefect/artifacts.py python/oats/prefect/tasks.py python/oats/prefect/flows.py tests/oats/test_prefect_worktree.py tests/oats/test_prefect_tasks.py tests/oats/test_prefect_flows.py
-git commit -m "feat: gate prefect flow tasks on PR stack state"
+git add python/oats/legacy-orchestration/models.py python/oats/legacy-orchestration/compiler.py python/oats/legacy-orchestration/worktree.py python/oats/legacy-orchestration/artifacts.py python/oats/legacy-orchestration/tasks.py python/oats/legacy-orchestration/flows.py tests/oats/test_legacy-orchestration_worktree.py tests/oats/test_legacy-orchestration_tasks.py tests/oats/test_legacy-orchestration_flows.py
+git commit -m "feat: gate legacy-orchestration flow tasks on PR stack state"
 ```
 
 ### Task 4: Expose Stacked PR State and Actions Through the Backend
@@ -594,12 +594,12 @@ Expected: PASS and updated `public/openapi/helaicopter-api.json` / `public/opena
 
 - [ ] **Step 3: Run the full Python verification suite for this feature**
 
-Run: `uv run --group dev pytest tests/test_repo_config.py tests/test_runtime_state.py tests/oats/test_stacked_prs.py tests/oats/test_pr_actions.py tests/oats/test_prefect_worktree.py tests/oats/test_prefect_tasks.py tests/oats/test_prefect_flows.py tests/test_api_orchestration.py -q`
+Run: `uv run --group dev pytest tests/test_repo_config.py tests/test_runtime_state.py tests/oats/test_stacked_prs.py tests/oats/test_pr_actions.py tests/oats/test_legacy-orchestration_worktree.py tests/oats/test_legacy-orchestration_tasks.py tests/oats/test_legacy-orchestration_flows.py tests/test_api_orchestration.py -q`
 Expected: PASS
 
 - [ ] **Step 4: Run the full frontend verification suite for this feature**
 
-Run: `node --import tsx --test src/lib/client/normalize.test.ts src/lib/client/mutations.test.ts src/lib/client/prefect-normalize.test.ts src/components/orchestration/tabs.test.ts src/components/orchestration/oats-view-model.test.ts`
+Run: `node --import tsx --test src/lib/client/normalize.test.ts src/lib/client/mutations.test.ts src/lib/client/legacy-orchestration-normalize.test.ts src/components/orchestration/tabs.test.ts src/components/orchestration/oats-view-model.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Run lint across the repo**

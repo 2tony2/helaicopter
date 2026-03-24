@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sqlite3
 
 import pytest
@@ -74,6 +75,25 @@ def _status_payload(path: str) -> dict[str, object]:
                 "inventorySummary": "No tables recorded",
                 "load": [],
             },
+            "duckdb": {
+                "key": "duckdb",
+                "label": "DuckDB Inspection Snapshot",
+                "engine": "DuckDB",
+                "role": "inspection",
+                "availability": "missing",
+                "health": "missing",
+                "operationalStatus": "DuckDB inspection snapshot has not been generated yet.",
+                "note": "DuckDB inspection snapshot",
+                "error": None,
+                "path": str(Path(path).with_suffix(".duckdb")),
+                "target": None,
+                "tableCount": 0,
+                "tables": [],
+                "sizeBytes": None,
+                "sizeDisplay": None,
+                "inventorySummary": "No tables recorded",
+                "load": [],
+            },
         },
     }
 
@@ -84,16 +104,13 @@ def test_settings_expose_nested_cli_and_database_sections(tmp_path) -> None:
         claude_dir=tmp_path / ".claude",
         codex_dir=tmp_path / ".codex",
         openclaw_dir=tmp_path / ".openclaw",
-        opencloud_dir=tmp_path / ".local" / "share" / "opencode",
     )
 
     assert settings.cli.claude_dir == tmp_path / ".claude"
     assert settings.cli.codex_dir == tmp_path / ".codex"
     assert settings.cli.openclaw_dir == tmp_path / ".openclaw"
-    assert settings.cli.opencloud_dir == tmp_path / ".local" / "share" / "opencode"
     assert settings.openclaw_agents_dir == tmp_path / ".openclaw" / "agents"
     assert settings.openclaw_agent_sessions_glob.endswith(".openclaw/agents/*/sessions")
-    assert settings.opencloud_sqlite_path == tmp_path / ".local" / "share" / "opencode" / "opencode.db"
     assert settings.database.runtime_dir == tmp_path / ".helaicopter" / "database-runtime"
     assert settings.database.sqlite.path == (
         tmp_path / "public" / "database-artifacts" / "oltp" / "helaicopter_oltp.sqlite"
@@ -302,8 +319,7 @@ def test_load_status_uses_shared_backend_project_root(monkeypatch, tmp_path) -> 
 
     assert loaded is not None
     assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
-    assert "prefectPostgres" not in loaded["databases"]
-    assert loaded["databases"]["frontendCache"]["key"] == "frontend_cache"
+    assert loaded["databases"]["duckdb"]["key"] == "duckdb"
 
 
 def test_run_migrations_uses_shared_backend_project_root(monkeypatch, tmp_path) -> None:

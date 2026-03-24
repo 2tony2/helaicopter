@@ -28,6 +28,19 @@ from helaicopter_db.export_pipeline import ExportMeta
 from helaicopter_db.models import ConversationRecord, FactConversation, OlapBase, OltpBase
 
 
+EXPECTED_INVALIDATED_CACHE_KEYS = [
+    "analytics",
+    "codex_session_artifacts",
+    "codex_threads_by_id",
+    "openclaw_session_artifacts",
+    "openclaw_transcript_artifacts",
+    "openclaw_discovery_snapshot",
+    "openclaw_memory_store_metadata",
+    "database_status",
+    "projects",
+]
+
+
 def _status_payload(
     *,
     status: str = "completed",
@@ -193,11 +206,7 @@ class TestDatabaseEndpoints:
             {"force": True, "trigger": "bootstrap", "stale_after_seconds": 21_600},
         ]
         assert services.cache.clear_calls == 0
-        assert {
-            "analytics",
-            "database_status",
-            "projects",
-        }.issubset(set(services.cache.deleted_keys))
+        assert services.cache.deleted_keys == EXPECTED_INVALIDATED_CACHE_KEYS
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_status_endpoint_bootstraps_refresh_when_status_is_missing(self) -> None:
@@ -216,11 +225,7 @@ class TestDatabaseEndpoints:
             {"force": True, "trigger": "bootstrap", "stale_after_seconds": 21_600},
         ]
         assert services.cache.clear_calls == 0
-        assert {
-            "analytics",
-            "database_status",
-            "projects",
-        }.issubset(set(services.cache.deleted_keys))
+        assert services.cache.deleted_keys == EXPECTED_INVALIDATED_CACHE_KEYS
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_refresh_endpoint_returns_status_and_invalidates_backend_caches(self) -> None:
@@ -253,11 +258,7 @@ class TestDatabaseEndpoints:
             {"force": True, "trigger": "manual-ui", "stale_after_seconds": 123},
         ]
         assert services.cache.clear_calls == 0
-        assert {
-            "analytics",
-            "database_status",
-            "projects",
-        }.issubset(set(services.cache.deleted_keys))
+        assert services.cache.deleted_keys == EXPECTED_INVALIDATED_CACHE_KEYS
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_refresh_endpoint_preserves_unrelated_cache_entries(self) -> None:
@@ -341,11 +342,7 @@ class TestDatabaseEndpoints:
         assert body["databases"]["sqlite"]["key"] == "sqlite"
         assert body["databases"]["duckdb"]["key"] == "duckdb"
         assert services.cache.clear_calls == 0
-        assert {
-            "analytics",
-            "database_status",
-            "projects",
-        }.issubset(set(services.cache.deleted_keys))
+        assert services.cache.deleted_keys == EXPECTED_INVALIDATED_CACHE_KEYS
         assert services.sqlite_engine.dispose_calls == 1
 
     def test_refresh_endpoint_rejects_snake_case_payload_keys(self) -> None:
@@ -382,10 +379,11 @@ class TestDatabaseEndpoints:
         assert "stale_after_seconds" not in request_schema["properties"]
         assert "lastSuccessfulRefreshAt" in status_schema["properties"]
         assert "last_successful_refresh_at" not in status_schema["properties"]
-        assert "frontendCache" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
-        assert "duckdb" in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
-        assert "prefectPostgres" not in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
-        assert "legacyDuckdb" not in schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]
+        assert set(schema["components"]["schemas"]["DatabaseArtifactsResponse"]["properties"]) == {
+            "frontendCache",
+            "sqlite",
+            "duckdb",
+        }
         assert "servingClass" in table_schema["properties"]
         assert "integrationType" in table_schema["properties"]
         assert "fastapiRoutes" in table_schema["properties"]

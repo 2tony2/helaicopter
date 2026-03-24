@@ -62,8 +62,6 @@ from oats.runtime_state import (
     write_plan_snapshot,
     write_runtime_state,
 )
-
-
 app = typer.Typer(
     help=(
         "Overnight Oats CLI for repo-local orchestration runs, status inspection, "

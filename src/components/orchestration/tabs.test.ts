@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveOrchestrationInitialTab } from "./tabs";
+import { resolveOrchestrationInitialTab } from "../../lib/routes.ts";
 
 test("resolveOrchestrationInitialTab defaults to orchestration and rejects removed legacy tabs", () => {
   assert.equal(resolveOrchestrationInitialTab(undefined), "orchestration");

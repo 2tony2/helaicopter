@@ -214,8 +214,7 @@ export function DatabaseDashboard() {
             <h1 className="text-2xl font-bold">Databases and Caches Overview</h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
               Health, inventory, size, and operational load for the frontend short-term cache,
-              the app SQLite store, the DuckDB inspection snapshot, and the orchestration metadata
-              backing service.
+              the app SQLite store, and the DuckDB inspection snapshot.
             </p>
             <p className="text-sm text-muted-foreground">
               {data.scopeLabel ?? "Historical conversations before today from the last 365 days"}.
@@ -247,7 +246,7 @@ export function DatabaseDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Refresh Status</CardTitle>

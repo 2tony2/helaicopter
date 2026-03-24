@@ -44,15 +44,13 @@ import {
 export function providerLabel(provider: FrontendProvider): string {
   if (provider === "claude") return "Claude";
   if (provider === "codex") return "Codex";
-  if (provider === "openclaw") return "OpenClaw";
-  return "OpenCloud";
+  return "OpenClaw";
 }
 
 function providerDotClass(provider: FrontendProvider): string {
   if (provider === "claude") return "bg-emerald-500";
   if (provider === "codex") return "bg-sky-500";
-  if (provider === "openclaw") return "bg-amber-500";
-  return "bg-fuchsia-500";
+  return "bg-amber-500";
 }
 
 function formatTokens(n: number): string {
@@ -77,7 +75,6 @@ export function resolveConversationProvider(
   if (provider) return provider;
   if (projectPath.startsWith("codex:")) return "codex";
   if (projectPath.startsWith("openclaw:")) return "openclaw";
-  if (projectPath.startsWith("opencloud:")) return "opencloud";
   return "claude";
 }
 
@@ -549,7 +546,7 @@ export function ConversationViewer({
           replaceRoute({ tab: nextTab });
         }}
       >
-        <TabsList>
+        <TabsList className="overflow-x-auto">
           <TabsTrigger value="messages">Messages</TabsTrigger>
           <TabsTrigger value="plans">
             Plans {plans.length > 0 ? `(${plans.length})` : ""}
@@ -750,7 +747,7 @@ export function ConversationViewer({
           <div className="mt-4">
             {tasks && tasks.length > 0 ? (
               <ScrollArea className="max-h-[600px]">
-                <pre className="text-sm bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap">
+                <pre className="text-sm bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-x-auto">
                   {JSON.stringify(tasks, null, 2)}
                 </pre>
               </ScrollArea>
@@ -787,7 +784,7 @@ export function ConversationViewer({
               </Button>
             </div>
             <ScrollArea className="h-[calc(100vh-16rem)]">
-              <pre className="text-xs bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-auto">
+              <pre className="text-xs bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-x-auto">
                 {JSON.stringify(conversation, null, 2)}
               </pre>
             </ScrollArea>

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the orchestration tab read authoritative persisted OATS orchestration facts instead of legacy file-merged run artifacts, while improving status reconciliation with Prefect.
+**Goal:** Make the orchestration tab read authoritative persisted OATS orchestration facts instead of legacy file-merged run artifacts, while improving status reconciliation.
 
-**Architecture:** Replace the `/orchestration/oats` list builder with a SQLite fact-table reader over persisted orchestration runs and task attempts. Reconstruct the existing frontend run shape from those facts, filter known sample/example noise, and overlay Prefect flow-run state when it sharpens active run status.
+**Architecture:** Replace the `/orchestration/oats` list builder with a SQLite fact-table reader over persisted orchestration runs and task attempts. Reconstruct the existing frontend run shape from those facts, filter known sample/example noise, and overlay legacy orchestration flow-run state when it sharpens active run status through local artifact reads.
 
-**Tech Stack:** FastAPI, SQLite/SQLAlchemy, existing OATS/Prefect schemas, Next.js, SWR, pytest
+**Tech Stack:** FastAPI, SQLite/SQLAlchemy, existing OATS schemas, Next.js, SWR, pytest
 
 ---
 
@@ -26,7 +26,7 @@
 
 - [ ] Implement a persisted-facts reader for the orchestration run list.
 - [ ] Reconstruct run/task/DAG payloads from facts and filter sample/example noise.
-- [ ] Overlay Prefect flow-run state for matching persisted Prefect runs.
+- [ ] Overlay legacy orchestration flow-run state for matching persisted runs.
 - [ ] Run focused backend tests and confirm green.
 
 ### Task 3: Frontend contract verification

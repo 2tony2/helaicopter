@@ -44,45 +44,12 @@ def _default_project_root() -> Path:
     return cwd
 
 
-def _default_project_root() -> Path:
-    cwd = Path.cwd().resolve()
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-common-dir"],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        return cwd
-
-    if result.returncode != 0:
-        return cwd
-
-    raw_path = result.stdout.strip()
-    if not raw_path:
-        return cwd
-
-    git_common_dir = Path(raw_path)
-    if not git_common_dir.is_absolute():
-        git_common_dir = (cwd / git_common_dir).resolve()
-    else:
-        git_common_dir = git_common_dir.resolve()
-
-    if git_common_dir.name == ".git":
-        return git_common_dir.parent
-
-    return cwd
-
-
 class CliSettings(BaseModel):
     """Filesystem roots owned by local Claude and Codex integrations."""
 
     claude_dir: Path
     codex_dir: Path
     openclaw_dir: Path
-    opencloud_dir: Path
 
     @property
     def claude_projects_dir(self) -> Path:
@@ -123,10 +90,6 @@ class CliSettings(BaseModel):
     @property
     def openclaw_memory_sqlite_path(self) -> Path:
         return self.openclaw_dir / "memory" / "main.sqlite"
-
-    @property
-    def opencloud_sqlite_path(self) -> Path:
-        return self.opencloud_dir / "opencode.db"
 
 
 class DatabaseArtifactSettings(BaseModel):
@@ -218,10 +181,6 @@ class Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".openclaw",
         description="Root of the OpenClaw data directory (typically ~/.openclaw).",
     )
-    opencloud_dir: Path = Field(
-        default_factory=lambda: Path.home() / ".local" / "share" / "opencode",
-        description="Root of the OpenCode runtime data directory that backs the OpenCloud provider.",
-    )
     debug: bool = False
 
     @cached_property
@@ -234,7 +193,6 @@ class Settings(BaseSettings):
             claude_dir=self.claude_dir,
             codex_dir=self.codex_dir,
             openclaw_dir=self.openclaw_dir,
-            opencloud_dir=self.opencloud_dir,
         )
 
     @cached_property
@@ -338,10 +296,6 @@ class Settings(BaseSettings):
     @property
     def openclaw_memory_sqlite_path(self) -> Path:
         return self.cli.openclaw_memory_sqlite_path
-
-    @property
-    def opencloud_sqlite_path(self) -> Path:
-        return self.cli.opencloud_sqlite_path
 
     @property
     def app_sqlite_path(self) -> Path:

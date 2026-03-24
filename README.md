@@ -167,7 +167,9 @@ Dedicated page documenting all API pricing used for cost estimates. All cost est
 
 - `src/` is frontend-only code: App Router pages, React components, hooks, and HTTP clients.
 - `python/helaicopter_api/` owns the backend surface: FastAPI app creation, dependency wiring, routers, and application services.
+- Compatibility shim: legacy `src/components/*` and related frontend paths still work while the layered frontend migration continues.
 - `python/oats/` contains the orchestration CLI packaged alongside the backend code.
+- Backend rollout details and verification commands live in `docs/fastapi-backend-rollout.md`.
 
 ## How It Works
 

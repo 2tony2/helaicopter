@@ -7,16 +7,14 @@ Fix the post-merge regressions where:
 - docs content exists but is not accessible from the app
 - `/docs` does not exist in the Next.js app
 - database status is incomplete and stale for some resources
-- `/orchestration` still exposes the older Prefect-first tab model
 - conversation URLs do not deep-link to a unique per-message UUID
 
 ## Findings
 
 - The app has no `src/app/docs` route even though Mintlify-style docs exist under `docs/`.
 - The sidebar does not link to docs.
-- The backend database status payload types include `frontendCache` and `prefectPostgres`, but `build_status_payload()` only emits `sqlite` and `duckdb`.
+- The backend database status payload types include `frontendCache`, but `build_status_payload()` only emits `sqlite` and `duckdb`.
 - The frontend database hook refreshes every five minutes, which is too slow for a live status surface.
-- Orchestration routing still defaults to `prefect`, and the hub still labels the primary tab `Prefect`.
 - Conversation messages already have stable IDs from the backend, but the route model only carries tab/plan/subagent state.
 
 ## Plan
@@ -27,16 +25,11 @@ Fix the post-merge regressions where:
    - Add a sidebar link to `/docs`.
 
 2. Repair database status completeness and sync behavior.
-   - Emit `frontendCache` and `prefectPostgres` from the backend status payload.
-   - Align frontend types and normalization with all four resources.
+   - Emit `frontendCache` from the backend status payload.
+   - Align frontend types and normalization with all resources.
    - Tighten polling cadence for the dashboard.
 
-3. Align the orchestration page with the requested UX.
-   - Rename the primary tab from `Prefect` to `Orchestration`.
-   - Make orchestration the default tab.
-   - Remove redundant Prefect health chrome from the main tab while keeping the embedded Prefect UI tab.
-
-4. Add stable per-message deep links.
+3. Add stable per-message deep links.
    - Extend conversation route helpers with a `message` parameter.
    - Persist selected message state in URLs.
    - Scroll/select by message ID on load.

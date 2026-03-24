@@ -2,7 +2,6 @@ import { z } from "zod";
 
 const trimmedString = z.string().trim();
 const absoluteUrlSchema = trimmedString.url("Expected an absolute URL.");
-
 function stripTrailingSlashes(value: string) {
   return value.replace(/\/+$/, "");
 }

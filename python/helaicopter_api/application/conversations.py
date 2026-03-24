@@ -40,11 +40,6 @@ from helaicopter_api.ports.app_sqlite import (
 )
 from helaicopter_api.ports.claude_fs import RawConversationEvent
 from helaicopter_api.ports.codex_sqlite import CodexSessionArtifact, CodexThreadRecord
-from helaicopter_api.ports.opencloud_sqlite import (
-    OpenCloudMessageRecord,
-    OpenCloudPartRecord,
-    OpenCloudSessionRecord,
-)
 from helaicopter_api.ports.openclaw_fs import (
     OpenClawDiscoverySnapshot,
     OpenClawSessionArtifact,
@@ -149,10 +144,6 @@ def list_conversations(
         for shaped in _list_claude_live_summaries(services, project=project, days=days):
             _merge_summary(summaries_by_key, shaped)
 
-    if project is None or project.startswith("opencloud:"):
-        for shaped in _list_opencloud_live_summaries(services, project=project, days=days):
-            _merge_summary(summaries_by_key, shaped)
-
     if project is None or project.startswith("openclaw:"):
         for shaped in _list_openclaw_live_summaries(services, project=project, days=days):
             _merge_summary(summaries_by_key, shaped)
@@ -210,12 +201,6 @@ def get_conversation(
         session_id=_session_id(session_id),
     ):
         conversation = _shape_historical_detail(historical, services=services)
-    elif project_path.startswith("opencloud:"):
-        conversation = _get_opencloud_live_conversation(
-            services,
-            session_id=session_id,
-            project_path=project_path,
-        )
     elif project_path.startswith("openclaw:"):
         conversation = _get_openclaw_live_conversation(
             services,
@@ -552,8 +537,6 @@ def get_tasks(
 
 
 def _provider_for_project_path(project_path: str) -> str:
-    if project_path.startswith("opencloud:"):
-        return "opencloud"
     if project_path.startswith("openclaw:"):
         return "openclaw"
     return "codex" if project_path.startswith("codex:") else "claude"
@@ -633,8 +616,6 @@ def _resolve_conversation_identity(
     )
     if persisted is not None:
         return persisted
-    if provider == "opencloud":
-        return _resolve_live_opencloud_conversation_identity(services, session_id=resolved_session_id)
     if provider == "codex":
         return _resolve_live_codex_conversation_identity(services, session_id=resolved_session_id)
     if provider == "openclaw":
@@ -775,33 +756,6 @@ def _resolve_live_openclaw_conversation_identity(
         ),
         project_path=summary.project_path,
         thread_type=summary.thread_type,
-    )
-
-
-def _resolve_live_opencloud_conversation_identity(
-    services: BackendServices,
-    *,
-    session_id: str,
-) -> ConversationRefResolutionResponse | None:
-    session = services.opencloud_store.get_session(session_id)
-    if session is None:
-        return None
-    summary = _summarize_opencloud_session(
-        session,
-        messages=services.opencloud_store.list_messages(session.id),
-        parts=services.opencloud_store.list_parts(session.id),
-    )
-    if summary is None:
-        return None
-    return _conversation_ref_resolution(
-        route_target=_conversation_route_target(
-            session_id=summary.session_id,
-            route_slug=summary.route_slug,
-            project_path=summary.project_path,
-        ),
-        project_path=summary.project_path,
-        thread_type=summary.thread_type,
-        parent_session_id=session.parent_id,
     )
 
 
@@ -1193,117 +1147,6 @@ def _list_claude_live_summaries(
     return summaries
 
 
-def _list_opencloud_live_summaries(
-    services: BackendServices,
-    *,
-    project: str | None,
-    days: int | None,
-) -> list[ConversationSummaryResponse]:
-    cutoff_ms = _cutoff_ms(days)
-    summaries: list[ConversationSummaryResponse] = []
-    for session in _opencloud_sessions(services):
-        if cutoff_ms and session.time_updated < cutoff_ms:
-            continue
-        summary = _summarize_opencloud_session(
-            session,
-            messages=services.opencloud_store.list_messages(session.id),
-            parts=services.opencloud_store.list_parts(session.id),
-        )
-        if summary is None:
-            continue
-        if project is not None and summary.project_path != project:
-            continue
-        if cutoff_ms and summary.last_updated_at < cutoff_ms:
-            continue
-        summaries.append(summary)
-    return summaries
-
-
-def _summarize_opencloud_session(
-    session: OpenCloudSessionRecord,
-    *,
-    messages: list[OpenCloudMessageRecord],
-    parts: list[OpenCloudPartRecord],
-) -> ConversationSummaryResponse | None:
-    if not messages:
-        return None
-
-    first_message = ""
-    message_count = 0
-    model: str | None = None
-    total_usage = _UsageTotals()
-    total_reasoning_tokens = 0
-    tool_use_count = 0
-    failed_tool_call_count = 0
-    tool_breakdown: dict[str, int] = {}
-    created_at = float(session.time_created)
-    end_timestamp = float(session.time_updated)
-    parts_by_message = _opencloud_parts_by_message(parts)
-
-    for message in messages:
-        data = _object_dict(message.data)
-        role = _string_or_none(data.get("role"))
-        if role not in {"user", "assistant"}:
-            continue
-        message_count += 1
-        if role == "user" and not first_message:
-            first_message = _truncate(_first_opencloud_user_message(parts_by_message.get(message.id, [])) or session.title, max_length=200)
-            continue
-
-        if role != "assistant":
-            continue
-        model = _string_or_none(data.get("modelID")) or model
-        usage = _opencloud_usage_for_message(message, parts_by_message.get(message.id, []))
-        if usage["usage"].total_tokens > 0 or usage["reasoning_tokens"] > 0:
-            total_usage = usage["usage"]
-            total_reasoning_tokens = usage["reasoning_tokens"]
-        for part in parts_by_message.get(message.id, []):
-            payload = _object_dict(part.data)
-            if _string_or_none(payload.get("type")) != "tool":
-                continue
-            tool_name = _string_or_none(payload.get("tool")) or "unknown"
-            tool_use_count += 1
-            tool_breakdown[tool_name] = tool_breakdown.get(tool_name, 0) + 1
-            state = _dict_or_none(payload.get("state"))
-            if _string_or_none(state.get("status")) == "error":
-                failed_tool_call_count += 1
-
-    project_path = _opencloud_project_path(session.directory)
-    route_target = _conversation_route_target_from_first_message(
-        session_id=session.id,
-        first_message=(first_message or session.title)[:200],
-        project_path=project_path,
-    )
-    last_updated_at = max(end_timestamp, *(float(message.time_updated) for message in messages), float(session.time_updated))
-    return ConversationSummaryResponse(
-        session_id=_session_id(session.id),
-        provider="opencloud",
-        project_path=project_path,
-        project_name=_project_display_name(project_path),
-        route_slug=route_target.route_slug,
-        conversation_ref=route_target.conversation_ref,
-        thread_type="subagent" if session.parent_id else "main",
-        first_message=(first_message or session.title)[:200],
-        timestamp=created_at,
-        created_at=created_at,
-        last_updated_at=last_updated_at,
-        is_running=_is_likely_active(last_updated_at),
-        message_count=message_count,
-        model=model,
-        total_input_tokens=total_usage.input_tokens,
-        total_output_tokens=total_usage.output_tokens,
-        total_cache_creation_tokens=total_usage.cache_creation_tokens,
-        total_cache_read_tokens=total_usage.cache_read_tokens,
-        tool_use_count=tool_use_count,
-        failed_tool_call_count=failed_tool_call_count,
-        tool_breakdown=tool_breakdown,
-        subagent_count=0,
-        subagent_type_breakdown={},
-        task_count=0,
-        total_reasoning_tokens=total_reasoning_tokens or None,
-    )
-
-
 def _list_openclaw_live_summaries(
     services: BackendServices,
     *,
@@ -1581,130 +1424,6 @@ def _get_claude_live_conversation(
         events=events,
         modified_at_ms=_claude_session_modified_at_ms(services, project_path=project_path, session_id=session_id),
         thread_type="main",
-    )
-
-
-def _get_opencloud_live_conversation(
-    services: BackendServices,
-    *,
-    session_id: str,
-    project_path: str,
-) -> ConversationDetailResponse | None:
-    session = services.opencloud_store.get_session(session_id)
-    if session is None:
-        return None
-    if _opencloud_project_path(session.directory) != project_path:
-        return None
-
-    messages = services.opencloud_store.list_messages(session.id)
-    parts = services.opencloud_store.list_parts(session.id)
-    if not messages:
-        return None
-
-    parts_by_message = _opencloud_parts_by_message(parts)
-    first_message = ""
-    detail_messages: list[ConversationMessageResponse] = []
-    total_usage = _UsageTotals()
-    total_reasoning_tokens = 0
-    model: str | None = None
-    created_at = float(session.time_created)
-    end_time = float(session.time_updated)
-
-    for message in messages:
-        data = _object_dict(message.data)
-        role = _string_or_none(data.get("role"))
-        message_parts = parts_by_message.get(message.id, [])
-        ts = float(message.time_created)
-        if ts:
-            created_at = min(created_at, ts)
-            end_time = max(end_time, float(message.time_updated))
-
-        if role == "user":
-            user_text = _first_opencloud_user_message(message_parts)
-            if user_text and not first_message:
-                first_message = _truncate(user_text, max_length=200)
-            blocks = [_text_block(text) for text in _opencloud_user_texts(message_parts)]
-            if blocks:
-                detail_messages.append(
-                    ConversationMessageResponse(
-                        id=message.id,
-                        role="user",
-                        timestamp=ts,
-                        blocks=blocks,
-                    )
-                )
-            continue
-
-        if role != "assistant":
-            continue
-
-        model = _string_or_none(data.get("modelID")) or model
-        usage_snapshot = _opencloud_usage_for_message(message, message_parts)
-        if usage_snapshot["usage"].total_tokens > 0 or usage_snapshot["reasoning_tokens"] > 0:
-            total_usage = usage_snapshot["usage"]
-            total_reasoning_tokens = usage_snapshot["reasoning_tokens"]
-
-        blocks: list[ConversationMessageBlockResponse] = []
-        for part in message_parts:
-            payload = _object_dict(part.data)
-            part_type = _string_or_none(payload.get("type"))
-            if part_type == "reasoning":
-                thinking = _string_or_none(payload.get("text"))
-                if thinking:
-                    blocks.append(_thinking_block(thinking))
-            elif part_type == "text":
-                text = _string_or_none(payload.get("text"))
-                if text:
-                    blocks.append(_text_block(text))
-            elif part_type == "tool":
-                state = _dict_or_none(payload.get("state"))
-                result = _string_or_none(state.get("output")) or _string_or_none(state.get("error"))
-                blocks.append(
-                    _tool_call_block(
-                        tool_use_id=_string_or_none(payload.get("callID")),
-                        tool_name=_string_or_none(payload.get("tool")) or "unknown",
-                        input_payload=_dict_or_none(state.get("input")),
-                        result=result,
-                        is_error=_string_or_none(state.get("status")) == "error",
-                    )
-                )
-        if not blocks:
-            continue
-        detail_messages.append(
-            ConversationMessageResponse(
-                id=message.id,
-                role="assistant",
-                timestamp=ts,
-                blocks=blocks,
-                usage=usage_snapshot["usage"].response() if usage_snapshot["usage"].total_tokens else None,
-                model=_string_or_none(data.get("modelID")) or model,
-                reasoning_tokens=usage_snapshot["reasoning_tokens"] or None,
-            )
-        )
-
-    route_target = _conversation_route_target_from_first_message(
-        session_id=session.id,
-        first_message=first_message or session.title,
-        project_path=project_path,
-    )
-    return ConversationDetailResponse(
-        session_id=_session_id(session.id),
-        provider="opencloud",
-        project_path=project_path,
-        route_slug=route_target.route_slug,
-        conversation_ref=route_target.conversation_ref,
-        thread_type="subagent" if session.parent_id else "main",
-        created_at=created_at,
-        last_updated_at=end_time,
-        is_running=_is_likely_active(end_time),
-        messages=detail_messages,
-        plans=[],
-        total_usage=total_usage.response(),
-        model=model,
-        start_time=created_at,
-        end_time=end_time,
-        subagents=[],
-        total_reasoning_tokens=total_reasoning_tokens or None,
     )
 
 
@@ -3345,19 +3064,6 @@ def _parse_openclaw_ref_session_id(ref_session_id: str) -> tuple[str | None, str
     return None, ref_session_id
 
 
-def _opencloud_sessions(services: BackendServices) -> list[OpenCloudSessionRecord]:
-    cached = services.cache.get("opencloud_sessions")
-    if isinstance(cached, list):
-        return cached
-    sessions = services.opencloud_store.list_sessions()
-    services.cache.set(
-        "opencloud_sessions",
-        sessions,
-        ttl_seconds=_LIVE_CONVERSATION_CACHE_TTL_SECONDS,
-    )
-    return sessions
-
-
 def _parse_jsonl_objects(content: str) -> list[dict[str, Any]]:
     objects: list[dict[str, Any]] = []
     for line in content.splitlines():
@@ -3382,66 +3088,6 @@ def _message_content_list(message: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(content, list):
         return []
     return [item for item in content if isinstance(item, dict)]
-
-
-def _opencloud_parts_by_message(parts: list[OpenCloudPartRecord]) -> dict[str, list[OpenCloudPartRecord]]:
-    grouped: dict[str, list[OpenCloudPartRecord]] = defaultdict(list)
-    for part in parts:
-        grouped[part.message_id].append(part)
-    return grouped
-
-
-def _opencloud_user_texts(parts: list[OpenCloudPartRecord]) -> list[str]:
-    texts: list[str] = []
-    for part in parts:
-        payload = _object_dict(part.data)
-        if _string_or_none(payload.get("type")) != "text":
-            continue
-        text = _string_or_none(payload.get("text"))
-        if text:
-            texts.append(text)
-    return texts
-
-
-def _first_opencloud_user_message(parts: list[OpenCloudPartRecord]) -> str:
-    for text in _opencloud_user_texts(parts):
-        if text:
-            return text
-    return ""
-
-
-def _opencloud_usage_for_message(
-    message: OpenCloudMessageRecord,
-    parts: list[OpenCloudPartRecord],
-) -> dict[str, _UsageTotals | int]:
-    for part in reversed(parts):
-        payload = _object_dict(part.data)
-        if _string_or_none(payload.get("type")) != "step-finish":
-            continue
-        tokens = _dict_or_none(payload.get("tokens"))
-        cache = _dict_or_none(tokens.get("cache"))
-        return {
-            "usage": _UsageTotals(
-                input_tokens=_int_value(tokens.get("input")),
-                output_tokens=_int_value(tokens.get("output")),
-                cache_creation_tokens=_int_value(cache.get("write")),
-                cache_read_tokens=_int_value(cache.get("read")),
-            ),
-            "reasoning_tokens": _int_value(tokens.get("reasoning")),
-        }
-
-    payload = _object_dict(message.data)
-    tokens = _dict_or_none(payload.get("tokens"))
-    cache = _dict_or_none(tokens.get("cache"))
-    return {
-        "usage": _UsageTotals(
-            input_tokens=_int_value(tokens.get("input")),
-            output_tokens=_int_value(tokens.get("output")),
-            cache_creation_tokens=_int_value(cache.get("write")),
-            cache_read_tokens=_int_value(cache.get("read")),
-        ),
-        "reasoning_tokens": _int_value(tokens.get("reasoning")),
-    }
 
 
 def _first_user_message_text(message: dict[str, Any]) -> str:
@@ -3911,8 +3557,6 @@ def _tool_category(tool_name: str) -> ContextCategory:
 
 
 def _project_display_name(project_path: str) -> str:
-    if project_path.startswith("opencloud:"):
-        return _project_display_name(project_path[len("opencloud:"):])
     if project_path.startswith("openclaw:"):
         return project_path
     if project_path.startswith("codex:"):
@@ -3933,21 +3577,13 @@ def _project_display_name(project_path: str) -> str:
 
 
 def _project_full_path(services: BackendServices, project_path: str) -> str:
-    if (
-        project_path.startswith("codex:")
-        or project_path.startswith("openclaw:")
-        or project_path.startswith("opencloud:")
-    ):
+    if project_path.startswith("codex:") or project_path.startswith("openclaw:"):
         return project_path
     return str(services.settings.claude_projects_dir / project_path)
 
 
 def _cwd_to_project_path(cwd: str) -> str:
     return cwd.replace("/", "-") if cwd else "unknown"
-
-
-def _opencloud_project_path(cwd: str) -> str:
-    return f"opencloud:{_cwd_to_project_path(cwd)}"
 
 
 def _cwd_to_display_name(cwd: str) -> str:

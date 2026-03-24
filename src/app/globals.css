@@ -193,3 +193,18 @@ body {
   background: var(--muted);
   font-weight: 600;
 }
+
+/* iOS safe area and WebView support */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Prevent rubber-banding on non-scrollable areas (iOS WebView) */
+html {
+  overscroll-behavior: none;
+}

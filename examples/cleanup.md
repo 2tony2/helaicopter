@@ -14,7 +14,7 @@ Acceptance criteria:
 - compatibility is preserved where outright renames would break active callers without a transition
 
 Notes:
-- prioritize active Oats, Prefect, orchestration, and API surfaces
+- prioritize active Oats, orchestration, and API surfaces
 - produce a short inventory of what was removed vs renamed
 - do not do speculative cleanup outside names that are clearly misleading or dead
 
@@ -40,7 +40,7 @@ Notes:
 - make the sidebar labels clear about which spec each link represents
 
 Validation override:
-- uv run pytest -q tests/test_api_bootstrap.py tests/test_api_orchestration.py tests/test_api_prefect_orchestration.py
+- uv run pytest -q tests/test_api_bootstrap.py tests/test_api_orchestration.py
 - npm run lint
 
 ### docs_framework_research

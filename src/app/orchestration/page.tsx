@@ -4,7 +4,7 @@ import { resolveOrchestrationInitialTab } from "@/components/orchestration/tabs"
 export default function OrchestrationPage({
   searchParams,
 }: {
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; flowRunId?: string };
 }) {
   const { tab } = searchParams;
   const initialTab = resolveOrchestrationInitialTab(tab);

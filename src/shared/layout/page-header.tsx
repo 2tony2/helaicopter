@@ -20,7 +20,7 @@ export function PageHeader({
           <p className="text-muted-foreground mt-1">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="shrink-0">{actions}</div> : null}
+      {actions ? <div className="shrink-0 w-full sm:w-auto">{actions}</div> : null}
     </div>
   );
 }

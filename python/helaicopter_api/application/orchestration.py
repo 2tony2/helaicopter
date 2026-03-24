@@ -99,7 +99,7 @@ def list_oats_runs(services: InstanceOf[BackendServices]) -> list[OrchestrationR
 
     Args:
         services: Initialised backend services providing the OATS run store
-            and OATS runtime artifacts.
+            and optional backend services.
 
     Returns:
         List of ``OrchestrationRunResponse`` objects sorted by last-updated

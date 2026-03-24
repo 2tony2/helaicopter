@@ -15,7 +15,7 @@ export {
 };
 export type { ConversationDetailTab, OrchestrationTab };
 
-export type ConversationRouteProvider = "claude" | "codex" | "openclaw" | "opencloud";
+export type ConversationRouteProvider = "claude" | "codex" | "openclaw";
 
 export type ConversationCanonicalTarget =
   | {
@@ -73,8 +73,7 @@ export type ConversationRouteDecision =
   | {
       kind: "not-found";
     };
-
-const canonicalConversationProviders = ["claude", "codex", "openclaw", "opencloud"] as const;
+const canonicalConversationProviders = ["claude", "codex", "openclaw"] as const;
 
 type ParsedConversationRef = {
   conversationRef: string;
@@ -99,7 +98,6 @@ type ConversationRouteDecisionOptions = {
   validPlanIds?: Iterable<string>;
   validAgentIds?: Iterable<string>;
 };
-
 function normalizeLegacyEntityId(value?: string | null): string | undefined {
   if (!value) {
     return undefined;

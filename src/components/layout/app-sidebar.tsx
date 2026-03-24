@@ -13,6 +13,8 @@ import {
   Sparkles,
   BookOpen,
 } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -33,8 +35,19 @@ const apiItems = [
 ];
 const apiSection = { label: "API" };
 
-export function AppSidebar() {
+export function AppSidebar({ onNavClick }: { onNavClick?: () => void } = {}) {
   const pathname = usePathname();
+
+  async function handleNavClick() {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Haptics.impact({ style: ImpactStyle.Light });
+      } catch {
+        // Haptics not available
+      }
+    }
+    onNavClick?.();
+  }
 
   return (
     <aside className="w-64 border-r bg-muted/30 min-h-screen flex flex-col">
@@ -54,6 +67,7 @@ export function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={handleNavClick}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                 isActive
@@ -92,7 +106,7 @@ export function AppSidebar() {
           }
 
           return (
-            <Link key={item.href} href={item.href} className={linkClassName}>
+            <Link key={item.href} href={item.href} onClick={handleNavClick} className={linkClassName}>
               {"icon" in item && item.icon ? <item.icon className="h-4 w-4" /> : null}
               {item.label}
             </Link>

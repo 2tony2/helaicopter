@@ -386,11 +386,9 @@ test("route decisions render valid canonical nested routes and 404 invalid canon
   );
 });
 
-test("orchestration routes preserve native run selection state", () => {
+test("orchestration route builder produces clean paths", () => {
   assert.equal(
-    buildOrchestrationRoute({
-      flowRunId: "flow-run-1",
-    }),
+    buildOrchestrationRoute({ flowRunId: "flow-run-1" }),
     "/orchestration?flowRunId=flow-run-1"
   );
   assert.equal(buildOrchestrationRoute(), "/orchestration");
@@ -398,7 +396,7 @@ test("orchestration routes preserve native run selection state", () => {
 
 test("orchestration route state prefers current query params over stale initial props", () => {
   const state = getOrchestrationRouteState(
-    new URLSearchParams("flowRunId=flow-run-2"),
+    new URLSearchParams("tab=orchestration&flowRunId=flow-run-2"),
     {
       tab: "orchestration",
       flowRunId: "flow-run-1",

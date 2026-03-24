@@ -105,7 +105,7 @@ Add focused schema modules under `src/lib/client/schemas/` for:
 ### Route/env updates
 
 - `src/lib/client/endpoints.ts` validates `NEXT_PUBLIC_API_BASE_URL`.
-- `src/lib/routes.ts` validates or constrains `prefectPath`, tab values, and related query state using explicit schemas or schema-driven allowlists.
+- `src/lib/routes.ts` validates or constrains tab values and related query state using explicit schemas or schema-driven allowlists.
 
 ## Testing Strategy
 
