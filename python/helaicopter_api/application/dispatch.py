@@ -12,6 +12,23 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass, field
 
+DISPATCH_REASON_LABELS = {
+    "no_registered_worker": "No workers are registered for this provider.",
+    "no_capable_worker": "No eligible worker can run this task.",
+    "provider_not_ready": "Provider auth or local session is not ready for execution.",
+    "worker_interrupted": "A worker disappeared mid-task; retry or re-route this work once capacity returns.",
+    "auth_expired": "A matching worker exists, but its provider auth must be refreshed.",
+    "draining": "Matching workers are draining and cannot accept new tasks.",
+    "busy": "Matching workers are currently busy.",
+    "dead": "Matching workers are offline and must re-register.",
+}
+
+WORKER_READINESS_REASONS = {
+    "draining": "Worker is draining and will not accept new tasks.",
+    "dead": "Worker is offline and must re-register.",
+    "auth_expired": "Worker auth has expired and must be refreshed.",
+}
+
 
 # ---------------------------------------------------------------------------
 # RegisteredWorker — in-memory representation
@@ -98,6 +115,16 @@ class InMemoryWorkerRegistry:
             worker.status = "dead"
             worker.current_task_id = None
             worker.current_run_id = None
+
+
+def dispatch_reason_label(reason: str) -> str:
+    """Return a stable human-readable label for a deferred dispatch reason."""
+    return DISPATCH_REASON_LABELS.get(reason, "Dispatch is blocked.")
+
+
+def worker_readiness_reason(status: str) -> str | None:
+    """Return operator-facing explanation for non-ready worker states."""
+    return WORKER_READINESS_REASONS.get(status)
 
 
 # ---------------------------------------------------------------------------

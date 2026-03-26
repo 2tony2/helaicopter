@@ -185,6 +185,10 @@ export function orchestrationOats() {
   return api("/orchestration/oats");
 }
 
+export function orchestrationRuntime(runId: string) {
+  return api(`/orchestration/runtime/${enc(runId)}`);
+}
+
 export function orchestrationOatsRefresh(runId: string) {
   return api(`/orchestration/oats/${enc(runId)}/refresh`);
 }
@@ -213,6 +217,10 @@ export function orchestrationOatsInsertTask(runId: string) {
   return api(`/orchestration/oats/${enc(runId)}/tasks`);
 }
 
+export function operatorBootstrap() {
+  return api("/operator/bootstrap");
+}
+
 // ---------------------------------------------------------------------------
 // Workers
 // ---------------------------------------------------------------------------
@@ -221,12 +229,20 @@ export function workers(opts?: { provider?: string }) {
   return api(`/workers${qs({ provider: opts?.provider })}`);
 }
 
+export function workerProviders() {
+  return api("/workers/providers");
+}
+
 export function worker(workerId: string) {
   return api(`/workers/${enc(workerId)}`);
 }
 
 export function workerDrain(workerId: string) {
   return api(`/workers/${enc(workerId)}/drain`);
+}
+
+export function workerResetSession(workerId: string) {
+  return api(`/workers/${enc(workerId)}/reset-session`);
 }
 
 // ---------------------------------------------------------------------------
@@ -245,8 +261,12 @@ export function authCredentialRefresh(credentialId: string) {
   return api(`/auth/credentials/${enc(credentialId)}/refresh`);
 }
 
-export function authCredentialOauthInitiate() {
-  return api("/auth/credentials/oauth/initiate");
+export function authCredentialClaudeCliConnect() {
+  return api("/auth/credentials/claude-cli/connect");
+}
+
+export function authCredentialCodexCliConnect() {
+  return api("/auth/credentials/codex-cli/connect");
 }
 
 // ---------------------------------------------------------------------------

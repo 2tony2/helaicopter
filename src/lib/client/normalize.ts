@@ -33,6 +33,10 @@ import type {
   OrchestrationOperationHistoryEntry,
   OrchestrationFinalPullRequest,
   GraphMutation,
+  MaterializedDispatchEvent,
+  MaterializedRuntimeRun,
+  MaterializedTaskAttempt,
+  OperatorAction,
   OrchestrationRunEvaluation,
   OrchestrationRunEvaluationConversation,
   OrchestrationReviewSummary,
@@ -54,6 +58,7 @@ import type {
   TokenUsage,
   Worker,
   AuthCredential,
+  ProviderReadiness,
   DispatchQueueSnapshot,
   DispatchHistoryEntry,
 } from "@/lib/types";
@@ -1272,8 +1277,16 @@ export function normalizeWorker(value: WorkerPayload): Worker {
     registeredAt: value.registeredAt,
     lastHeartbeatAt: value.lastHeartbeatAt,
     status: value.status,
+    readinessReason: value.readinessReason ?? null,
     currentTaskId: value.currentTaskId ?? null,
     currentRunId: value.currentRunId ?? null,
+    providerSessionId: value.providerSessionId ?? null,
+    sessionStatus: value.sessionStatus,
+    sessionStartedAt: value.sessionStartedAt ?? null,
+    sessionLastUsedAt: value.sessionLastUsedAt ?? null,
+    sessionFailureReason: value.sessionFailureReason ?? null,
+    sessionResetAvailable: value.sessionResetAvailable,
+    sessionResetRequestedAt: value.sessionResetRequestedAt ?? null,
   };
 }
 
@@ -1287,6 +1300,8 @@ export function normalizeAuthCredential(value: AuthCredentialPayload): AuthCrede
     provider: value.provider,
     credentialType: value.credentialType,
     status: value.status,
+    providerStatusCode: value.providerStatusCode ?? null,
+    providerStatusMessage: value.providerStatusMessage ?? null,
     tokenExpiresAt: value.tokenExpiresAt ?? null,
     cliConfigPath: value.cliConfigPath ?? null,
     subscriptionId: value.subscriptionId ?? null,
@@ -1302,6 +1317,29 @@ export function normalizeAuthCredential(value: AuthCredentialPayload): AuthCrede
 
 export function normalizeAuthCredentials(value: AuthCredentialPayload[]): AuthCredential[] {
   return value.map(normalizeAuthCredential);
+}
+
+export function normalizeProviderReadiness(value: unknown): ProviderReadiness {
+  const item = asRecord(value);
+  return {
+    provider: stringOr(field(item, "provider")) as ProviderReadiness["provider"],
+    status: stringOr(field(item, "status"), "unknown") as ProviderReadiness["status"],
+    healthyWorkerCount: numberOr(field(item, "healthyWorkerCount", "healthy_worker_count")),
+    readyWorkerCount: numberOr(field(item, "readyWorkerCount", "ready_worker_count")),
+    activeCredentialCount: numberOr(field(item, "activeCredentialCount", "active_credential_count")),
+    blockingReasons: asArray(field(item, "blockingReasons", "blocking_reasons")).map((reason) => {
+      const record = asRecord(reason);
+      return {
+        code: stringOr(field(record, "code")),
+        severity: stringOr(field(record, "severity"), "error") as ProviderReadiness["blockingReasons"][number]["severity"],
+        message: stringOr(field(record, "message")),
+      };
+    }),
+  };
+}
+
+export function normalizeProviderReadinessList(value: unknown): ProviderReadiness[] {
+  return asArray(value).map(normalizeProviderReadiness);
 }
 
 export function normalizeDispatchQueueSnapshot(
@@ -1320,6 +1358,8 @@ export function normalizeDispatchQueueSnapshot(
       provider: entry.provider,
       model: entry.model,
       reason: entry.reason,
+      reasonLabel: entry.reasonLabel,
+      canRetry: entry.canRetry,
     })),
   };
 }
@@ -1680,6 +1720,93 @@ export function normalizeGraphMutation(value: unknown): GraphMutation {
   };
 }
 
+export function normalizeMaterializedTaskAttempt(value: unknown): MaterializedTaskAttempt {
+  const item = asRecord(value);
+  return {
+    taskId: stringOr(field(item, "taskId", "task_id")),
+    attemptId:
+      field(item, "attemptId", "attempt_id") === null
+        ? null
+        : nullableString(field(item, "attemptId", "attempt_id")),
+    workerId:
+      field(item, "workerId", "worker_id") === null
+        ? null
+        : nullableString(field(item, "workerId", "worker_id")),
+    providerSessionId:
+      field(item, "providerSessionId", "provider_session_id") === null
+        ? null
+        : nullableString(field(item, "providerSessionId", "provider_session_id")),
+    sessionReused: booleanOr(field(item, "sessionReused", "session_reused")),
+    sessionStatusAfterTask:
+      field(item, "sessionStatusAfterTask", "session_status_after_task") === null
+        ? null
+        : nullableString(field(item, "sessionStatusAfterTask", "session_status_after_task")),
+    status: stringOr(field(item, "status")) as MaterializedTaskAttempt["status"],
+    durationSeconds:
+      field(item, "durationSeconds", "duration_seconds") === null
+        ? null
+        : nullableNumber(field(item, "durationSeconds", "duration_seconds")),
+    branchName:
+      field(item, "branchName", "branch_name") === null
+        ? null
+        : nullableString(field(item, "branchName", "branch_name")),
+    commitSha:
+      field(item, "commitSha", "commit_sha") === null
+        ? null
+        : nullableString(field(item, "commitSha", "commit_sha")),
+    errorSummary:
+      field(item, "errorSummary", "error_summary") === null
+        ? null
+        : nullableString(field(item, "errorSummary", "error_summary")),
+  };
+}
+
+export function normalizeMaterializedDispatchEvent(value: unknown): MaterializedDispatchEvent {
+  const item = asRecord(value);
+  return {
+    runId: stringOr(field(item, "runId", "run_id")),
+    taskId: stringOr(field(item, "taskId", "task_id")),
+    workerId: stringOr(field(item, "workerId", "worker_id")),
+    provider: stringOr(field(item, "provider")),
+    model: stringOr(field(item, "model")),
+    dispatchedAt: stringOr(field(item, "dispatchedAt", "dispatched_at")),
+  };
+}
+
+export function normalizeRuntimeMaterializedRun(value: unknown): MaterializedRuntimeRun {
+  const item = asRecord(value);
+  return {
+    runId: stringOr(field(item, "runId", "run_id")),
+    source: stringOr(field(item, "source"), "runtime"),
+    taskAttempts: asArray(field(item, "taskAttempts", "task_attempts")).map(
+      normalizeMaterializedTaskAttempt
+    ),
+    graphMutations: asArray(field(item, "graphMutations", "graph_mutations")).map(
+      normalizeGraphMutation
+    ),
+    dispatchEvents: asArray(field(item, "dispatchEvents", "dispatch_events")).map(
+      normalizeMaterializedDispatchEvent
+    ),
+    operatorActions: asArray(field(item, "operatorActions", "operator_actions")).map(
+      normalizeOperatorAction
+    ),
+  };
+}
+
+export function normalizeOperatorAction(value: unknown): OperatorAction {
+  const item = asRecord(value);
+  return {
+    action: stringOr(field(item, "action")),
+    actor: stringOr(field(item, "actor")),
+    createdAt: stringOr(field(item, "createdAt", "created_at")),
+    targetTaskId:
+      field(item, "targetTaskId", "target_task_id") === null
+        ? null
+        : nullableString(field(item, "targetTaskId", "target_task_id")),
+    details: asRecord(field(item, "details")) as Record<string, unknown>,
+  };
+}
+
 export function normalizeOvernightOatsRun(value: unknown): OvernightOatsRunRecord {
   const item = asRecord(value);
   const contractVersion = stringOr(field(item, "contractVersion", "contract_version"));
@@ -1746,6 +1873,9 @@ export function normalizeOvernightOatsRun(value: unknown): OvernightOatsRunRecor
     graphMutationCount: numberOr(field(item, "graphMutationCount", "graph_mutation_count")),
     graphMutations: asArray(field(item, "graphMutations", "graph_mutations")).map(
       normalizeGraphMutation
+    ),
+    operatorActions: asArray(field(item, "operatorActions", "operator_actions")).map(
+      normalizeOperatorAction
     ),
     interruptionCount: numberOr(field(item, "interruptionCount", "interruption_count")),
     lastCheckpointAt:

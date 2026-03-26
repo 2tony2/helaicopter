@@ -15,14 +15,17 @@ export function WorkerCard({
   worker,
   onDrain,
   onRemove,
+  onResetSession,
   pendingAction,
 }: {
   worker: Worker;
   onDrain?: (workerId: string) => void;
   onRemove?: (workerId: string) => void;
+  onResetSession?: (workerId: string) => void;
   pendingAction?: string | null;
 }) {
   const isPending = pendingAction === worker.workerId;
+  const showReset = worker.sessionResetAvailable;
 
   return (
     <Card className="border-border/60">
@@ -55,6 +58,14 @@ export function WorkerCard({
             <div>{worker.capabilities.models.join(", ") || "none"}</div>
           </div>
           <div>
+            <div className="font-medium text-foreground">Session</div>
+            <div>{`session ${worker.sessionStatus}`}</div>
+          </div>
+          <div>
+            <div className="font-medium text-foreground">Session last used</div>
+            <div>{formatTimestamp(worker.sessionLastUsedAt)}</div>
+          </div>
+          <div>
             <div className="font-medium text-foreground">Discovery</div>
             <div>{worker.capabilities.supportsDiscovery ? "enabled" : "disabled"}</div>
           </div>
@@ -63,6 +74,18 @@ export function WorkerCard({
             <div>{worker.capabilities.tags.join(", ") || "none"}</div>
           </div>
         </div>
+
+        {worker.readinessReason ? (
+          <div className="rounded-lg border border-amber-400/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+            {worker.readinessReason}
+          </div>
+        ) : null}
+
+        {worker.sessionFailureReason ? (
+          <div className="rounded-lg border border-rose-400/40 bg-rose-500/5 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
+            {worker.sessionFailureReason}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           <Button
@@ -81,6 +104,16 @@ export function WorkerCard({
           >
             Remove worker
           </Button>
+          {showReset ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isPending}
+              onClick={() => onResetSession?.(worker.workerId)}
+            >
+              Reset session
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>

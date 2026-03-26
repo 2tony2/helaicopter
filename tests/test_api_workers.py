@@ -9,6 +9,7 @@ from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
@@ -18,6 +19,7 @@ from helaicopter_api.application.resolver import ResolverLoop
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 from helaicopter_db.models.oltp import OltpBase
+from helaicopter_db.models.oltp import WorkerRegistryRecord
 from oats.graph import TaskGraph, TaskKind, TaskNode
 
 
@@ -212,6 +214,9 @@ def test_report_result_preserves_draining_status(tmp_path: Path) -> None:
 
         assert response.status_code == 200
         assert resolver._registry.get(worker_id).status == "draining"
+        result_artifact = runtime_dir / "run_abc" / "results" / "auth.json"
+        assert result_artifact.exists()
+        assert '"attempt_id": "att_drain"' in result_artifact.read_text(encoding="utf-8")
         detail = client.get(f"/workers/{worker_id}")
         assert detail.status_code == 200
         assert detail.json()["status"] == "draining"
@@ -229,6 +234,30 @@ def test_get_worker_detail() -> None:
         assert detail["workerId"] == worker_id
         assert detail["workerType"] == "pi_shell"
         assert detail["provider"] == "claude"
+        assert detail["readinessReason"] is None
+        assert detail["sessionStatus"] == "absent"
+        assert detail["sessionStartedAt"] is None
+        assert detail["sessionLastUsedAt"] is None
+        assert detail["sessionFailureReason"] is None
+        assert detail["sessionResetAvailable"] is True
+
+
+def test_get_worker_detail_includes_readiness_reason_for_auth_expired() -> None:
+    with _worker_client() as client:
+        worker_id = _register_worker(client)
+        engine = client.app.dependency_overrides[get_services]().sqlite_engine
+        with Session(engine) as session:
+            row = session.get(WorkerRegistryRecord, worker_id)
+            assert row is not None
+            row.status = "auth_expired"
+            session.commit()
+
+        response = client.get(f"/workers/{worker_id}")
+
+        assert response.status_code == 200
+        detail = response.json()
+        assert detail["status"] == "auth_expired"
+        assert detail["readinessReason"] == "Worker auth has expired and must be refreshed."
 
 
 def test_get_unknown_worker_returns_404() -> None:

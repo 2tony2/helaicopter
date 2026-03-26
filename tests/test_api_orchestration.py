@@ -1072,6 +1072,80 @@ def _runtime_response(state: RunRuntimeState, state_path: Path):
     return _shape_runtime_state(StoredOatsRuntimeState(path=state_path, state=state)).response
 
 
+def _write_stale_runtime_artifacts_fixture(project_root: Path) -> str:
+    run_id = "run_materialized"
+    run_dir = project_root / ".oats" / "runtime" / run_id
+    now = datetime.now(UTC)
+    graph = TaskGraph()
+    graph.add_node(
+        TaskNode(
+            task_id="task_auth",
+            kind=TaskKind.IMPLEMENTATION,
+            title="Implement auth",
+            status="running",
+            agent="claude",
+            model="claude-sonnet-4-6",
+        )
+    )
+    state = RunRuntimeState(
+        contract_version="oats-runtime-v2",
+        run_id=run_id,
+        run_title="Materialized truth should win",
+        repo_root=project_root,
+        config_path=project_root / ".oats" / "config.toml",
+        run_spec_path=project_root / "runs" / "runtime.md",
+        mode="writable",
+        integration_branch="oats/phase2/materialized",
+        task_pr_target="oats/phase2/materialized",
+        final_pr_target="main",
+        runtime_dir=run_dir,
+        status="running",
+        started_at=now - timedelta(minutes=5),
+        updated_at=now - timedelta(seconds=20),
+        heartbeat_at=now - timedelta(seconds=10),
+        tasks=[
+            TaskRuntimeRecord(
+                task_id="task_auth",
+                title="Implement auth",
+                depends_on=[],
+                branch_name="oats/task/task_auth",
+                parent_branch="main",
+                pr_base="main",
+                agent="claude",
+                status="running",
+                attempts=2,
+            )
+        ],
+        graph=graph,
+        graph_mutations=[],
+    )
+    _write_model(run_dir / "state.json", state)
+    (run_dir / "graph_mutations.jsonl").write_text(
+        (
+            '{"mutation_id":"mut_runtime","kind":"pause_run","discovered_by":"operator",'
+            f'"source":"operator","timestamp":"{now.isoformat()}","nodes_added":["task_auth"],"edges_added":[]}}\n'
+        ),
+        encoding="utf-8",
+    )
+    (project_root / ".oats" / "runtime" / "dispatch_history.jsonl").write_text(
+        (
+            '{"run_id":"run_materialized","task_id":"task_auth","worker_id":"wkr_runtime",'
+            f'"provider":"claude","model":"claude-sonnet-4-6","dispatched_at":"{now.isoformat()}"}}\n'
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "results").mkdir(parents=True, exist_ok=True)
+    (run_dir / "results" / "task_auth.json").write_text(
+        (
+            '{"task_id":"task_auth","run_id":"run_materialized","worker_id":"wkr_runtime",'
+            '"status":"succeeded","duration_seconds":18.5,"attempt_id":"att_runtime_2",'
+            '"branch_name":"oats/task/task_auth","commit_sha":"abc123","error_summary":null}'
+        ),
+        encoding="utf-8",
+    )
+    return run_id
+
+
 # ---------------------------------------------------------------------------
 # Graph-native v2 field tests
 # ---------------------------------------------------------------------------
@@ -1209,6 +1283,22 @@ class TestGraphV2Fields:
             assert len(run["edges"]) == 4
             assert "readyQueue" in run
             assert run["graphMutationCount"] == 1
+
+    def test_oats_detail_prefers_materialized_runtime_truth_for_task_status_and_mutations(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        run_id = _write_stale_runtime_artifacts_fixture(tmp_path)
+
+        with orchestration_client(tmp_path) as client:
+            response = client.get(f"/orchestration/oats/{run_id}")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["tasks"][0]["attempts"] == 2
+        assert payload["tasks"][0]["status"] == "succeeded"
+        assert payload["graphMutations"][0]["source"] == "operator"
+        assert payload["graphMutationCount"] == 1
 
     def test_v1_state_without_graph_returns_empty_graph_fields(
         self, tmp_path: Path,

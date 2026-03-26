@@ -1,36 +1,59 @@
 "use client";
 
-import { useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import type { AuthCredential } from "@/lib/types";
 
-export function AddCredentialDialog({
-  onSubmit,
-  onOauth,
+export function CredentialProviderActions({
+  onConnectClaudeCli,
+  onConnectCodexCli,
   pending = false,
 }: {
-  onSubmit?: (input: {
-    provider: AuthCredential["provider"];
-    credentialType: "api_key";
-    apiKey: string;
-  }) => void;
-  onOauth?: (provider: AuthCredential["provider"]) => void;
+  onConnectClaudeCli?: () => void;
+  onConnectCodexCli?: () => void;
   pending?: boolean;
 }) {
-  const [provider, setProvider] = useState<AuthCredential["provider"]>("claude");
-  const [apiKey, setApiKey] = useState("");
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <div className="rounded-lg border bg-muted/30 p-4">
+        <div className="text-sm font-medium">Claude</div>
+        <p className="mt-1 text-sm text-muted-foreground">Reuse Claude CLI session.</p>
+        <Button
+          className="mt-4 w-full"
+          disabled={pending}
+          onClick={() => onConnectClaudeCli?.()}
+        >
+          Reuse Claude CLI session
+        </Button>
+      </div>
 
+      <div className="rounded-lg border bg-muted/30 p-4">
+        <div className="text-sm font-medium">Codex</div>
+        <p className="mt-1 text-sm text-muted-foreground">Reuse Codex CLI session.</p>
+        <Button className="mt-4 w-full" disabled={pending} onClick={() => onConnectCodexCli?.()}>
+          Reuse Codex CLI session
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function AddCredentialDialog({
+  onConnectClaudeCli,
+  onConnectCodexCli,
+  pending = false,
+}: {
+  onConnectClaudeCli?: () => void;
+  onConnectCodexCli?: () => void;
+  pending?: boolean;
+}) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -40,61 +63,16 @@ export function AddCredentialDialog({
         <DialogHeader>
           <DialogTitle>Add credential</DialogTitle>
           <DialogDescription>
-            Register an API key now or start an OAuth redirect for managed auth.
+            Reuse your local Claude CLI session or your local Codex CLI session.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="credential-provider">
-              Provider
-            </label>
-            <select
-              id="credential-provider"
-              className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={provider}
-              onChange={(event) => setProvider(event.target.value as AuthCredential["provider"])}
-            >
-              <option value="claude">Claude</option>
-              <option value="codex">Codex</option>
-            </select>
-          </div>
+        <CredentialProviderActions
+          onConnectClaudeCli={onConnectClaudeCli}
+          onConnectCodexCli={onConnectCodexCli}
+          pending={pending}
+        />
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="credential-api-key">
-              API key
-            </label>
-            <Input
-              id="credential-api-key"
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="sk-..."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            disabled={pending}
-            onClick={() => onOauth?.(provider)}
-          >
-            OAuth redirect
-          </Button>
-          <Button
-            disabled={pending || apiKey.trim().length === 0}
-            onClick={() =>
-              onSubmit?.({
-                provider,
-                credentialType: "api_key",
-                apiKey,
-              })
-            }
-          >
-            Save API key
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

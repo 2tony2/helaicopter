@@ -11,7 +11,10 @@ from sqlalchemy import select, delete
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from helaicopter_api.application.auth import list_credentials
+from helaicopter_api.application.provider_readiness import build_provider_readiness
 from helaicopter_api.application.resolver import ResolverLoop, TaskResult
+from helaicopter_api.application.dispatch import worker_readiness_reason
 from helaicopter_api.application.worker_state import (
     complete_worker_task,
     drain_worker_state,
@@ -22,6 +25,7 @@ from helaicopter_api.schema.workers import (
     WorkerCapabilitiesResponse,
     WorkerDetailResponse,
     WorkerHeartbeatRequest,
+    WorkerProviderReadinessResponse,
     WorkerRegistrationRequest,
     WorkerRegistrationResponse,
     WorkerTaskReportRequest,
@@ -35,8 +39,47 @@ def _generate_worker_id() -> str:
     return f"wkr_{secrets.token_hex(12)}"
 
 
+def _parse_metadata(metadata_json: str | None) -> dict[str, object]:
+    if metadata_json is None:
+        return {}
+    try:
+        parsed = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _session_metadata(row: WorkerRegistryRecord) -> dict[str, object]:
+    metadata = _parse_metadata(row.metadata_json)
+    session = metadata.get("session", {})
+    return session if isinstance(session, dict) else {}
+
+
+def _write_session_metadata(
+    row: WorkerRegistryRecord,
+    *,
+    provider_session_id: str | None = None,
+    status: str,
+    started_at: str | None = None,
+    last_used_at: str | None = None,
+    failure_reason: str | None = None,
+    reset_requested_at: str | None = None,
+) -> None:
+    metadata = _parse_metadata(row.metadata_json)
+    metadata["session"] = {
+        "provider_session_id": provider_session_id,
+        "status": status,
+        "started_at": started_at,
+        "last_used_at": last_used_at,
+        "failure_reason": failure_reason,
+        "reset_requested_at": reset_requested_at,
+    }
+    row.metadata_json = json.dumps(metadata)
+
+
 def _to_detail(row: WorkerRegistryRecord) -> WorkerDetailResponse:
     caps = json.loads(row.capabilities_json)
+    session = _session_metadata(row)
     return WorkerDetailResponse(
         worker_id=row.worker_id,
         worker_type=row.worker_type,
@@ -48,8 +91,42 @@ def _to_detail(row: WorkerRegistryRecord) -> WorkerDetailResponse:
         registered_at=row.registered_at.isoformat(),
         last_heartbeat_at=row.last_heartbeat_at.isoformat(),
         status=row.status,
+        readiness_reason=worker_readiness_reason(row.status),
         current_task_id=row.current_task_id,
         current_run_id=row.current_run_id,
+        provider_session_id=session.get("provider_session_id"),
+        session_status=str(session.get("status") or "absent"),
+        session_started_at=session.get("started_at"),
+        session_last_used_at=session.get("last_used_at"),
+        session_failure_reason=session.get("failure_reason"),
+        session_reset_available=True,
+        session_reset_requested_at=session.get("reset_requested_at"),
+    )
+
+
+def _sync_session_metadata(
+    row: WorkerRegistryRecord,
+    *,
+    provider_session_id: str | None,
+    session_status: str | None,
+    session_started_at: str | None,
+    session_last_used_at: str | None,
+    session_failure_reason: str | None,
+) -> None:
+    if session_status is None and provider_session_id is None:
+        return
+    existing_session = _session_metadata(row)
+    reset_requested_at = existing_session.get("reset_requested_at")
+    if session_status == "absent":
+        reset_requested_at = None
+    _write_session_metadata(
+        row,
+        provider_session_id=provider_session_id,
+        status=session_status or "absent",
+        started_at=session_started_at,
+        last_used_at=session_last_used_at,
+        failure_reason=session_failure_reason,
+        reset_requested_at=reset_requested_at if isinstance(reset_requested_at, str) else None,
     )
 
 
@@ -93,11 +170,68 @@ def list_workers(
         return [_to_detail(row) for row in rows]
 
 
+def list_worker_provider_readiness(engine: Engine) -> list[WorkerProviderReadinessResponse]:
+    workers = list_workers(engine)
+    credentials = list_credentials(engine)
+    providers = sorted(
+        {
+            "claude",
+            "codex",
+            *(worker.provider for worker in workers),
+            *(credential.provider for credential in credentials),
+        }
+    )
+    worker_snapshots = [
+        resolver_worker
+        for worker in workers
+        for resolver_worker in [
+            type(
+                "WorkerSnapshot",
+                (),
+                {
+                    "provider": worker.provider,
+                    "status": worker.status,
+                    "auth_status": "expired" if worker.status == "auth_expired" else "valid",
+                },
+            )()
+        ]
+    ]
+    return [
+        WorkerProviderReadinessResponse.model_validate(
+            build_provider_readiness(
+                provider=provider,
+                credentials=credentials,
+                workers=worker_snapshots,
+            ).model_dump()
+        )
+        for provider in providers
+    ]
+
+
 def get_worker(engine: Engine, worker_id: str) -> WorkerDetailResponse | None:
     with Session(engine) as session:
         row = session.get(WorkerRegistryRecord, worker_id)
         if row is None:
             return None
+        return _to_detail(row)
+
+
+def reset_worker_session(engine: Engine, worker_id: str) -> WorkerDetailResponse | None:
+    with Session(engine) as session:
+        row = session.get(WorkerRegistryRecord, worker_id)
+        if row is None:
+            return None
+        _write_session_metadata(
+            row,
+            provider_session_id=None,
+            status="absent",
+            started_at=None,
+            last_used_at=None,
+            failure_reason=None,
+            reset_requested_at=datetime.now(UTC).isoformat(),
+        )
+        session.commit()
+        session.refresh(row)
         return _to_detail(row)
 
 
@@ -109,7 +243,7 @@ def heartbeat_worker(
     registry=None,
 ) -> bool:
     """Update heartbeat. Returns False if worker not found."""
-    return heartbeat_worker_state(
+    ok = heartbeat_worker_state(
         engine=engine,
         registry=registry,
         worker_id=worker_id,
@@ -117,6 +251,22 @@ def heartbeat_worker(
         current_task_id=request.current_task_id,
         current_run_id=request.current_run_id,
     )
+    if not ok:
+        return False
+    with Session(engine) as session:
+        row = session.get(WorkerRegistryRecord, worker_id)
+        if row is None:
+            return False
+        _sync_session_metadata(
+            row,
+            provider_session_id=request.provider_session_id,
+            session_status=request.session_status,
+            session_started_at=request.session_started_at,
+            session_last_used_at=request.session_last_used_at,
+            session_failure_reason=request.session_failure_reason,
+        )
+        session.commit()
+    return True
 
 
 def drain_worker(engine: Engine, worker_id: str, *, registry=None) -> bool:
@@ -237,10 +387,25 @@ def report_task_result(
             branch_name=request.branch_name,
             commit_sha=request.commit_sha,
             error_summary=request.error_summary,
+            provider_session_id=request.provider_session_id,
+            session_reused=request.session_reused,
+            session_status_after_task=request.session_status,
         )
-        result_path = runtime_dir / run_id / "results" / request.task_id / f"{request.attempt_id}.json"
-        result_path.parent.mkdir(parents=True, exist_ok=True)
-        result_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        _sync_session_metadata(
+            row,
+            provider_session_id=request.provider_session_id,
+            session_status=request.session_status,
+            session_started_at=request.session_started_at,
+            session_last_used_at=request.session_last_used_at,
+            session_failure_reason=request.session_failure_reason,
+        )
+        result_root = runtime_dir / run_id / "results"
+        history_path = result_root / request.task_id / f"{request.attempt_id}.json"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = result.model_dump_json(indent=2)
+        history_path.write_text(payload, encoding="utf-8")
+        latest_path = result_root / f"{request.task_id}.json"
+        latest_path.write_text(payload, encoding="utf-8")
         resolver.submit_completion(result)
 
         complete_worker_task(

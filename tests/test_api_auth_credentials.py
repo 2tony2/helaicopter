@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import json
 from typing import Iterator
+import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from helaicopter_api.application import auth as auth_application
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.dependencies import get_services
+from helaicopter_api.server.config import Settings
 from helaicopter_api.server.main import create_app
 from helaicopter_db.models.oltp import OltpBase
 
@@ -24,7 +28,7 @@ def _services_stub(**attrs: object) -> BackendServices:
 
 
 @contextmanager
-def _auth_client() -> Iterator[TestClient]:
+def _auth_client(*, settings: Settings | None = None) -> Iterator[TestClient]:
     """Test client with an in-memory SQLite engine for auth credential tests."""
     application = create_app()
     engine = create_engine(
@@ -36,6 +40,7 @@ def _auth_client() -> Iterator[TestClient]:
 
     application.dependency_overrides[get_services] = lambda: _services_stub(
         sqlite_engine=engine,
+        settings=settings or Settings(),
     )
     try:
         with TestClient(application) as client:
@@ -99,6 +104,336 @@ def test_create_local_cli_session_credential() -> None:
         payload = response.json()
         assert payload["credentialType"] == "local_cli_session"
         assert payload["status"] == "active"
+
+
+def test_connect_claude_cli_creates_local_cli_session_credential(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    status_output = json.dumps(
+        {
+            "loggedIn": True,
+            "authMethod": "claude.ai",
+            "apiProvider": "firstParty",
+            "email": "tony@naronadata.com",
+            "orgId": "org_123",
+            "orgName": "Narona",
+            "subscriptionType": "max",
+        }
+    )
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout=status_output, stderr="")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["provider"] == "claude"
+        assert payload["credentialType"] == "local_cli_session"
+        assert payload["status"] == "active"
+        assert payload["cliConfigPath"] == str(claude_dir)
+        assert payload["subscriptionTier"] == "max"
+
+
+def test_connect_claude_cli_uses_meaningful_credentials_blob_when_cli_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    claude_dir.joinpath("credentials.json").write_text(
+        json.dumps(
+            {
+                "loggedIn": True,
+                "authMethod": "claude.ai",
+                "apiProvider": "firstParty",
+                "email": "tony@naronadata.com",
+                "orgId": "org_123",
+                "orgName": "Narona",
+                "subscriptionType": "max",
+            }
+        )
+    )
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("claude not installed")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["provider"] == "claude"
+        assert payload["credentialType"] == "local_cli_session"
+        assert payload["subscriptionTier"] == "max"
+
+
+def test_connect_claude_cli_returns_400_when_auth_status_fails_and_dir_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args[0],
+            1,
+            stdout="",
+            stderr="not logged in",
+        )
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Claude CLI authentication could not be discovered: 'claude auth status' "
+            "returned 1. Output: not logged in Run 'claude auth login' and try again."
+        )
+
+
+def test_connect_claude_cli_returns_actionable_failure_when_local_auth_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("claude not installed")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Claude CLI authentication could not be discovered: "
+            f"'{claude_dir / 'credentials.json'}' is missing. "
+            "Run 'claude auth login' and try again."
+        )
+
+
+def test_connect_claude_cli_rejects_empty_credentials_blob(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    claude_dir.joinpath("credentials.json").write_text("{}")
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("claude not installed")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 400
+
+
+def test_connect_claude_cli_rejects_empty_successful_status_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Claude CLI authentication could not be discovered: 'claude auth status' returned 0 without"
+            " authenticated session details. Run 'claude auth login' and try again."
+        )
+
+
+def test_connect_claude_cli_reuses_existing_active_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth_application,
+        "discover_claude_cli_session",
+        lambda *, settings: auth_application.ClaudeCliSession(cli_config_path="~/.claude/reused"),
+    )
+
+    with _auth_client() as client:
+        created = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "claude",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.claude/original",
+            },
+        )
+        assert created.status_code == 201
+        credential_id = created.json()["credentialId"]
+
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["credentialId"] == credential_id
+        assert payload["cliConfigPath"] == "~/.claude/reused"
+
+        all_credentials = client.get("/auth/credentials").json()
+        active_claude_cli_credentials = [
+            item
+            for item in all_credentials
+            if item["provider"] == "claude" and item["credentialType"] == "local_cli_session" and item["status"] == "active"
+        ]
+        assert len(active_claude_cli_credentials) == 1
+
+
+def test_connect_claude_cli_revokes_duplicate_active_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args[0],
+            0,
+            stdout="Logged in as tony@naronadata.com\nSubscription Tier: max",
+            stderr="",
+        )
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        first = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "claude",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.claude/first",
+            },
+        )
+        assert first.status_code == 201
+        second = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "claude",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.claude/second",
+            },
+        )
+        assert second.status_code == 201
+
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+
+        all_credentials = client.get("/auth/credentials").json()
+        active_claude_cli_credentials = [
+            item
+            for item in all_credentials
+            if item["provider"] == "claude" and item["credentialType"] == "local_cli_session" and item["status"] == "active"
+        ]
+        assert len(active_claude_cli_credentials) == 1
+        revoked_claude_cli_credentials = [
+            item
+            for item in all_credentials
+            if item["provider"] == "claude"
+            and item["credentialType"] == "local_cli_session"
+            and item["status"] == "revoked"
+        ]
+        assert len(revoked_claude_cli_credentials) == 1
+
+
+def test_connect_codex_cli_creates_local_cli_session_credential(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout="Logged in using ChatGPT\n", stderr="")
+
+    with _auth_client(settings=Settings(codex_dir=codex_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/codex-cli/connect")
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["provider"] == "codex"
+        assert payload["credentialType"] == "local_cli_session"
+        assert payload["status"] == "active"
+        assert payload["cliConfigPath"] == str(codex_dir)
+
+
+def test_connect_codex_cli_returns_400_when_login_status_is_not_authenticated(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 1, stdout="", stderr="not logged in")
+
+    with _auth_client(settings=Settings(codex_dir=codex_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/codex-cli/connect")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Codex CLI authentication could not be discovered: 'codex login status' "
+            "returned 1. Output: not logged in Run 'codex login' and try again."
+        )
+
+
+def test_connect_codex_cli_rejects_empty_successful_status_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+    with _auth_client(settings=Settings(codex_dir=codex_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/codex-cli/connect")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Codex CLI authentication could not be discovered: 'codex login status' returned 0 without"
+            " authenticated session details. Run 'codex login' and try again."
+        )
+
+
+def test_connect_codex_cli_reuses_existing_active_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth_application,
+        "discover_codex_cli_session",
+        lambda *, settings: auth_application.CodexCliSession(cli_config_path="~/.codex/reused"),
+    )
+
+    with _auth_client() as client:
+        created = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "codex",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.codex/original",
+            },
+        )
+        assert created.status_code == 201
+        credential_id = created.json()["credentialId"]
+
+        response = client.post("/auth/credentials/codex-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["credentialId"] == credential_id
+        assert payload["cliConfigPath"] == "~/.codex/reused"
 
 
 # ---- List ----

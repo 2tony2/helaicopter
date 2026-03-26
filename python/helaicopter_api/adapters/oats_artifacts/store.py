@@ -44,6 +44,13 @@ class FileOatsRunStore(OatsRunStore):
             if record is not None
         ]
 
+    def get_runtime_state(self, run_id: str) -> StoredOatsRuntimeState | None:
+        path = self._runtime_dir / run_id / "state.json"
+        state = _load_json_model(path, _RUN_RUNTIME_STATE_ADAPTER)
+        if state is None:
+            return None
+        return StoredOatsRuntimeState(path=path, state=state)
+
 
 def _load_json_model[T](path: Path, adapter: TypeAdapter[T]) -> T | None:
     try:

@@ -66,6 +66,8 @@ class CredentialResponse(CamelCaseHttpResponseModel):
     provider: str
     credential_type: str
     status: str
+    provider_status_code: str | None = None
+    provider_status_message: str | None = None
     token_expires_at: str | None = None
     cli_config_path: str | None = None
     subscription_id: str | None = None

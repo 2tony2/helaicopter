@@ -8,20 +8,26 @@ from typer.testing import CliRunner
 
 from oats.cli import app
 from oats.envelope import AcceptanceCriterion, ExecutionEnvelope
+from oats.provider_session import ProviderSession, ProviderSessionManager
 
 
 def _run(coro):
     return asyncio.run(coro)
 
 
-def _build_envelope(*, acceptance_criteria: list[AcceptanceCriterion] | None = None) -> ExecutionEnvelope:
+def _build_envelope(
+    *,
+    agent: str = "claude",
+    model: str = "claude-sonnet-4-6",
+    acceptance_criteria: list[AcceptanceCriterion] | None = None,
+) -> ExecutionEnvelope:
     return ExecutionEnvelope(
         session_id="sess_test",
         attempt_id="att_test",
         task_id="task_auth",
         run_id="run_123",
-        agent="claude",
-        model="claude-sonnet-4-6",
+        agent=agent,
+        model=model,
         worker_id="wkr_test",
         dispatch_mode="pull",
         worktree_path="/tmp/oats/task_auth",
@@ -40,20 +46,46 @@ class FakeRunResult:
     error_summary: str | None = None
     acceptance_criteria_met: bool = True
     heartbeat_ticks: int = 0
+    provider_session_id: str | None = None
 
 
 class FakeAgentRunner:
     def __init__(self, results: list[FakeRunResult] | None = None) -> None:
         self.results = list(results or [FakeRunResult()])
         self.dispatch_count = 0
+        self.sessions_seen: list[str | None] = []
 
-    async def run(self, envelope: ExecutionEnvelope, on_heartbeat) -> FakeRunResult:
+    async def run(self, envelope: ExecutionEnvelope, on_heartbeat, session=None) -> FakeRunResult:
         del envelope
         self.dispatch_count += 1
+        self.sessions_seen.append(getattr(session, "session_id", None))
         result = self.results[min(self.dispatch_count - 1, len(self.results) - 1)]
         for _ in range(result.heartbeat_ticks):
             await on_heartbeat()
         return result
+
+
+class BrokenSessionManager:
+    status = "absent"
+    failure_reason: str | None = None
+
+    def ensure_session(self) -> ProviderSession:
+        self.status = "failed"
+        self.failure_reason = "Provider session bootstrap failed."
+        raise RuntimeError(self.failure_reason)
+
+    def reset(self, *, reason: str) -> None:
+        del reason
+
+
+class FixedSessionManager(ProviderSessionManager):
+    def __init__(self, provider: str) -> None:
+        super().__init__(provider=provider, auth_validator=lambda: None)
+        self.created = 0
+
+    def _bootstrap_session(self) -> ProviderSession:
+        self.created += 1
+        return super()._bootstrap_session()
 
 
 class FakeControlPlane:
@@ -63,6 +95,7 @@ class FakeControlPlane:
         self.registered_payloads: list[dict[str, Any]] = []
         self.heartbeat_payloads: list[dict[str, Any]] = []
         self.report_payloads: list[dict[str, Any]] = []
+        self.worker_detail_payload: dict[str, Any] = {}
 
     async def register(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.registered_payloads.append(payload)
@@ -74,6 +107,16 @@ class FakeControlPlane:
             return self.queued_tasks.pop(0)
         return None
 
+    async def get_worker_detail(self, worker_id: str) -> dict[str, Any]:
+        assert worker_id == self.worker_id
+        return {
+            "workerId": worker_id,
+            "status": "idle",
+            "sessionStatus": "absent",
+            "sessionResetRequestedAt": None,
+            **self.worker_detail_payload,
+        }
+
     async def heartbeat(self, worker_id: str, payload: dict[str, Any]) -> None:
         assert worker_id == self.worker_id
         self.heartbeat_payloads.append(payload)
@@ -81,6 +124,26 @@ class FakeControlPlane:
     async def report_result(self, worker_id: str, payload: dict[str, Any]) -> None:
         assert worker_id == self.worker_id
         self.report_payloads.append(payload)
+
+
+class FailingControlPlane:
+    async def register(self, payload: dict[str, Any]) -> dict[str, Any]:
+        del payload
+        raise RuntimeError("connection refused")
+
+    async def pull_next_task(self, worker_id: str) -> ExecutionEnvelope | None:
+        del worker_id
+        return None
+
+    async def get_worker_detail(self, worker_id: str) -> dict[str, Any]:
+        del worker_id
+        return {"sessionStatus": "absent", "sessionResetRequestedAt": None}
+
+    async def heartbeat(self, worker_id: str, payload: dict[str, Any]) -> None:
+        del worker_id, payload
+
+    async def report_result(self, worker_id: str, payload: dict[str, Any]) -> None:
+        del worker_id, payload
 
 
 def test_pi_registers_with_control_plane() -> None:
@@ -132,7 +195,8 @@ def test_pi_pulls_executes_and_reports_result() -> None:
 
     assert worker.status == "idle"
     assert runner.dispatch_count == 1
-    assert control_plane.report_payloads == [{
+    assert len(control_plane.report_payloads) == 1
+    assert control_plane.report_payloads[0] == {
         "taskId": "task_auth",
         "attemptId": "att_test",
         "status": "succeeded",
@@ -140,7 +204,13 @@ def test_pi_pulls_executes_and_reports_result() -> None:
         "branchName": "oats/task/task_auth",
         "commitSha": "abc123",
         "errorSummary": None,
-    }]
+        "sessionReused": False,
+        "providerSessionId": control_plane.report_payloads[0]["providerSessionId"],
+        "sessionStatus": "ready",
+        "sessionStartedAt": control_plane.report_payloads[0]["sessionStartedAt"],
+        "sessionLastUsedAt": control_plane.report_payloads[0]["sessionLastUsedAt"],
+        "sessionFailureReason": None,
+    }
 
 
 def test_pi_redispatches_when_acceptance_criteria_are_unmet() -> None:
@@ -209,12 +279,224 @@ def test_pi_handles_no_tasks_gracefully() -> None:
     assert control_plane.report_payloads == []
 
 
+def test_pi_preflight_reports_missing_models() -> None:
+    from oats.pi_worker import PiWorker
+
+    worker = PiWorker(
+        provider="claude",
+        models=[],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=FakeControlPlane(),
+    )
+
+    assert worker.preflight() == ["No model capabilities configured."]
+
+
+def test_pi_preflight_reports_missing_provider_cli_context(monkeypatch, tmp_path) -> None:
+    from oats.pi_worker import PiWorker
+
+    monkeypatch.setattr("oats.pi_worker.Path.home", lambda: tmp_path)
+    worker = PiWorker(
+        provider="codex",
+        models=["o3-pro"],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=FakeControlPlane(),
+    )
+
+    assert worker.preflight() == ["Codex local CLI session is not configured."]
+
+
+def test_pi_register_surfaces_control_plane_connection_error() -> None:
+    from oats.pi_worker import ControlPlaneUnavailableError, PiWorker
+
+    worker = PiWorker(
+        provider="claude",
+        models=["claude-sonnet-4-6"],
+        control_plane_url="http://127.0.0.1:9",
+        control_plane_client=FailingControlPlane(),
+    )
+
+    try:
+        _run(worker.register())
+    except ControlPlaneUnavailableError as exc:
+        assert "http://127.0.0.1:9" in str(exc)
+        assert "claude" in str(exc)
+    else:
+        raise AssertionError("expected ControlPlaneUnavailableError")
+
+
+def test_pi_reports_provider_cli_failure_with_actionable_error_summary() -> None:
+    from oats.pi_worker import PiWorker
+
+    control_plane = FakeControlPlane(queued_tasks=[_build_envelope(agent="codex", model="o3-pro")])
+    runner = FakeAgentRunner([FakeRunResult(exit_code=1, error_summary=None)])
+    worker = PiWorker(
+        provider="codex",
+        models=["o3-pro"],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=control_plane,
+        agent_runner=runner,
+    )
+
+    _run(worker.register())
+    _run(worker.run_one_cycle())
+
+    assert control_plane.report_payloads[-1]["status"] == "failed"
+    assert "session" in control_plane.report_payloads[-1]["errorSummary"].lower()
+
+
+def test_pi_worker_reuses_provider_session_across_multiple_tasks() -> None:
+    from oats.pi_worker import PiWorker
+
+    control_plane = FakeControlPlane(queued_tasks=[_build_envelope(), _build_envelope()])
+    runner = FakeAgentRunner([FakeRunResult(exit_code=0), FakeRunResult(exit_code=0)])
+    session_manager = FixedSessionManager(provider="claude")
+    worker = PiWorker(
+        provider="claude",
+        models=["claude-sonnet-4-6"],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=control_plane,
+        agent_runner=runner,
+        session_manager=session_manager,
+    )
+
+    _run(worker.register())
+    _run(worker.run_one_cycle())
+    _run(worker.run_one_cycle())
+
+    assert session_manager.created == 1
+    assert len(runner.sessions_seen) == 2
+    assert runner.sessions_seen[0] == runner.sessions_seen[1]
+
+
+def test_pi_worker_establishes_and_then_reuses_real_codex_thread_ids() -> None:
+    from oats.pi_worker import PiWorker
+
+    control_plane = FakeControlPlane(
+        queued_tasks=[
+            _build_envelope(agent="codex", model="o3-pro"),
+            _build_envelope(agent="codex", model="o3-pro"),
+        ]
+    )
+    runner = FakeAgentRunner(
+        [
+            FakeRunResult(exit_code=0, provider_session_id="thread_123"),
+            FakeRunResult(exit_code=0, provider_session_id="thread_123"),
+        ]
+    )
+    session_manager = ProviderSessionManager(provider="codex", auth_validator=lambda: None)
+    worker = PiWorker(
+        provider="codex",
+        models=["o3-pro"],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=control_plane,
+        agent_runner=runner,
+        session_manager=session_manager,
+    )
+
+    _run(worker.register())
+    _run(worker.run_one_cycle())
+    _run(worker.run_one_cycle())
+
+    assert runner.sessions_seen == [None, "thread_123"]
+    assert control_plane.report_payloads[0]["providerSessionId"] == "thread_123"
+    assert control_plane.report_payloads[0]["sessionReused"] is False
+    assert control_plane.report_payloads[1]["providerSessionId"] == "thread_123"
+    assert control_plane.report_payloads[1]["sessionReused"] is True
+
+
+def test_subprocess_runner_builds_provider_commands_with_real_session_reuse() -> None:
+    from oats.pi_worker import SubprocessAgentRunner
+
+    runner = SubprocessAgentRunner()
+    session = ProviderSession(
+        session_id="session_123",
+        provider="claude",
+        status="ready",
+        started_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        last_used_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+    )
+
+    claude_command = runner._build_command(_build_envelope(agent="claude"), "test prompt", session)
+    codex_command = runner._build_command(
+        _build_envelope(agent="codex", model="o3-pro"),
+        "test prompt",
+        ProviderSession(
+            session_id="thread_123",
+            provider="codex",
+            status="ready",
+            started_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+            last_used_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        ),
+    )
+
+    assert "--session-id" in claude_command
+    assert "session_123" in claude_command
+    assert codex_command[:3] == ["codex", "exec", "resume"]
+    assert "--json" in codex_command
+    assert "thread_123" in codex_command
+
+
+def test_pi_worker_marks_session_failed_when_bootstrap_fails() -> None:
+    from oats.pi_worker import PiWorker
+
+    control_plane = FakeControlPlane(queued_tasks=[_build_envelope()])
+    worker = PiWorker(
+        provider="claude",
+        models=["claude-sonnet-4-6"],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=control_plane,
+        agent_runner=FakeAgentRunner([FakeRunResult(exit_code=0)]),
+        session_manager=BrokenSessionManager(),
+    )
+
+    _run(worker.register())
+    _run(worker.run_one_cycle())
+
+    assert control_plane.report_payloads[-1]["status"] == "failed"
+    assert control_plane.report_payloads[-1]["errorSummary"] == "Provider session bootstrap failed."
+
+
+def test_pi_worker_resets_provider_session_when_control_plane_requests_it() -> None:
+    from oats.pi_worker import PiWorker
+
+    control_plane = FakeControlPlane(queued_tasks=[_build_envelope(), _build_envelope()])
+    runner = FakeAgentRunner([FakeRunResult(exit_code=0), FakeRunResult(exit_code=0)])
+    session_manager = FixedSessionManager(provider="claude")
+    worker = PiWorker(
+        provider="claude",
+        models=["claude-sonnet-4-6"],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=control_plane,
+        agent_runner=runner,
+        session_manager=session_manager,
+    )
+
+    _run(worker.register())
+    _run(worker.run_one_cycle())
+    first_session_id = runner.sessions_seen[-1]
+
+    control_plane.worker_detail_payload = {
+        "sessionStatus": "absent",
+        "sessionResetRequestedAt": "2026-03-26T12:00:00+00:00",
+    }
+    _run(worker.run_one_cycle())
+
+    assert session_manager.created == 2
+    assert first_session_id != runner.sessions_seen[-1]
+    assert any(payload["sessionStatus"] == "absent" for payload in control_plane.heartbeat_payloads)
+
+
 def test_cli_pi_start_runs_worker(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
 
     class FakePiWorker:
         def __init__(self, **kwargs: object) -> None:
             calls.append({"init": kwargs})
+
+        def preflight(self) -> list[str]:
+            calls.append({"preflight": True})
+            return []
 
         async def run_loop(self) -> None:
             calls.append({"run_loop": True})
@@ -247,5 +529,6 @@ def test_cli_pi_start_runs_worker(monkeypatch) -> None:
                 "poll_interval": 5.0,
             }
         },
+        {"preflight": True},
         {"run_loop": True},
     ]

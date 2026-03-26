@@ -5,8 +5,14 @@ import { Activity, ShieldAlert, Skull, Waves, Wrench } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDrainWorker, useRemoveWorker, useWorkers } from "@/lib/client/workers";
-import type { Worker } from "@/lib/types";
+import {
+  useDrainWorker,
+  useRemoveWorker,
+  useResetWorkerSession,
+  useWorkerProviders,
+  useWorkers,
+} from "@/lib/client/workers";
+import type { ProviderReadiness, Worker } from "@/lib/types";
 import { WorkerCard } from "./worker-card";
 
 type WorkerSummary = {
@@ -84,14 +90,18 @@ function SummaryCard({
 
 export function WorkerDashboardSection({
   workers,
+  providerReadiness = [],
   onDrain,
   onRemove,
+  onResetSession,
   pendingAction,
   error,
 }: {
   workers: Worker[];
+  providerReadiness?: ProviderReadiness[];
   onDrain?: (workerId: string) => void;
   onRemove?: (workerId: string) => void;
+  onResetSession?: (workerId: string) => void;
   pendingAction?: string | null;
   error?: string | null;
 }) {
@@ -108,7 +118,7 @@ export function WorkerDashboardSection({
         </div>
         {dashboard.hasAuthIssues ? (
           <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-            auth_expired workers need credential refresh before they can dispatch.
+            Workers blocked by expired auth need credential refresh before they can dispatch.
           </div>
         ) : null}
       </div>
@@ -128,6 +138,31 @@ export function WorkerDashboardSection({
       ) : null}
 
       <div className="space-y-6">
+        {providerReadiness.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {providerReadiness.map((provider) => (
+              <Card key={provider.provider} className="border-dashed">
+                <CardContent className="space-y-2 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      {provider.provider}
+                    </div>
+                    <div className="text-sm font-medium">{provider.status}</div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {provider.readyWorkerCount} ready workers · {provider.activeCredentialCount} active credentials
+                  </div>
+                  {provider.blockingReasons.length > 0 ? (
+                    <div className="text-sm text-amber-800 dark:text-amber-300">
+                      {provider.blockingReasons[0]?.message}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+
         {dashboard.providerGroups.map((group) => (
           <div key={group.provider} className="space-y-3">
             <div className="flex items-center gap-2">
@@ -145,6 +180,7 @@ export function WorkerDashboardSection({
                   worker={worker}
                   onDrain={onDrain}
                   onRemove={onRemove}
+                  onResetSession={onResetSession}
                   pendingAction={pendingAction}
                 />
               ))}
@@ -158,10 +194,12 @@ export function WorkerDashboardSection({
 
 export function WorkerDashboardPanel() {
   const { data: workers, isLoading } = useWorkers();
+  const { data: providerReadiness } = useWorkerProviders();
   const drain = useDrainWorker();
   const remove = useRemoveWorker();
-  const pendingAction = drain.pendingWorkerId ?? remove.pendingWorkerId;
-  const error = drain.error ?? remove.error;
+  const resetSession = useResetWorkerSession();
+  const pendingAction = drain.pendingWorkerId ?? remove.pendingWorkerId ?? resetSession.pendingWorkerId;
+  const error = drain.error ?? remove.error ?? resetSession.error;
   const items = useMemo(() => workers ?? [], [workers]);
 
   if (isLoading && items.length === 0) {
@@ -177,8 +215,10 @@ export function WorkerDashboardPanel() {
   return (
     <WorkerDashboardSection
       workers={items}
+      providerReadiness={providerReadiness ?? []}
       onDrain={(workerId) => void drain.run(workerId)}
       onRemove={(workerId) => void remove.run(workerId)}
+      onResetSession={(workerId) => void resetSession.run(workerId)}
       pendingAction={pendingAction}
       error={error}
     />

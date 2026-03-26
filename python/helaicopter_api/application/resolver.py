@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 from collections import deque
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
@@ -25,6 +26,7 @@ from typing import Protocol
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 
+from .provider_readiness import build_provider_readiness_from_store
 from oats.discovery import Discovery, DuplicateTaskIdError, insert_discovered_tasks
 from oats.graph import TaskGraph
 from oats.graph import EdgePredicate, GraphCycleError, TaskKind, TaskNode, TypedEdge
@@ -70,6 +72,9 @@ class TaskResult(BaseModel):
     branch_name: str | None = None
     commit_sha: str | None = None
     error_summary: str | None = None
+    provider_session_id: str | None = None
+    session_reused: bool = False
+    session_status_after_task: str | None = None
 
 
 class DispatchEvent(BaseModel):
@@ -81,6 +86,16 @@ class DispatchEvent(BaseModel):
     provider: str
     model: str
     dispatched_at: datetime
+
+
+@dataclass(slots=True)
+class InterruptedTaskRecord:
+    """Recent worker interruption metadata for operator-facing recovery state."""
+
+    run_id: str
+    task_id: str
+    worker_id: str
+    interrupted_at: datetime
 
 
 class DiscoverySubmission(BaseModel):
@@ -132,6 +147,7 @@ class ResolverLoop:
         self._completion_queue: deque[TaskResult] = deque()
         self._discovery_queue: deque[DiscoverySubmission] = deque()
         self._dispatch_history: deque[DispatchEvent] = deque(maxlen=dispatch_history_limit)
+        self._interrupted_tasks: dict[tuple[str, str], InterruptedTaskRecord] = {}
         self._running = False
 
     # ------------------------------------------------------------------
@@ -196,6 +212,10 @@ class ResolverLoop:
         history_path.parent.mkdir(parents=True, exist_ok=True)
         with history_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event.model_dump(mode="json")) + "\n")
+
+    def interrupted_task_record(self, *, run_id: str, task_id: str) -> InterruptedTaskRecord | None:
+        """Return recent interruption metadata for a re-queued task."""
+        return self._interrupted_tasks.get((run_id, task_id))
 
     async def tick(self) -> None:
         """Execute one resolver cycle.
@@ -413,6 +433,12 @@ class ResolverLoop:
                     node = graph.nodes[task_id]
                     if node.status == "running":
                         node.status = "pending"
+                        self._interrupted_tasks[(run_id, task_id)] = InterruptedTaskRecord(
+                            run_id=run_id,
+                            task_id=task_id,
+                            worker_id=worker.worker_id,
+                            interrupted_at=datetime.now(UTC),
+                        )
                         logger.info("Re-queued task %s from dead worker %s", task_id, worker.worker_id)
 
     # ------------------------------------------------------------------
@@ -421,6 +447,7 @@ class ResolverLoop:
 
     def _dispatch_ready_tasks(self) -> None:
         """Find ready tasks across all active graphs and dispatch to workers."""
+        readiness_by_provider: dict[str, object | None] = {}
         for run_id, graph in self._graphs.items():
             ready_ids = graph.ready_tasks()
             for task_id in ready_ids:
@@ -430,6 +457,15 @@ class ResolverLoop:
 
                 provider = node.agent or self._task_agents.get(task_id, "claude")
                 model = node.model or self._task_models.get(task_id, "claude-sonnet-4-6")
+                if provider not in readiness_by_provider:
+                    readiness_by_provider[provider] = build_provider_readiness_from_store(
+                        provider=provider,
+                        engine=self._sqlite_engine,
+                        workers=self._registry.all_workers(),
+                    )
+                readiness = readiness_by_provider[provider]
+                if readiness is not None and readiness.status == "blocked":
+                    continue
 
                 worker = select_worker(
                     provider=provider,
@@ -456,6 +492,7 @@ class ResolverLoop:
                     provider=provider,
                     model=model,
                 )
+                self._interrupted_tasks.pop((run_id, task_id), None)
                 logger.info(
                     "Dispatched task %s (run %s) to worker %s",
                     task_id,

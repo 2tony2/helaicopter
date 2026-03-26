@@ -11,8 +11,10 @@ from helaicopter_api.application.workers import (
     drain_worker,
     get_worker,
     heartbeat_worker,
+    list_worker_provider_readiness,
     list_workers,
     pull_next_task,
+    reset_worker_session,
     report_task_result,
     register_worker,
 )
@@ -20,6 +22,7 @@ from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.schema.workers import (
     WorkerDetailResponse,
     WorkerHeartbeatRequest,
+    WorkerProviderReadinessResponse,
     WorkerRegistrationRequest,
     WorkerRegistrationResponse,
     WorkerTaskReportRequest,
@@ -43,6 +46,19 @@ async def worker_register(
 ) -> WorkerRegistrationResponse:
     """Register a worker with the control plane."""
     return register_worker(services.sqlite_engine, body)
+
+
+@workers_router.get(
+    "/providers",
+    response_model=list[WorkerProviderReadinessResponse],
+    response_model_by_alias=True,
+    summary="List provider-level execution readiness.",
+)
+async def worker_provider_list(
+    services: BackendServices = Depends(get_services),
+) -> list[WorkerProviderReadinessResponse]:
+    """List provider readiness summaries derived from worker and credential state."""
+    return list_worker_provider_readiness(services.sqlite_engine)
 
 
 @workers_router.get(
@@ -116,6 +132,24 @@ async def worker_drain(
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
     return {"ok": "true"}
+
+
+@workers_router.post(
+    "/{worker_id}/reset-session",
+    response_model=WorkerDetailResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_200_OK,
+    summary="Reset a worker session.",
+)
+async def worker_reset_session(
+    worker_id: str,
+    services: BackendServices = Depends(get_services),
+) -> WorkerDetailResponse:
+    """Mark a worker session for reset and return the updated detail."""
+    result = reset_worker_session(services.sqlite_engine, worker_id)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
+    return result
 
 
 @workers_router.delete(

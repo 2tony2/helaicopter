@@ -10,29 +10,13 @@ import {
   normalizeAuthCredential,
   normalizeAuthCredentials,
 } from "@/lib/client/normalize";
-import {
-  authCredentialListSchema,
-  authCredentialSchema,
-  oauthInitiateSchema,
-} from "@/lib/client/schemas/auth";
+import { authCredentialListSchema, authCredentialSchema } from "@/lib/client/schemas/auth";
 
 const authSwrOptions = {
   revalidateOnFocus: false,
   revalidateOnReconnect: false,
   refreshInterval: 10_000,
 };
-
-type AddCredentialInput =
-  | {
-      provider: AuthCredential["provider"];
-      credentialType: "api_key";
-      apiKey: string;
-    }
-  | {
-      provider: AuthCredential["provider"];
-      credentialType: "local_cli_session";
-      cliConfigPath: string;
-    };
 
 export function useCredentials() {
   return useSWR<AuthCredential[]>(
@@ -68,11 +52,22 @@ function useCredentialMutation<TArgs extends unknown[]>(
   return { run, isMutating, error };
 }
 
-export function useAddCredential() {
-  return useCredentialMutation((input: AddCredentialInput) =>
+export function useConnectClaudeCli() {
+  return useCredentialMutation(() =>
     post(
-      endpoints.authCredentials(),
-      input,
+      endpoints.authCredentialClaudeCliConnect(),
+      undefined,
+      authCredentialSchema,
+      normalizeAuthCredential
+    )
+  );
+}
+
+export function useConnectCodexCli() {
+  return useCredentialMutation(() =>
+    post(
+      endpoints.authCredentialCodexCliConnect(),
+      undefined,
       authCredentialSchema,
       normalizeAuthCredential
     )
@@ -93,11 +88,5 @@ export function useRefreshCredential() {
       authCredentialSchema,
       normalizeAuthCredential
     )
-  );
-}
-
-export function useInitiateOauth() {
-  return useCredentialMutation((provider: AuthCredential["provider"]) =>
-    post(endpoints.authCredentialOauthInitiate(), { provider }, oauthInitiateSchema)
   );
 }

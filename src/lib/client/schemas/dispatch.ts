@@ -11,6 +11,8 @@ export const dispatchQueueEntrySchema = z.object({
 
 export const deferredDispatchQueueEntrySchema = dispatchQueueEntrySchema.extend({
   reason: z.string(),
+  reasonLabel: z.string(),
+  canRetry: z.boolean().optional().default(false),
 });
 
 export const dispatchQueueSnapshotSchema = z.object({

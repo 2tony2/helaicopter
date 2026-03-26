@@ -12,9 +12,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from helaicopter_api.application.auth import create_credential
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.application.dispatch import InMemoryWorkerRegistry
 from helaicopter_api.application.resolver import ResolverLoop
+from helaicopter_api.schema.auth import CreateCredentialRequest
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -105,6 +107,7 @@ def test_queue_snapshot_shows_ready_and_deferred(tmp_path: Path) -> None:
         assert len(payload["deferred"]) == 1
         assert payload["deferred"][0]["taskId"] == "deferred-task"
         assert payload["deferred"][0]["reason"] == "no_registered_worker"
+        assert payload["deferred"][0]["reasonLabel"] == "No workers are registered for this provider."
 
 
 def test_queue_snapshot_prefers_node_metadata_and_surfaces_auth_expired_reason(tmp_path: Path) -> None:
@@ -142,6 +145,103 @@ def test_queue_snapshot_prefers_node_metadata_and_surfaces_auth_expired_reason(t
                 "provider": "codex",
                 "model": "o3-pro",
                 "reason": "auth_expired",
+                "reasonLabel": "A matching worker exists, but its provider auth must be refreshed.",
+            }
+        ]
+
+
+def test_queue_snapshot_reports_provider_not_ready_when_worker_exists_but_provider_auth_is_not_runnable(
+    tmp_path: Path,
+) -> None:
+    with _dispatch_client() as client:
+        engine = client.app.dependency_overrides[get_services]().sqlite_engine
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "codex",
+                    "credentialType": "local_cli_session",
+                }
+            ),
+        )
+
+        graph = TaskGraph()
+        graph.add_node(_task("codex-task", "Codex Task"))
+        node = graph.get_node("codex-task")
+        node.agent = "codex"
+        node.model = "o3-pro"
+
+        resolver = ResolverLoop(
+            registry=InMemoryWorkerRegistry(),
+            graphs={"run_provider": graph},
+            task_agents={"codex-task": "codex"},
+            task_models={"codex-task": "o3-pro"},
+            sqlite_engine=engine,
+        )
+        resolver._registry.register(
+            provider="codex",
+            models=["o3-pro"],
+            worker_id="wkr_codex_ready",
+        )
+        client.app.state.resolver = resolver
+        _set_runtime_dir(client, tmp_path)
+
+        response = client.get("/dispatch/queue")
+
+        assert response.status_code == 200
+        assert response.json()["deferred"] == [
+            {
+                "runId": "run_provider",
+                "taskId": "codex-task",
+                "provider": "codex",
+                "model": "o3-pro",
+                "reason": "provider_not_ready",
+                "reasonLabel": "Provider auth or local session is not ready for execution.",
+                "canRetry": False,
+            }
+        ]
+
+
+def test_queue_snapshot_reports_worker_interrupted_as_retryable(tmp_path: Path) -> None:
+    with _dispatch_client() as client:
+        graph = TaskGraph()
+        graph.add_node(_task("retry-task", "Retry Task"))
+        node = graph.get_node("retry-task")
+        node.agent = "claude"
+        node.model = "claude-sonnet-4-6"
+        node.status = "running"
+
+        resolver = ResolverLoop(
+            registry=InMemoryWorkerRegistry(),
+            graphs={"run_retry": graph},
+            task_agents={"retry-task": "claude"},
+            task_models={"retry-task": "claude-sonnet-4-6"},
+        )
+        worker = resolver._registry.register(
+            provider="claude",
+            models=["claude-sonnet-4-6"],
+            worker_id="wkr_interrupted",
+        )
+        worker.status = "busy"
+        worker.current_task_id = "retry-task"
+        worker.current_run_id = "run_retry"
+        worker.last_heartbeat_at = worker.last_heartbeat_at.replace(year=2020)
+        client.app.state.resolver = resolver
+        _set_runtime_dir(client, tmp_path)
+
+        _run(resolver.tick())
+        response = client.get("/dispatch/queue")
+
+        assert response.status_code == 200
+        assert response.json()["deferred"] == [
+            {
+                "runId": "run_retry",
+                "taskId": "retry-task",
+                "provider": "claude",
+                "model": "claude-sonnet-4-6",
+                "reason": "worker_interrupted",
+                "reasonLabel": "A worker disappeared mid-task; retry or re-route this work once capacity returns.",
+                "canRetry": True,
             }
         ]
 
@@ -236,6 +336,7 @@ def test_lifespan_startup_keeps_drained_worker_out_of_ready_queue(tmp_path: Path
                 "provider": "claude",
                 "model": "claude-sonnet-4-6",
                 "reason": "draining",
+                "reasonLabel": "Matching workers are draining and cannot accept new tasks.",
             }
         ]
 
