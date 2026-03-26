@@ -32,7 +32,7 @@ export function AuthManagementSection({
   onRefresh?: (credentialId: string) => void;
   onRevoke?: (credentialId: string) => void;
   onConnectClaudeCli?: () => void;
-  onInitiateOauth?: (provider: AuthCredential["provider"]) => void;
+  onInitiateOauth?: () => void;
   pending?: boolean;
   error?: string | null;
 }) {
@@ -134,8 +134,8 @@ export function AuthManagementPanel() {
       onRefresh={(credentialId) => void refreshCredential.run(credentialId)}
       onRevoke={(credentialId) => void revokeCredential.run(credentialId)}
       onConnectClaudeCli={() => void connectClaudeCli.run()}
-      onInitiateOauth={(provider) => {
-        void oauth.run(provider).then((result) => {
+      onInitiateOauth={() => {
+        void oauth.run("codex").then((result) => {
           if (
             typeof window !== "undefined" &&
             result &&

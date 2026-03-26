@@ -22,18 +22,6 @@ const authSwrOptions = {
   refreshInterval: 10_000,
 };
 
-type AddCredentialInput =
-  | {
-      provider: AuthCredential["provider"];
-      credentialType: "api_key";
-      apiKey: string;
-    }
-  | {
-      provider: AuthCredential["provider"];
-      credentialType: "local_cli_session";
-      cliConfigPath: string;
-    };
-
 export function useCredentials() {
   return useSWR<AuthCredential[]>(
     endpoints.authCredentials(),
@@ -66,17 +54,6 @@ function useCredentialMutation<TArgs extends unknown[]>(
   }
 
   return { run, isMutating, error };
-}
-
-export function useAddCredential() {
-  return useCredentialMutation((input: AddCredentialInput) =>
-    post(
-      endpoints.authCredentials(),
-      input,
-      authCredentialSchema,
-      normalizeAuthCredential
-    )
-  );
 }
 
 export function useConnectClaudeCli() {

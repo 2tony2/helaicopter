@@ -17,7 +17,7 @@ export function CredentialProviderActions({
   pending = false,
 }: {
   onConnectClaudeCli?: () => void;
-  onOauth?: (provider: AuthCredential["provider"]) => void;
+  onOauth?: () => void;
   pending?: boolean;
 }) {
   return (
@@ -37,7 +37,7 @@ export function CredentialProviderActions({
       <div className="rounded-lg border bg-muted/30 p-4">
         <div className="text-sm font-medium">Codex</div>
         <p className="mt-1 text-sm text-muted-foreground">OAuth redirect.</p>
-        <Button className="mt-4 w-full" disabled={pending} onClick={() => onOauth?.("codex")}>
+        <Button className="mt-4 w-full" disabled={pending} onClick={() => onOauth?.()}>
           OAuth redirect
         </Button>
       </div>
@@ -51,7 +51,7 @@ export function AddCredentialDialog({
   pending = false,
 }: {
   onConnectClaudeCli?: () => void;
-  onOauth?: (provider: AuthCredential["provider"]) => void;
+  onOauth?: () => void;
   pending?: boolean;
 }) {
   return (

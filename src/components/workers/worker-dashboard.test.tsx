@@ -118,7 +118,7 @@ function buildCredentials(): AuthCredential[] {
     {
       credentialId: "cred_claude_active",
       provider: "claude",
-      credentialType: "api_key",
+      credentialType: "local_cli_session",
       status: "active",
       providerStatusCode: "ready",
       providerStatusMessage: "Credential is ready for provider execution.",

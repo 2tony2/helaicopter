@@ -53,7 +53,7 @@ function buildCredential(): AuthCredential {
   return {
     credentialId: "cred_claude_active",
     provider: "claude",
-    credentialType: "api_key",
+    credentialType: "local_cli_session",
     status: "active",
     providerStatusCode: "ready",
     providerStatusMessage: "Credential is ready for provider execution.",
@@ -72,14 +72,14 @@ function buildCredential(): AuthCredential {
 
 test("CredentialProviderActions invokes the Claude and Codex callbacks", () => {
   let claudeConnectCount = 0;
-  let oauthProvider: AuthCredential["provider"] | null = null;
+  let oauthCalls = 0;
 
   const tree = CredentialProviderActions({
     onConnectClaudeCli: () => {
       claudeConnectCount += 1;
     },
-    onOauth: (provider) => {
-      oauthProvider = provider;
+    onOauth: () => {
+      oauthCalls += 1;
     },
   });
 
@@ -91,7 +91,7 @@ test("CredentialProviderActions invokes the Claude and Codex callbacks", () => {
   const codexButton = findByText(tree, "OAuth redirect");
   assert.ok(codexButton);
   codexButton!.props.onClick();
-  assert.equal(oauthProvider, "codex");
+  assert.equal(oauthCalls, 1);
 });
 
 test("AuthManagementSection passes provider-aware actions through to the add-credential dialog", () => {
