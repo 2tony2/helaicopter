@@ -8,11 +8,13 @@ import uuid
 
 from helaicopter_domain.ids import RunId, SessionId, TaskId
 from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus
+from oats.graph import EdgePredicate, TaskGraph, TaskKind, TaskNode, TypedEdge
 from oats.models import (
     AgentInvocationResult,
     ExecutionPlan,
     FeatureBranchSnapshot,
     InvocationRuntimeRecord,
+    PlannedTask,
     RunPlanSnapshot,
     RunRuntimeState,
     RuntimeProgressEvent,
@@ -53,6 +55,7 @@ def build_initial_runtime_state(
         for task in execution_plan.tasks
     ]
     now = datetime.now(timezone.utc)
+    graph = build_graph_from_planned_tasks(execution_plan.tasks)
     return RunRuntimeState(
         run_id=run_id,
         run_title=execution_plan.run_title,
@@ -73,6 +76,7 @@ def build_initial_runtime_state(
         updated_at=now,
         heartbeat_at=now,
         tasks=tasks,
+        graph=graph,
     )
 
 
@@ -89,6 +93,65 @@ def build_plan_snapshot(state: RunRuntimeState, execution_plan: ExecutionPlan) -
         final_pr_target=state.final_pr_target,
         tasks=execution_plan.tasks,
     )
+
+
+def build_graph_from_planned_tasks(tasks: list[PlannedTask]) -> TaskGraph:
+    """Build a TaskGraph from planned tasks.
+
+    Single-parent deps get code_ready edges.
+    Multi-dependency tasks with after_dependency_merges get pr_merged edges.
+    """
+    graph = TaskGraph()
+    for task in tasks:
+        graph.add_node(TaskNode(
+            task_id=task.id,
+            kind=TaskKind.IMPLEMENTATION,
+            title=task.title,
+        ))
+
+    for task in tasks:
+        if not task.depends_on:
+            continue
+        predicate = (
+            EdgePredicate.PR_MERGED
+            if task.branch_strategy == "after_dependency_merges"
+            else EdgePredicate.CODE_READY
+        )
+        for dep_id in task.depends_on:
+            graph.add_edge(TypedEdge(
+                from_task=dep_id,
+                to_task=task.id,
+                predicate=predicate,
+            ))
+    return graph
+
+
+def migrate_v1_state(state: RunRuntimeState) -> RunRuntimeState:
+    """Auto-migrate a v1 state without a graph field.
+
+    Creates the graph from the tasks array with code_ready edges
+    (since v1 didn't have edge type information).
+    """
+    if state.graph is not None:
+        return state
+
+    graph = TaskGraph()
+    for task in state.tasks:
+        graph.add_node(TaskNode(
+            task_id=task.task_id,
+            kind=task.kind,
+            title=task.title,
+        ))
+    for task in state.tasks:
+        for dep_id in task.depends_on:
+            if dep_id in graph.nodes:
+                graph.add_edge(TypedEdge(
+                    from_task=dep_id,
+                    to_task=task.task_id,
+                    predicate=EdgePredicate.CODE_READY,
+                ))
+    state.graph = graph
+    return state
 
 
 def load_runtime_state(path: Path) -> RunRuntimeState:

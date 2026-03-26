@@ -23,9 +23,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AuthManagementPanel } from "@/components/auth/auth-management-section";
+import { QueueMonitorPanel } from "@/components/dispatch/queue-monitor";
+import { WorkerDashboardPanel } from "@/components/workers/worker-dashboard";
 import { getLayoutedElements } from "@/lib/conversation-dag-layout";
 import {
+  cancelOvernightOatsTask,
+  forceRetryOvernightOatsTask,
+  insertOvernightOatsTask,
+  pauseOvernightOatsRun,
   refreshOvernightOatsRun,
+  rerouteOvernightOatsTask,
   resumeOvernightOatsRun,
 } from "@/lib/client/mutations";
 import { useOvernightOatsRuns } from "@/hooks/use-conversations";
@@ -406,7 +414,9 @@ export function OvernightOatsPanel() {
   const [search, setSearch] = useState("");
   const [selectedRecordPath, setSelectedRecordPath] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"refresh" | "resume" | null>(null);
+  const [pendingAction, setPendingAction] = useState<
+    "refresh" | "resume" | "pause" | "cancel" | "retry" | "reroute" | "insert" | null
+  >(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const filteredRuns = useMemo(() => {
@@ -501,6 +511,89 @@ export function OvernightOatsPanel() {
     }
   }
 
+  async function triggerPauseRun() {
+    if (!selectedRun || pendingAction) {
+      return;
+    }
+
+    setPendingAction("pause");
+    setActionError(null);
+    try {
+      const nextRun = await pauseOvernightOatsRun(selectedRun.runId);
+      await mutate(replaceRunRecord(runs, nextRun), { revalidate: false });
+      setSelectedRecordPath(nextRun.recordPath);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Pause action failed.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function triggerTaskAction(action: "cancel" | "retry" | "reroute") {
+    if (!selectedRun || !selectedTaskId || pendingAction) {
+      return;
+    }
+
+    setPendingAction(action);
+    setActionError(null);
+    try {
+      let nextRun: OvernightOatsRunRecord;
+      if (action === "cancel") {
+        nextRun = await cancelOvernightOatsTask(selectedRun.runId, selectedTaskId);
+      } else if (action === "retry") {
+        nextRun = await forceRetryOvernightOatsTask(selectedRun.runId, selectedTaskId);
+      } else {
+        const providerInput = window.prompt("Re-route provider (claude or codex)", "codex");
+        if (providerInput !== "claude" && providerInput !== "codex") {
+          setPendingAction(null);
+          return;
+        }
+        const modelInput = window.prompt("Model override", providerInput === "codex" ? "o3-pro" : "claude-sonnet-4-6");
+        nextRun = await rerouteOvernightOatsTask(selectedRun.runId, selectedTaskId, {
+          provider: providerInput,
+          model: modelInput || undefined,
+        });
+      }
+      await mutate(replaceRunRecord(runs, nextRun), { revalidate: false });
+      setSelectedRecordPath(nextRun.recordPath);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Task action failed.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function triggerInsertTask() {
+    if (!selectedRun || pendingAction) {
+      return;
+    }
+
+    const title = window.prompt("New task title", "Operator-added task");
+    if (!title) {
+      return;
+    }
+
+    setPendingAction("insert");
+    setActionError(null);
+    try {
+      const nextRun = await insertOvernightOatsTask(selectedRun.runId, {
+        title,
+        kind: "implementation",
+        dependencies: selectedTaskId
+          ? [{ taskId: selectedTaskId, predicate: "code_ready" }]
+          : [],
+        agent: "claude",
+        model: "claude-sonnet-4-6",
+      });
+      await mutate(replaceRunRecord(runs, nextRun), { revalidate: false });
+      setSelectedRecordPath(nextRun.recordPath);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Insert task failed.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -588,6 +681,28 @@ export function OvernightOatsPanel() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-dashed">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="text-sm font-medium">Operator surfaces</div>
+            <div className="text-sm text-muted-foreground">
+              Jump between run state, workers, credentials, and dispatch monitoring.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href="#worker-dashboard">Worker Dashboard</a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href="#auth-management">Auth Management</a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href="#queue-monitor">Queue Monitor</a>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {oatsLoading ? (
         <div className="space-y-3">
@@ -750,7 +865,51 @@ export function OvernightOatsPanel() {
                         >
                           {pendingAction === "resume" ? "Resuming..." : "Resume run"}
                         </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={pendingAction !== null}
+                          onClick={() => void triggerPauseRun()}
+                        >
+                          {pendingAction === "pause" ? "Pausing..." : "Pause run"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={pendingAction !== null}
+                          onClick={() => void triggerInsertTask()}
+                        >
+                          {pendingAction === "insert" ? "Inserting..." : "Insert task"}
+                        </Button>
                       </div>
+                      {selectedTaskId ? (
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={pendingAction !== null}
+                            onClick={() => void triggerTaskAction("cancel")}
+                          >
+                            {pendingAction === "cancel" ? "Cancelling..." : `Cancel ${selectedTaskId}`}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={pendingAction !== null}
+                            onClick={() => void triggerTaskAction("retry")}
+                          >
+                            {pendingAction === "retry" ? "Retrying..." : `Force retry ${selectedTaskId}`}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={pendingAction !== null}
+                            onClick={() => void triggerTaskAction("reroute")}
+                          >
+                            {pendingAction === "reroute" ? "Re-routing..." : `Re-route ${selectedTaskId}`}
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   {actionError ? (
@@ -814,6 +973,10 @@ export function OvernightOatsPanel() {
           )}
         </div>
       )}
+
+      <WorkerDashboardPanel />
+      <AuthManagementPanel />
+      <QueueMonitorPanel />
     </div>
   );
 }

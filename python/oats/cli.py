@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Literal, cast
 from pathlib import Path
@@ -70,6 +71,8 @@ app = typer.Typer(
         "and stacked PR workflows."
     )
 )
+pi_app = typer.Typer(help="Pi worker shell commands.")
+app.add_typer(pi_app, name="pi")
 console = Console()
 DEFAULT_STALE_AFTER_SECONDS = 300
 DEFAULT_PROGRESS_HEARTBEAT_INTERVAL_SECONDS = 30.0
@@ -1422,6 +1425,27 @@ def watch(
         }:
             break
         time.sleep(interval_seconds)
+
+
+@pi_app.command("start", help="Start a Pi v1 worker shell.")
+def pi_start(
+    provider: str = typer.Option(..., help="Provider served by this worker."),
+    model: list[str] = typer.Option(..., "--model", help="Model capability to advertise."),
+    control_plane: str = typer.Option(..., help="Base URL for the control plane."),
+    heartbeat_interval: float = typer.Option(30.0, help="Heartbeat interval in seconds."),
+    poll_interval: float = typer.Option(5.0, help="Task poll interval in seconds."),
+) -> None:
+    from oats.pi_worker import PiWorker
+
+    worker = PiWorker(
+        provider=provider,
+        models=model,
+        control_plane_url=control_plane,
+        heartbeat_interval=heartbeat_interval,
+        poll_interval=poll_interval,
+    )
+    asyncio.run(worker.run_loop())
+
 
 def main() -> None:
     app()

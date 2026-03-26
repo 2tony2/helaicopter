@@ -151,6 +151,56 @@ class FactOrchestrationTaskAttempt(OltpBase):
     last_progress_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class WorkerRegistryRecord(OltpBase):
+    __tablename__ = "worker_registry"
+    __table_args__ = (
+        Index("ix_worker_registry_provider", "provider"),
+        Index("ix_worker_registry_status", "status"),
+    )
+
+    worker_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    worker_type: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    capabilities_json: Mapped[str] = mapped_column(Text, nullable=False)
+    auth_credential_id: Mapped[str | None] = mapped_column(Text)
+    host: Mapped[str] = mapped_column(Text, nullable=False)
+    pid: Mapped[int | None] = mapped_column(Integer)
+    worktree_root: Mapped[str | None] = mapped_column(Text)
+    registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    current_task_id: Mapped[str | None] = mapped_column(Text)
+    current_run_id: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+
+
+class AuthCredentialRecord(OltpBase):
+    __tablename__ = "auth_credentials"
+    __table_args__ = (
+        Index("ix_auth_credentials_provider", "provider"),
+        Index("ix_auth_credentials_status", "status"),
+    )
+
+    credential_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    credential_type: Mapped[str] = mapped_column(Text, nullable=False)
+    access_token_encrypted: Mapped[bytes | None] = mapped_column()
+    refresh_token_encrypted: Mapped[bytes | None] = mapped_column()
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    oauth_scopes_json: Mapped[str | None] = mapped_column(Text)
+    api_key_encrypted: Mapped[bytes | None] = mapped_column()
+    cli_config_path: Mapped[str | None] = mapped_column(Text)
+    subscription_id: Mapped[str | None] = mapped_column(Text)
+    subscription_tier: Mapped[str | None] = mapped_column(Text)
+    rate_limit_tier: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cumulative_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    cost_since_reset: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
 class ConversationRecord(ProvenanceMixin, OltpBase):
     __tablename__ = "conversations"
     __table_args__ = (

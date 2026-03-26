@@ -24,6 +24,11 @@ from helaicopter_api.schema.orchestration import (
     OrchestrationDagStatsResponse,
     OrchestrationFeatureBranchResponse,
     OrchestrationFinalPullRequestResponse,
+    OrchestrationGraphMutationResponse,
+    OrchestrationGraphNodeResponse,
+    OrchestrationInsertTaskRequest,
+    OrchestrationRunActionResponse,
+    OrchestrationRerouteTaskRequest,
     OrchestrationInvocationResponse,
     OrchestrationOperationHistoryResponse,
     OrchestrationReviewSummaryResponse,
@@ -32,6 +37,7 @@ from helaicopter_api.schema.orchestration import (
     OrchestrationTaskPullRequestResponse,
     OrchestrationTaskAttemptFactResponse,
     OrchestrationTaskResponse,
+    OrchestrationTypedEdgeResponse,
 )
 from helaicopter_api.pure.orchestration_analytics import (
     StoredRuntimeArtifact,
@@ -41,6 +47,7 @@ from helaicopter_api.pure.orchestration_analytics import (
 from helaicopter_domain.ids import RunId
 from helaicopter_domain.paths import EncodedProjectKey
 from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
+from oats.graph import EdgePredicate, GraphMutation, TaskKind, TaskNode, TypedEdge
 from oats.models import (
     AgentInvocationResult,
     InvocationRuntimeRecord,
@@ -49,6 +56,8 @@ from oats.models import (
     TaskExecutionRecord,
     TaskRuntimeRecord,
 )
+from oats.identity import generate_discovered_task_id, generate_mutation_id
+from oats.runtime_state import write_runtime_state
 
 ACTIVE_RUN_STATUSES: set[RunRuntimeStatus] = {"pending", "planning", "running"}
 STALE_RUNTIME_AFTER_SECONDS = 300
@@ -161,6 +170,167 @@ def get_oats_facts(services: InstanceOf[BackendServices]) -> OrchestrationFactsR
     )
 
 
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def get_oats_run(
+    services: InstanceOf[BackendServices],
+    run_id: str,
+) -> OrchestrationRunResponse:
+    stored = _get_runtime_state_for_run(services, run_id)
+    return _shape_runtime_state(stored, services=services).response
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def pause_oats_run(
+    services: InstanceOf[BackendServices],
+    run_id: str,
+) -> OrchestrationRunActionResponse:
+    stored = _get_runtime_state_for_run(services, run_id)
+    state = stored.state
+    state.status = "paused"
+    state.active_task_id = None
+    state.graph_mutations.append(
+        GraphMutation(
+            mutation_id=generate_mutation_id(),
+            kind="pause_run",
+            discovered_by="operator",
+            source="operator",
+        )
+    )
+    write_runtime_state(state)
+    return _shape_runtime_action_response(state)
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def cancel_oats_task(
+    services: InstanceOf[BackendServices],
+    run_id: str,
+    task_id: str,
+) -> OrchestrationRunActionResponse:
+    stored = _get_runtime_state_for_run(services, run_id)
+    state = stored.state
+    graph = _require_graph(state, run_id)
+    graph.cancel_task(task_id)
+    _sync_state_tasks_from_graph(state)
+    state.graph_mutations.append(
+        GraphMutation(
+            mutation_id=generate_mutation_id(),
+            kind="cancel_task",
+            discovered_by="operator",
+            source="operator",
+            nodes_added=[task_id],
+        )
+    )
+    write_runtime_state(state)
+    return _shape_runtime_action_response(state)
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def force_retry_oats_task(
+    services: InstanceOf[BackendServices],
+    run_id: str,
+    task_id: str,
+) -> OrchestrationRunActionResponse:
+    stored = _get_runtime_state_for_run(services, run_id)
+    state = stored.state
+    graph = _require_graph(state, run_id)
+    graph.force_retry_task(task_id)
+    _sync_state_tasks_from_graph(state)
+    state.graph_mutations.append(
+        GraphMutation(
+            mutation_id=generate_mutation_id(),
+            kind="force_retry_task",
+            discovered_by="operator",
+            source="operator",
+            nodes_added=[task_id],
+        )
+    )
+    write_runtime_state(state)
+    return _shape_runtime_action_response(state)
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def reroute_oats_task(
+    services: InstanceOf[BackendServices],
+    run_id: str,
+    task_id: str,
+    request: OrchestrationRerouteTaskRequest,
+) -> OrchestrationRunActionResponse:
+    stored = _get_runtime_state_for_run(services, run_id)
+    state = stored.state
+    graph = _require_graph(state, run_id)
+    graph.reroute_task(task_id, provider=request.provider, model=request.model)
+    _sync_state_tasks_from_graph(state)
+    state.graph_mutations.append(
+        GraphMutation(
+            mutation_id=generate_mutation_id(),
+            kind="reroute_task",
+            discovered_by="operator",
+            source="operator",
+            nodes_added=[task_id],
+        )
+    )
+    write_runtime_state(state)
+    return _shape_runtime_action_response(state)
+
+
+@validate_call(config=ConfigDict(strict=True), validate_return=True)
+def insert_oats_task(
+    services: InstanceOf[BackendServices],
+    run_id: str,
+    request: OrchestrationInsertTaskRequest,
+) -> OrchestrationRunActionResponse:
+    stored = _get_runtime_state_for_run(services, run_id)
+    state = stored.state
+    graph = _require_graph(state, run_id)
+    task_id = generate_discovered_task_id()
+    graph.add_node(
+        TaskNode(
+            task_id=task_id,
+            kind=TaskKind(request.kind),
+            title=request.title,
+            agent=request.agent,
+            model=request.model,
+            discovered_by="operator",
+        )
+    )
+    inserted_edges: list[TypedEdge] = []
+    depends_on: list[str] = []
+    for dependency in request.dependencies:
+        edge = TypedEdge(
+            from_task=dependency.task_id,
+            to_task=task_id,
+            predicate=EdgePredicate(dependency.predicate),
+        )
+        graph.add_edge(edge)
+        inserted_edges.append(edge)
+        depends_on.append(str(dependency.task_id))
+    state.tasks.append(
+        TaskRuntimeRecord(
+            task_id=task_id,
+            title=request.title,
+            depends_on=depends_on,
+            branch_name=f"oats/task/{task_id}",
+            pr_base=state.integration_branch,
+            agent=request.agent,
+            status="pending",
+            discovered_by="operator",
+        )
+    )
+    _sync_state_tasks_from_graph(state)
+    state.graph_mutations.append(
+        GraphMutation(
+            mutation_id=generate_mutation_id(),
+            kind="insert_tasks",
+            discovered_by="operator",
+            source="operator",
+            nodes_added=[task_id],
+            edges_added=inserted_edges,
+        )
+    )
+    write_runtime_state(state)
+    return _shape_runtime_action_response(state, task_id=task_id)
+
+
 def _merge_run(runs_by_id: dict[str, _ShapedRun], shaped: _ShapedRun) -> None:
     existing = runs_by_id.get(shaped.response.run_id)
     if existing is None:
@@ -171,6 +341,46 @@ def _merge_run(runs_by_id: dict[str, _ShapedRun], shaped: _ShapedRun) -> None:
         return
     if shaped.last_updated_at >= existing.last_updated_at:
         runs_by_id[shaped.response.run_id] = shaped
+
+
+def _get_runtime_state_for_run(
+    services: BackendServices,
+    run_id: str,
+) -> StoredOatsRuntimeState:
+    for stored in services.oats_run_store.list_runtime_states():
+        if stored.state.run_id == run_id:
+            return stored
+    raise ValueError(f"OATS runtime state not found for run '{run_id}'")
+
+
+def _require_graph(state: RunRuntimeState, run_id: str):
+    if state.graph is None:
+        raise ValueError(f"OATS run '{run_id}' does not have a graph-native runtime state")
+    return state.graph
+
+
+def _sync_state_tasks_from_graph(state: RunRuntimeState) -> None:
+    if state.graph is None:
+        return
+    tasks_by_id = {task.task_id: task for task in state.tasks}
+    for task_id, node in state.graph.nodes.items():
+        task = tasks_by_id.get(task_id)
+        if task is None:
+            continue
+        task.status = node.status
+        if node.agent in {"claude", "codex", "openclaw", "opencloud"}:
+            task.agent = cast(ProviderName, node.agent)
+
+
+def _shape_runtime_action_response(
+    state: RunRuntimeState,
+    *,
+    task_id: str | None = None,
+) -> OrchestrationRunActionResponse:
+    shaped = _shape_runtime_state(
+        StoredOatsRuntimeState(path=state.runtime_dir / "state.json", state=state)
+    ).response
+    return OrchestrationRunActionResponse(**shaped.model_dump(), task_id=task_id)
 
 
 def _list_persisted_oats_runs(services: BackendServices) -> list[OrchestrationRunResponse]:
@@ -518,6 +728,7 @@ def _shape_runtime_state(
             run_status=status,
             active_task_id=active_task_id,
         ),
+        **_extract_graph_v2_fields(state),
     )
     return _ShapedRun(response=response, last_updated_at=last_updated_at)
 
@@ -621,6 +832,61 @@ def _shape_record_task(
         operation_history=[],
         invocation=invocation,
     )
+
+
+def _extract_graph_v2_fields(state: RunRuntimeState) -> dict:
+    """Extract graph-native v2 fields from runtime state.
+
+    Returns a dict suitable for ** unpacking into OrchestrationRunResponse.
+    Returns empty graph fields for v1 states (no graph).
+    """
+    if state.graph is None:
+        return {}
+
+    graph = state.graph
+    nodes = [
+        OrchestrationGraphNodeResponse(
+            task_id=node.task_id,
+            kind=node.kind.value,
+            title=node.title,
+            status=node.status,
+            agent=node.agent,
+            model=node.model,
+            discovered_by=node.discovered_by,
+        )
+        for node in graph.nodes.values()
+    ]
+    edges = [
+        OrchestrationTypedEdgeResponse(
+            from_task=edge.from_task,
+            to_task=edge.to_task,
+            predicate=edge.predicate.value,
+            satisfied=edge.satisfied,
+        )
+        for edge in graph.edges
+    ]
+    ready_queue = graph.ready_tasks()
+    graph_mutations = [
+        OrchestrationGraphMutationResponse(
+            mutation_id=mutation.mutation_id,
+            kind=mutation.kind,
+            discovered_by=mutation.discovered_by,
+            source=mutation.source,
+            timestamp=_isoformat(mutation.timestamp) or "",
+            nodes_added=list(mutation.nodes_added),
+        )
+        for mutation in state.graph_mutations
+    ]
+    graph_mutation_count = len(state.graph_mutations)
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "ready_queue": ready_queue,
+        "graph_mutation_count": graph_mutation_count,
+        "graph_mutations": graph_mutations,
+        "last_checkpoint_at": _isoformat(state.updated_at),
+    }
 
 
 def _shape_feature_branch(state: RunRuntimeState) -> OrchestrationFeatureBranchResponse | None:
