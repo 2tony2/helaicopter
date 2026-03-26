@@ -62,13 +62,20 @@ class _StubOAuthTokens:
 
 
 class _StubOAuthClient:
+    def __init__(self) -> None:
+        self.authorization_requests: list[tuple[str, str]] = []
+        self.exchanged_codes: list[tuple[str, str]] = []
+        self.refresh_requests: list[str] = []
+
     def build_authorization_url(self, *, state: str, code_challenge: str) -> str:
+        self.authorization_requests.append((state, code_challenge))
         return (
             "https://example.test/oauth/authorize"
             f"?state={state}&challenge={code_challenge}"
         )
 
     def exchange_code(self, *, code: str, code_verifier: str) -> _StubOAuthTokens:
+        self.exchanged_codes.append((code, code_verifier))
         return _StubOAuthTokens(
             access_token=f"access-for-{code}",
             refresh_token=f"refresh-for-{code_verifier[:8]}",
@@ -77,6 +84,7 @@ class _StubOAuthClient:
         )
 
     def refresh_access_token(self, *, refresh_token: str) -> _StubOAuthTokens:
+        self.refresh_requests.append(refresh_token)
         return _StubOAuthTokens(
             access_token=f"refreshed-{refresh_token}",
             refresh_token=f"{refresh_token}-next",
@@ -166,6 +174,40 @@ def test_oauth_callback_stores_credential() -> None:
         assert payload["credentialId"].startswith("cred_")
         assert payload["status"] == "active"
         assert payload["tokenExpiresAt"] is not None
+
+
+def test_codex_oauth_initiate_callback_and_refresh_use_configured_client_seam() -> None:
+    oauth_client = _StubOAuthClient()
+
+    with _oauth_client() as client:
+        auth_application._OAUTH_CLIENTS["codex"] = oauth_client
+
+        initiate = client.post("/auth/credentials/oauth/initiate", json={"provider": "codex"})
+        assert initiate.status_code == 200
+        initiate_payload = initiate.json()
+        state = parse_qs(urlparse(initiate_payload["redirectUrl"]).query)["state"][0]
+        pending = auth_application._PENDING_OAUTH_STATES[state]
+
+        assert oauth_client.authorization_requests == [
+            (state, auth_application._pkce_challenge(pending.code_verifier))
+        ]
+
+        callback = client.get(f"/auth/credentials/oauth/callback?code=codex-test-code&state={state}")
+        assert callback.status_code == 200
+        callback_payload = callback.json()
+        assert oauth_client.exchanged_codes == [("codex-test-code", pending.code_verifier)]
+        assert callback_payload["provider"] == "codex"
+        assert callback_payload["credentialType"] == "oauth_token"
+        assert callback_payload["providerStatusCode"] == "ready"
+        assert callback_payload["providerStatusMessage"] == "Credential is ready for provider execution."
+
+        refresh = client.post(f"/auth/credentials/{callback_payload['credentialId']}/refresh")
+        assert refresh.status_code == 200
+        refresh_payload = refresh.json()
+        assert oauth_client.refresh_requests == [f"refresh-for-{pending.code_verifier[:8]}"]
+        assert refresh_payload["status"] == "active"
+        assert refresh_payload["providerStatusCode"] == "ready"
+        assert refresh_payload["tokenExpiresAt"] is not None
 
 
 def test_refresh_expired_token() -> None:

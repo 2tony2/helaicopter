@@ -191,6 +191,31 @@ def test_connect_claude_cli_returns_400_when_auth_status_fails_and_dir_exists(
         monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
         response = client.post("/auth/credentials/claude-cli/connect")
         assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Claude CLI authentication could not be discovered: 'claude auth status' "
+            "returned 1. Output: not logged in Run 'claude auth login' and try again."
+        )
+
+
+def test_connect_claude_cli_returns_actionable_failure_when_local_auth_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("claude not installed")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Claude CLI authentication could not be discovered: "
+            f"'{claude_dir / 'credentials.json'}' is missing. "
+            "Run 'claude auth login' and try again."
+        )
 
 
 def test_connect_claude_cli_rejects_empty_credentials_blob(
