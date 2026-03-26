@@ -57,6 +57,7 @@ def test_workers_provider_index_includes_provider_readiness_metadata() -> None:
                 {
                     "provider": "claude",
                     "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.claude",
                 }
             ),
         )
@@ -83,8 +84,8 @@ def test_workers_provider_index_includes_provider_readiness_metadata() -> None:
         assert response.status_code == 200
         payload = response.json()
         assert payload[0]["provider"] == "claude"
-        assert payload[0]["status"] == "blocked"
-        assert payload[0]["blockingReasons"][0]["code"] == "missing_cli_session"
+        assert payload[0]["status"] == "ready"
+        assert payload[0]["blockingReasons"] == []
 
 
 def test_operator_bootstrap_provider_summaries_include_provider_readiness_status() -> None:
@@ -95,14 +96,34 @@ def test_operator_bootstrap_provider_summaries_include_provider_readiness_status
             CreateCredentialRequest.model_validate(
                 {
                     "provider": "codex",
-                    "credentialType": "local_cli_session",
+                    "credentialType": "oauth_token",
+                    "accessToken": "token-1",
+                    "refreshToken": "refresh-1",
+                    "tokenExpiresAt": "2099-01-01T00:00:00+00:00",
                 }
             ),
+        )
+        client.post(
+            "/workers/register",
+            json={
+                "workerType": "pi_shell",
+                "provider": "codex",
+                "capabilities": {
+                    "provider": "codex",
+                    "models": ["o3-pro"],
+                    "maxConcurrentTasks": 1,
+                    "supportsDiscovery": False,
+                    "supportsResume": False,
+                    "tags": [],
+                },
+                "host": "local",
+                "pid": 321,
+            },
         )
 
         response = client.get("/operator/bootstrap")
 
         assert response.status_code == 200
         codex_summary = next(item for item in response.json()["providers"] if item["provider"] == "codex")
-        assert codex_summary["status"] == "blocked"
-        assert codex_summary["blockingReasons"][0]["code"] == "missing_cli_session"
+        assert codex_summary["status"] == "ready"
+        assert codex_summary["blockingReasons"] == []

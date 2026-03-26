@@ -46,11 +46,11 @@ def build_provider_readiness(
         )
         blocking_reasons.append(
             ProviderBlockingReason(
-                code=credential_issue.code if credential_issue is not None else "missing_credential",
+                code=credential_issue.code if credential_issue is not None else _missing_auth_code(provider),
                 message=(
                     credential_issue.message
                     if credential_issue is not None
-                    else f"No active {provider} credential is available."
+                    else _missing_auth_message(provider)
                 ),
             )
         )
@@ -84,6 +84,22 @@ def _worker_auth_status(worker: object) -> str:
     if isinstance(auth_status, str):
         return auth_status
     return "expired" if getattr(worker, "status", None) == "auth_expired" else "valid"
+
+
+def _missing_auth_code(provider: str) -> str:
+    if provider == "claude":
+        return "missing_cli_session"
+    if provider == "codex":
+        return "missing_credential"
+    return "missing_credential"
+
+
+def _missing_auth_message(provider: str) -> str:
+    if provider == "claude":
+        return "No valid local Claude CLI session is available."
+    if provider == "codex":
+        return "No valid Codex OAuth credential is available."
+    return f"No active {provider} credential is available."
 
 
 def build_provider_readiness_from_store(
