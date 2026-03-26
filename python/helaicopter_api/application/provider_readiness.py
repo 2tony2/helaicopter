@@ -25,8 +25,11 @@ def build_provider_readiness(
 ) -> ProviderReadinessResponse:
     provider_credentials = [item for item in credentials if item.provider == provider]
     provider_workers = [item for item in workers if getattr(item, "provider", None) == provider]
+    expected_credential_type = _expected_credential_type(provider)
     active_credential_count = sum(
-        1 for credential in provider_credentials if credential_is_provider_active(credential)
+        1
+        for credential in provider_credentials
+        if credential.credential_type == expected_credential_type and credential_is_provider_active(credential)
     )
     healthy_worker_count = sum(1 for worker in provider_workers if getattr(worker, "status", None) != "dead")
     ready_worker_count = sum(

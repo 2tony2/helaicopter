@@ -89,6 +89,37 @@ def test_codex_provider_is_ready_when_oauth_token_and_worker_exist() -> None:
         engine.dispose()
 
 
+def test_codex_provider_ignores_active_mismatched_credential_type() -> None:
+    from helaicopter_api.application.provider_readiness import build_provider_readiness
+
+    engine = _engine()
+    try:
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "codex",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.codex",
+                }
+            ),
+        )
+        registry = InMemoryWorkerRegistry()
+        registry.register(provider="codex", models=["o3-pro"])
+
+        readiness = build_provider_readiness(
+            provider="codex",
+            credentials=list_credentials(engine),
+            workers=registry.all_workers(),
+        )
+
+        assert readiness.status == "blocked"
+        assert readiness.active_credential_count == 0
+        assert readiness.blocking_reasons[0].code == "missing_credential"
+    finally:
+        engine.dispose()
+
+
 def test_provider_readiness_explains_missing_auth_and_missing_worker_separately() -> None:
     from helaicopter_api.application.provider_readiness import build_provider_readiness
 
