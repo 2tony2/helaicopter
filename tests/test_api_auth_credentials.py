@@ -105,20 +105,27 @@ def test_create_local_cli_session_credential() -> None:
         assert payload["status"] == "active"
 
 
-def test_connect_claude_cli_creates_local_cli_session_credential(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        auth_application,
-        "discover_claude_cli_session",
-        lambda *, settings: auth_application.ClaudeCliSession(cli_config_path="~/.claude"),
-    )
+def test_connect_claude_cli_creates_local_cli_session_credential(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    claude_dir.joinpath("credentials.json").write_text('{"subscription_tier": "pro"}')
 
-    with _auth_client() as client:
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("claude not installed")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
         response = client.post("/auth/credentials/claude-cli/connect")
         assert response.status_code == 201
         payload = response.json()
         assert payload["provider"] == "claude"
         assert payload["credentialType"] == "local_cli_session"
         assert payload["status"] == "active"
+        assert payload["cliConfigPath"] == str(claude_dir)
+        assert payload["subscriptionTier"] == "pro"
 
 
 def test_connect_claude_cli_returns_400_when_auth_status_fails_and_dir_exists(
@@ -136,9 +143,8 @@ def test_connect_claude_cli_returns_400_when_auth_status_fails_and_dir_exists(
             stderr="not logged in",
         )
 
-    monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
-
     with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
         response = client.post("/auth/credentials/claude-cli/connect")
         assert response.status_code == 400
 
@@ -175,6 +181,57 @@ def test_connect_claude_cli_reuses_existing_active_credential(monkeypatch: pytes
             if item["provider"] == "claude" and item["credentialType"] == "local_cli_session" and item["status"] == "active"
         ]
         assert len(active_claude_cli_credentials) == 1
+
+
+def test_connect_claude_cli_revokes_duplicate_active_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        first = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "claude",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.claude/first",
+            },
+        )
+        assert first.status_code == 201
+        second = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "claude",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.claude/second",
+            },
+        )
+        assert second.status_code == 201
+
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+
+        all_credentials = client.get("/auth/credentials").json()
+        active_claude_cli_credentials = [
+            item
+            for item in all_credentials
+            if item["provider"] == "claude" and item["credentialType"] == "local_cli_session" and item["status"] == "active"
+        ]
+        assert len(active_claude_cli_credentials) == 1
+        revoked_claude_cli_credentials = [
+            item
+            for item in all_credentials
+            if item["provider"] == "claude"
+            and item["credentialType"] == "local_cli_session"
+            and item["status"] == "revoked"
+        ]
+        assert len(revoked_claude_cli_credentials) == 1
 
 
 # ---- List ----

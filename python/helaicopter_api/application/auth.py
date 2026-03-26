@@ -220,6 +220,33 @@ def _parse_claude_subscription_tier(output: str) -> str | None:
     return None
 
 
+def _discover_claude_cli_session_from_filesystem(*, settings: Settings) -> ClaudeCliSession:
+    credentials_path = settings.claude_dir / "credentials.json"
+    if not credentials_path.exists():
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: '{credentials_path}' is missing. "
+            f"Run '{settings.claude_cli_command} auth login' and try again."
+        )
+
+    try:
+        payload = json.loads(credentials_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: '{credentials_path}' is unreadable."
+        ) from exc
+
+    subscription_tier = None
+    if isinstance(payload, dict):
+        tier_value = payload.get("subscription_tier") or payload.get("subscriptionTier")
+        if isinstance(tier_value, str):
+            subscription_tier = tier_value or None
+
+    return ClaudeCliSession(
+        cli_config_path=str(settings.claude_dir),
+        subscription_tier=subscription_tier,
+    )
+
+
 def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
     cli_command = [settings.claude_cli_command, "auth", "status"]
     try:
@@ -232,12 +259,7 @@ def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
             timeout=10,
         )
     except (FileNotFoundError, OSError) as exc:
-        if settings.claude_dir.exists():
-            return ClaudeCliSession(cli_config_path=str(settings.claude_dir))
-        raise ValueError(
-            f"Claude CLI authentication could not be discovered: {exc}. "
-            f"Run '{settings.claude_cli_command} auth login' or create {settings.claude_dir}."
-        ) from exc
+        return _discover_claude_cli_session_from_filesystem(settings=settings)
     except subprocess.TimeoutExpired as exc:
         raise ValueError(
             f"Claude CLI authentication could not be discovered: '{settings.claude_cli_command} auth status' timed out."
@@ -411,7 +433,7 @@ def connect_claude_cli_credential(
     now = datetime.now(UTC)
 
     with Session(engine) as db:
-        row = db.execute(
+        rows = db.execute(
             select(AuthCredentialRecord)
             .where(
                 AuthCredentialRecord.provider == "claude",
@@ -419,8 +441,8 @@ def connect_claude_cli_credential(
                 AuthCredentialRecord.status == "active",
             )
             .order_by(AuthCredentialRecord.created_at.desc())
-        ).scalars().first()
-        if row is None:
+        ).scalars().all()
+        if not rows:
             request = CreateCredentialRequest.model_validate(
                 {
                     "provider": "claude",
@@ -431,10 +453,14 @@ def connect_claude_cli_credential(
             )
             return create_credential(engine, request)
 
+        row = rows[0]
         row.cli_config_path = session.cli_config_path
         row.subscription_tier = session.subscription_tier
         row.status = "active"
         row.last_refreshed_at = now
+        for duplicate in rows[1:]:
+            duplicate.status = "revoked"
+            duplicate.last_refreshed_at = now
         db.commit()
         db.refresh(row)
         return _to_response(row)
