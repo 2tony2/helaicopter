@@ -131,6 +131,52 @@ def test_claude_local_cli_session_credential_without_config_is_not_provider_read
         engine.dispose()
 
 
+def test_mismatched_invalid_credentials_are_normalized_by_provider() -> None:
+    from helaicopter_api.application.provider_readiness import build_provider_readiness
+
+    engine = _engine()
+    try:
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "codex",
+                    "credentialType": "local_cli_session",
+                }
+            ),
+        )
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "claude",
+                    "credentialType": "oauth_token",
+                    "accessToken": "token-1",
+                    "refreshToken": "refresh-1",
+                    "tokenExpiresAt": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+                }
+            ),
+        )
+
+        codex_readiness = build_provider_readiness(
+            provider="codex",
+            credentials=list_credentials(engine),
+            workers=[],
+        )
+        claude_readiness = build_provider_readiness(
+            provider="claude",
+            credentials=list_credentials(engine),
+            workers=[],
+        )
+
+        assert codex_readiness.blocking_reasons[0].code == "missing_credential"
+        assert codex_readiness.blocking_reasons[0].message == "No valid Codex OAuth credential is available."
+        assert claude_readiness.blocking_reasons[0].code == "missing_cli_session"
+        assert claude_readiness.blocking_reasons[0].message == "No valid local Claude CLI session is available."
+    finally:
+        engine.dispose()
+
+
 def test_refresh_failed_oauth_credential_is_persisted_as_expired() -> None:
     class FailingOAuthClient:
         def build_authorization_url(self, *, state: str, code_challenge: str) -> str:

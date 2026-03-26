@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy.engine import Engine
 
 from helaicopter_api.application.auth import (
+    CredentialProviderStatus,
     credential_is_provider_active,
     credential_provider_status_from_response,
     list_credentials,
@@ -36,14 +37,7 @@ def build_provider_readiness(
 
     blocking_reasons: list[ProviderBlockingReason] = []
     if active_credential_count == 0:
-        credential_issue = next(
-            (
-                credential_provider_status_from_response(item)
-                for item in provider_credentials
-                if not credential_is_provider_active(item)
-            ),
-            None,
-        )
+        credential_issue = _provider_credential_issue(provider=provider, credentials=provider_credentials)
         blocking_reasons.append(
             ProviderBlockingReason(
                 code=credential_issue.code if credential_issue is not None else _missing_auth_code(provider),
@@ -84,6 +78,33 @@ def _worker_auth_status(worker: object) -> str:
     if isinstance(auth_status, str):
         return auth_status
     return "expired" if getattr(worker, "status", None) == "auth_expired" else "valid"
+
+
+def _provider_credential_issue(
+    *,
+    provider: str,
+    credentials: list[CredentialResponse],
+) -> CredentialProviderStatus | None:
+    expected_credential_type = _expected_credential_type(provider)
+    credential = next(
+        (
+            item
+            for item in credentials
+            if item.credential_type == expected_credential_type and not credential_is_provider_active(item)
+        ),
+        None,
+    )
+    if credential is not None:
+        return credential_provider_status_from_response(credential)
+    return None
+
+
+def _expected_credential_type(provider: str) -> str:
+    if provider == "claude":
+        return "local_cli_session"
+    if provider == "codex":
+        return "oauth_token"
+    return "credential"
 
 
 def _missing_auth_code(provider: str) -> str:
