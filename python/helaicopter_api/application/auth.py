@@ -7,8 +7,11 @@ import hashlib
 import json
 import secrets
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from urllib.parse import urlencode
+
+import httpx
 
 from cryptography.fernet import Fernet
 from sqlalchemy import select
@@ -21,6 +24,7 @@ from helaicopter_api.schema.auth import (
     OAuthInitiateResponse,
     RecordCostRequest,
 )
+from helaicopter_api.server.config import Settings
 from helaicopter_db.models.oltp import AuthCredentialRecord
 
 # ---------------------------------------------------------------------------
@@ -71,6 +75,54 @@ class OAuthProviderClient(Protocol):
 
 
 @dataclass(slots=True)
+class CodexOAuthClient:
+    client_id: str
+    authorize_url: str
+    token_url: str
+    redirect_uri: str
+    scopes: tuple[str, ...]
+
+    def build_authorization_url(self, *, state: str, code_challenge: str) -> str:
+        query = urlencode(
+            {
+                "client_id": self.client_id,
+                "redirect_uri": self.redirect_uri,
+                "response_type": "code",
+                "scope": " ".join(self.scopes),
+                "state": state,
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            }
+        )
+        return f"{self.authorize_url}?{query}"
+
+    def exchange_code(self, *, code: str, code_verifier: str) -> OAuthTokenBundle:
+        return self._exchange_token(
+            {
+                "grant_type": "authorization_code",
+                "client_id": self.client_id,
+                "code": code,
+                "redirect_uri": self.redirect_uri,
+                "code_verifier": code_verifier,
+            }
+        )
+
+    def refresh_access_token(self, *, refresh_token: str) -> OAuthTokenBundle:
+        return self._exchange_token(
+            {
+                "grant_type": "refresh_token",
+                "client_id": self.client_id,
+                "refresh_token": refresh_token,
+            }
+        )
+
+    def _exchange_token(self, data: dict[str, str]) -> OAuthTokenBundle:
+        response = httpx.post(self.token_url, data=data, timeout=30.0)
+        response.raise_for_status()
+        return _oauth_token_bundle_from_payload(response.json(), fallback_scopes=self.scopes)
+
+
+@dataclass(slots=True)
 class PendingOAuthState:
     provider: str
     code_verifier: str
@@ -81,11 +133,64 @@ _OAUTH_CLIENTS: dict[str, OAuthProviderClient] = {}
 _PENDING_OAUTH_STATES: dict[str, PendingOAuthState] = {}
 
 
+def _ensure_provider_auth_configured() -> None:
+    if _OAUTH_CLIENTS:
+        return
+    configure_provider_auth(settings=Settings())
+
+
 def _get_oauth_client(provider: str) -> OAuthProviderClient:
+    _ensure_provider_auth_configured()
     client = _OAUTH_CLIENTS.get(provider)
     if client is None:
         raise ValueError(f"OAuth client is not configured for provider '{provider}'")
     return client
+
+
+def configure_provider_auth(*, settings: Settings) -> None:
+    _OAUTH_CLIENTS.clear()
+    if settings.codex_oauth_client_id:
+        _OAUTH_CLIENTS["codex"] = CodexOAuthClient(
+            client_id=settings.codex_oauth_client_id,
+            authorize_url=settings.codex_oauth_authorize_url,
+            token_url=settings.codex_oauth_token_url,
+            redirect_uri=settings.codex_oauth_redirect_uri,
+            scopes=settings.codex_oauth_scopes,
+        )
+
+
+def _oauth_token_bundle_from_payload(
+    payload: dict[str, object],
+    *,
+    fallback_scopes: tuple[str, ...],
+) -> OAuthTokenBundle:
+    access_token = payload.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise ValueError("OAuth token response is missing an access token")
+
+    refresh_token = payload.get("refresh_token")
+    if refresh_token is not None and not isinstance(refresh_token, str):
+        raise ValueError("OAuth token response has an invalid refresh token")
+
+    expires_at = None
+    expires_in = payload.get("expires_in")
+    if expires_in is not None:
+        expires_at = datetime.now(UTC) + timedelta(seconds=int(expires_in))
+
+    scopes_value = payload.get("scope") or payload.get("scopes")
+    if isinstance(scopes_value, str):
+        scopes = [scope for scope in scopes_value.split() if scope]
+    elif isinstance(scopes_value, list):
+        scopes = [str(scope) for scope in scopes_value if str(scope)]
+    else:
+        scopes = list(fallback_scopes)
+
+    return OAuthTokenBundle(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+        scopes=scopes,
+    )
 
 
 def _pkce_challenge(code_verifier: str) -> str:
