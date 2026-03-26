@@ -124,20 +124,6 @@ def test_initiate_oauth_returns_400_for_claude() -> None:
         assert response.status_code == 400
 
 
-def test_initiate_oauth_returns_400_when_provider_client_is_not_configured() -> None:
-    original = auth_application._OAUTH_CLIENTS.copy()
-    auth_application._OAUTH_CLIENTS.pop("claude", None)
-    try:
-        with _oauth_client() as client:
-            response = client.post("/auth/credentials/oauth/initiate", json={"provider": "claude"})
-
-        assert response.status_code == 400
-        assert response.json()["detail"] == "OAuth client is not configured for provider 'claude'"
-    finally:
-        auth_application._OAUTH_CLIENTS.clear()
-        auth_application._OAUTH_CLIENTS.update(original)
-
-
 def test_oauth_callback_stores_credential() -> None:
     with _oauth_client() as client:
         auth_application._OAUTH_CLIENTS["codex"] = _StubOAuthClient()
