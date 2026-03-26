@@ -46,6 +46,7 @@ class FakeRunResult:
     error_summary: str | None = None
     acceptance_criteria_met: bool = True
     heartbeat_ticks: int = 0
+    provider_session_id: str | None = None
 
 
 class FakeAgentRunner:
@@ -79,7 +80,7 @@ class BrokenSessionManager:
 
 class FixedSessionManager(ProviderSessionManager):
     def __init__(self, provider: str) -> None:
-        super().__init__(provider=provider)
+        super().__init__(provider=provider, auth_validator=lambda: None)
         self.created = 0
 
     def _bootstrap_session(self) -> ProviderSession:
@@ -366,6 +367,74 @@ def test_pi_worker_reuses_provider_session_across_multiple_tasks() -> None:
     assert session_manager.created == 1
     assert len(runner.sessions_seen) == 2
     assert runner.sessions_seen[0] == runner.sessions_seen[1]
+
+
+def test_pi_worker_establishes_and_then_reuses_real_codex_thread_ids() -> None:
+    from oats.pi_worker import PiWorker
+
+    control_plane = FakeControlPlane(
+        queued_tasks=[
+            _build_envelope(agent="codex", model="o3-pro"),
+            _build_envelope(agent="codex", model="o3-pro"),
+        ]
+    )
+    runner = FakeAgentRunner(
+        [
+            FakeRunResult(exit_code=0, provider_session_id="thread_123"),
+            FakeRunResult(exit_code=0, provider_session_id="thread_123"),
+        ]
+    )
+    session_manager = ProviderSessionManager(provider="codex", auth_validator=lambda: None)
+    worker = PiWorker(
+        provider="codex",
+        models=["o3-pro"],
+        control_plane_url="http://control-plane.test",
+        control_plane_client=control_plane,
+        agent_runner=runner,
+        session_manager=session_manager,
+    )
+
+    _run(worker.register())
+    _run(worker.run_one_cycle())
+    _run(worker.run_one_cycle())
+
+    assert runner.sessions_seen == [None, "thread_123"]
+    assert control_plane.report_payloads[0]["providerSessionId"] == "thread_123"
+    assert control_plane.report_payloads[0]["sessionReused"] is False
+    assert control_plane.report_payloads[1]["providerSessionId"] == "thread_123"
+    assert control_plane.report_payloads[1]["sessionReused"] is True
+
+
+def test_subprocess_runner_builds_provider_commands_with_real_session_reuse() -> None:
+    from oats.pi_worker import SubprocessAgentRunner
+
+    runner = SubprocessAgentRunner()
+    session = ProviderSession(
+        session_id="session_123",
+        provider="claude",
+        status="ready",
+        started_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        last_used_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+    )
+
+    claude_command = runner._build_command(_build_envelope(agent="claude"), "test prompt", session)
+    codex_command = runner._build_command(
+        _build_envelope(agent="codex", model="o3-pro"),
+        "test prompt",
+        ProviderSession(
+            session_id="thread_123",
+            provider="codex",
+            status="ready",
+            started_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+            last_used_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        ),
+    )
+
+    assert "--session-id" in claude_command
+    assert "session_123" in claude_command
+    assert codex_command[:3] == ["codex", "exec", "resume"]
+    assert "--json" in codex_command
+    assert "thread_123" in codex_command
 
 
 def test_pi_worker_marks_session_failed_when_bootstrap_fails() -> None:

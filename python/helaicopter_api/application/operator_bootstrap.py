@@ -57,29 +57,34 @@ def build_operator_bootstrap_summary(
     if any(worker.status == "auth_expired" for worker in workers):
         blocking_reasons.append(_build_reason("auth_expired_workers", severity="warning"))
 
-    providers = [
-        ProviderBootstrapSummary.model_validate(
-            {
-                "provider": provider,
-                "status": build_provider_readiness(
-                    provider=provider,
-                    credentials=credentials,
-                    workers=workers,
-                ).status,
-                "workerCount": worker_counts[provider],
-                "credentialCount": credential_counts[provider],
-                "blockingReasons": build_provider_readiness(
-                    provider=provider,
-                    credentials=credentials,
-                    workers=workers,
-                ).blocking_reasons,
-            }
+    providers = []
+    for provider in _PROVIDERS:
+        readiness = build_provider_readiness(
+            provider=provider,
+            credentials=credentials,
+            workers=workers,
         )
-        for provider in _PROVIDERS
-    ]
+        providers.append(
+            ProviderBootstrapSummary.model_validate(
+                {
+                    "provider": provider,
+                    "status": readiness.status,
+                    "workerCount": worker_counts[provider],
+                    "credentialCount": credential_counts[provider],
+                    "blockingReasons": readiness.blocking_reasons,
+                }
+            )
+        )
+
+    if any(provider.status == "blocked" for provider in providers):
+        overall_status = "blocked"
+    elif blocking_reasons:
+        overall_status = "blocked"
+    else:
+        overall_status = "ready"
 
     return OperatorBootstrapResponse(
-        overall_status="ready" if not blocking_reasons else "blocked",
+        overall_status=overall_status,
         resolver_running=resolver_running,
         blocking_reasons=blocking_reasons,
         providers=providers,

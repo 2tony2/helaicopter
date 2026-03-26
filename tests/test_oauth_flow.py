@@ -281,6 +281,26 @@ def test_refresh_returns_502_on_token_exchange_failure(monkeypatch: pytest.Monke
         assert response.json()["detail"] == "Codex OAuth token exchange failed"
 
 
+def test_refresh_transient_failure_does_not_mark_credential_expired() -> None:
+    with _oauth_client() as client:
+        auth_application._OAUTH_CLIENTS["codex"] = _FailingRefreshOAuthClient()
+        create = client.post("/auth/credentials", json={
+            "provider": "codex",
+            "credentialType": "oauth_token",
+            "accessToken": "still-active",
+            "refreshToken": "refresh-me",
+            "tokenExpiresAt": (datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
+        })
+        credential_id = create.json()["credentialId"]
+
+        response = client.post(f"/auth/credentials/{credential_id}/refresh")
+
+        assert response.status_code == 502
+        listing = client.get("/auth/credentials")
+        credential = next(item for item in listing.json() if item["credentialId"] == credential_id)
+        assert credential["status"] == "active"
+
+
 def test_resolver_auto_refreshes_expiring_token() -> None:
     @dataclass
     class Credential:

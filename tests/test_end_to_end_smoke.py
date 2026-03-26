@@ -14,10 +14,12 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session
 
 from helaicopter_api.adapters.oats_artifacts import FileOatsRunStore
+from helaicopter_api.application.auth import create_credential
 from helaicopter_api.application.dispatch import InMemoryWorkerRegistry
 from helaicopter_api.application.resolver import ResolverLoop
 from helaicopter_api.application.runtime_materialization import materialize_runtime_run
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.schema.auth import CreateCredentialRequest
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -154,6 +156,29 @@ def test_smoke_cold_start_to_healthy_system(tmp_path: Path) -> None:
     with _smoke_client(tmp_path) as client:
         _register_worker(client, provider="claude", model="claude-sonnet-4-6")
         _register_worker(client, provider="codex", model="o3-pro")
+        engine = client.app.dependency_overrides[get_services]().sqlite_engine
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "claude",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.claude",
+                }
+            ),
+        )
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "codex",
+                    "credentialType": "oauth_token",
+                    "accessToken": "token-1",
+                    "refreshToken": "refresh-1",
+                    "tokenExpiresAt": "2026-04-01T00:00:00Z",
+                }
+            ),
+        )
 
         response = client.get("/operator/bootstrap")
 
@@ -162,6 +187,41 @@ def test_smoke_cold_start_to_healthy_system(tmp_path: Path) -> None:
     assert payload["overallStatus"] == "ready"
     assert payload["resolverRunning"] is True
     assert {provider["provider"] for provider in payload["providers"]} == {"claude", "codex"}
+
+
+def test_smoke_queue_stays_deferred_when_provider_credentials_are_missing(tmp_path: Path) -> None:
+    _write_runtime_state(
+        tmp_path,
+        run_id="run_codex",
+        task_id="task_codex",
+        provider="codex",
+        model="o3-pro",
+    )
+
+    with _smoke_client(tmp_path) as client:
+        _register_worker(client, provider="codex", model="o3-pro")
+        resolver = client.app.state.resolver
+
+        graph = TaskGraph()
+        graph.add_node(
+            TaskNode(
+                task_id="task_codex",
+                title="task_codex",
+                kind=TaskKind.IMPLEMENTATION,
+                agent="codex",
+                model="o3-pro",
+            )
+        )
+        resolver.submit_graph("run_codex", graph)
+        resolver._task_agents["task_codex"] = "codex"
+        resolver._task_models["task_codex"] = "o3-pro"
+
+        response = client.get("/dispatch/queue")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["ready"] == []
+        assert payload["deferred"][0]["reason"] == "provider_not_ready"
 
 
 def test_smoke_claude_and_codex_happy_paths_materialize_runtime_truth(tmp_path: Path) -> None:

@@ -120,3 +120,46 @@ def test_reset_worker_session_marks_session_absent() -> None:
         assert payload["sessionStartedAt"] is None
         assert payload["sessionLastUsedAt"] is None
         assert payload["sessionFailureReason"] is None
+
+
+def test_worker_heartbeat_preserves_reset_request_until_worker_acknowledges_absent_state() -> None:
+    with _worker_client() as client:
+        worker_id = _register_worker(client)
+        reset_response = client.post(f"/workers/{worker_id}/reset-session")
+        assert reset_response.status_code == 200
+        requested_at = reset_response.json()["sessionResetRequestedAt"]
+        assert requested_at is not None
+
+        heartbeat_ready = client.post(
+            f"/workers/{worker_id}/heartbeat",
+            json={
+                "status": "idle",
+                "currentTaskId": None,
+                "currentRunId": None,
+                "providerSessionId": "sess_existing",
+                "sessionStatus": "ready",
+                "sessionStartedAt": "2026-03-26T12:00:00+00:00",
+                "sessionLastUsedAt": "2026-03-26T12:05:00+00:00",
+                "sessionFailureReason": None,
+            },
+        )
+        assert heartbeat_ready.status_code == 200
+        ready_payload = client.get(f"/workers/{worker_id}").json()
+        assert ready_payload["sessionResetRequestedAt"] == requested_at
+
+        heartbeat_absent = client.post(
+            f"/workers/{worker_id}/heartbeat",
+            json={
+                "status": "idle",
+                "currentTaskId": None,
+                "currentRunId": None,
+                "providerSessionId": None,
+                "sessionStatus": "absent",
+                "sessionStartedAt": None,
+                "sessionLastUsedAt": None,
+                "sessionFailureReason": None,
+            },
+        )
+        assert heartbeat_absent.status_code == 200
+        absent_payload = client.get(f"/workers/{worker_id}").json()
+        assert absent_payload["sessionResetRequestedAt"] is None

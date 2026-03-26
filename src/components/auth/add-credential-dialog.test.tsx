@@ -109,6 +109,26 @@ test("AuthManagementSection passes provider-aware actions through to the add-cre
   assert.equal(dialog!.props.onOauth, onInitiateOauth);
 });
 
+test("AuthManagementSection active summary only counts provider-ready credentials", () => {
+  const markup = renderToStaticMarkup(
+    <AuthManagementSection
+      credentials={[
+        buildCredential(),
+        {
+          ...buildCredential(),
+          credentialId: "cred_codex_expired",
+          provider: "codex",
+          credentialType: "oauth_token",
+          providerStatusCode: "expired",
+          providerStatusMessage: "Credential has expired.",
+        },
+      ]}
+    />
+  );
+
+  assert.match(markup, /<div class="mt-2 flex items-center gap-2 text-2xl font-semibold">.*?1<\/div>/);
+});
+
 test("CredentialProviderActions shows provider-aware Claude and Codex actions without API key fields", () => {
   const markup = renderToStaticMarkup(<CredentialProviderActions />);
 

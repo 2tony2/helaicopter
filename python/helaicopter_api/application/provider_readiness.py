@@ -135,6 +135,8 @@ def build_provider_readiness_from_store(
     if engine is None:
         return None
     credentials = list_credentials(engine)
-    if not any(item.provider == provider for item in credentials):
+    known_provider = provider in {"claude", "codex"}
+    has_provider_credentials = any(item.provider == provider for item in credentials)
+    if not known_provider and not has_provider_credentials:
         return None
     return build_provider_readiness(provider=provider, credentials=credentials, workers=workers)

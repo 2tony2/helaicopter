@@ -641,8 +641,6 @@ def refresh_credential(
                 refresh_token=refresh_token,
             )
         except Exception:
-            row.status = "expired"
-            session.commit()
             raise
 
         row.access_token_encrypted = _encrypt(token_bundle.access_token)

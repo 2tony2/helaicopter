@@ -25,7 +25,7 @@ export function WorkerCard({
   pendingAction?: string | null;
 }) {
   const isPending = pendingAction === worker.workerId;
-  const showReset = worker.sessionResetAvailable && worker.sessionStatus !== "ready";
+  const showReset = worker.sessionResetAvailable;
 
   return (
     <Card className="border-border/60">

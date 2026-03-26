@@ -10,9 +10,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session
 
+from helaicopter_api.application.auth import create_credential
 from helaicopter_api.application.dispatch import InMemoryWorkerRegistry
 from helaicopter_api.application.resolver import ResolverLoop
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.schema.auth import CreateCredentialRequest
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 from helaicopter_db.models.oltp import OltpBase, WorkerRegistryRecord
@@ -99,11 +101,49 @@ def test_operator_bootstrap_reports_provider_gaps() -> None:
         assert "missing_codex_worker" in codes
 
 
-def test_operator_bootstrap_reports_ready_when_claude_and_codex_workers_exist() -> None:
+def test_operator_bootstrap_stays_blocked_when_provider_auth_is_missing() -> None:
     with _operator_client() as client:
         _register_worker(client, provider="claude")
         _register_worker(client, provider="codex")
         client.app.state.resolver._running = True
+
+        response = client.get("/operator/bootstrap")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["overallStatus"] == "blocked"
+        assert {provider["status"] for provider in payload["providers"]} == {"blocked"}
+
+
+def test_operator_bootstrap_reports_ready_when_workers_and_credentials_exist() -> None:
+    with _operator_client() as client:
+        _register_worker(client, provider="claude")
+        _register_worker(client, provider="codex")
+        client.app.state.resolver._running = True
+        engine = client.app.dependency_overrides[get_services]().sqlite_engine
+
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "claude",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.claude",
+                }
+            ),
+        )
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "codex",
+                    "credentialType": "oauth_token",
+                    "accessToken": "token-1",
+                    "refreshToken": "refresh-1",
+                    "tokenExpiresAt": "2026-04-01T00:00:00Z",
+                }
+            ),
+        )
 
         response = client.get("/operator/bootstrap")
 

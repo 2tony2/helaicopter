@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from helaicopter_api.application import auth as auth_application
 from helaicopter_api.application.auth import create_credential, list_credentials, refresh_credential
 from helaicopter_api.application.dispatch import InMemoryWorkerRegistry
+from helaicopter_api.application.provider_readiness import build_provider_readiness_from_store
 from helaicopter_api.schema.auth import CreateCredentialRequest
 from helaicopter_api.server.config import Settings
 from helaicopter_db.models.oltp import OltpBase
@@ -136,6 +137,25 @@ def test_provider_readiness_explains_missing_auth_and_missing_worker_separately(
     assert "worker" in readiness.blocking_reasons[1].message.lower()
 
 
+def test_provider_readiness_from_store_blocks_provider_without_credentials() -> None:
+    engine = _engine()
+    try:
+        registry = InMemoryWorkerRegistry()
+        registry.register(provider="codex", models=["o3-pro"])
+
+        readiness = build_provider_readiness_from_store(
+            provider="codex",
+            engine=engine,
+            workers=registry.all_workers(),
+        )
+
+        assert readiness is not None
+        assert readiness.status == "blocked"
+        assert readiness.blocking_reasons[0].code == "missing_credential"
+    finally:
+        engine.dispose()
+
+
 def test_claude_local_cli_session_credential_without_config_is_not_provider_ready() -> None:
     from helaicopter_api.application.provider_readiness import build_provider_readiness
 
@@ -209,7 +229,7 @@ def test_mismatched_invalid_credentials_are_normalized_by_provider() -> None:
         engine.dispose()
 
 
-def test_refresh_failed_oauth_credential_is_persisted_as_expired() -> None:
+def test_refresh_failed_oauth_credential_keeps_existing_status_on_transient_error() -> None:
     class FailingOAuthClient:
         def build_authorization_url(self, *, state: str, code_challenge: str) -> str:
             return "https://example.test/oauth"
@@ -241,7 +261,7 @@ def test_refresh_failed_oauth_credential_is_persisted_as_expired() -> None:
             refresh_credential(engine, credential.credential_id, settings=Settings())
 
         refreshed = [item for item in list_credentials(engine) if item.credential_id == credential.credential_id][0]
-        assert refreshed.status == "expired"
+        assert refreshed.status == "active"
     finally:
         if previous_client is None:
             auth_application._OAUTH_CLIENTS.pop("claude", None)

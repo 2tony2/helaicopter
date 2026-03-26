@@ -36,7 +36,10 @@ export function AuthManagementSection({
   pending?: boolean;
   error?: string | null;
 }) {
-  const active = credentials.filter((credential) => credential.status === "active").length;
+  const active = credentials.filter(
+    (credential) =>
+      credential.status === "active" && credential.providerStatusCode === "ready"
+  ).length;
   const revoked = credentials.filter((credential) => credential.status === "revoked").length;
 
   return (

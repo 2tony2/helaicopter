@@ -85,7 +85,11 @@ def get_queue_snapshot(resolver: ResolverLoop) -> QueueSnapshotResponse:
                     workers=resolver._registry.all_workers(),
                 )
             readiness = readiness_by_provider[provider]
-            if readiness is not None and readiness.status == "blocked":
+            if (
+                readiness is not None
+                and readiness.status == "blocked"
+                and resolver.interrupted_task_record(run_id=run_id, task_id=task_id) is None
+            ):
                 deferred.append(
                     DeferredDispatchQueueEntry(
                         **entry.model_dump(),

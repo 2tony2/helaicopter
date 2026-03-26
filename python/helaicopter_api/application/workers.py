@@ -115,6 +115,10 @@ def _sync_session_metadata(
 ) -> None:
     if session_status is None and provider_session_id is None:
         return
+    existing_session = _session_metadata(row)
+    reset_requested_at = existing_session.get("reset_requested_at")
+    if session_status == "absent":
+        reset_requested_at = None
     _write_session_metadata(
         row,
         provider_session_id=provider_session_id,
@@ -122,7 +126,7 @@ def _sync_session_metadata(
         started_at=session_started_at,
         last_used_at=session_last_used_at,
         failure_reason=session_failure_reason,
-        reset_requested_at=None,
+        reset_requested_at=reset_requested_at if isinstance(reset_requested_at, str) else None,
     )
 
 

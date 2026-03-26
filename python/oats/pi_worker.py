@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import time
 from typing import Protocol
@@ -28,6 +29,7 @@ class AgentRunResult:
     criteria_met: bool | None = None
     error_summary: str | None = None
     session_reused: bool = False
+    provider_session_id: str | None = None
 
 
 class AgentRunner(Protocol):
@@ -67,20 +69,53 @@ class SubprocessAgentRunner:
         on_heartbeat,
         session: ProviderSession | None = None,
     ) -> AgentRunResult:
-        del session
         worktree = Path(envelope.worktree_path)
         worktree.mkdir(parents=True, exist_ok=True)
-        command = self._build_command(envelope, self._build_prompt(envelope))
+        command = self._build_command(envelope, self._build_prompt(envelope), session)
         started_at = time.monotonic()
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=str(worktree),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+        session_id = session.session_id if session is not None else None
+
+        async def _drain_stream(
+            stream: asyncio.StreamReader | None,
+            chunks: list[str],
+            *,
+            handler=None,
+        ) -> None:
+            if stream is None:
+                return
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace")
+                chunks.append(text)
+                if handler is not None:
+                    handler(text)
+
+        def _handle_stdout_line(line: str) -> None:
+            nonlocal session_id
+            detected = self._parse_session_id(envelope, line)
+            if detected:
+                session_id = detected
+
+        stdout_task = asyncio.create_task(_drain_stream(process.stdout, stdout_chunks, handler=_handle_stdout_line))
+        stderr_task = asyncio.create_task(_drain_stream(process.stderr, stderr_chunks))
         while process.returncode is None:
             try:
                 await asyncio.wait_for(process.wait(), timeout=self.heartbeat_interval)
             except TimeoutError:
                 await on_heartbeat()
+
+        await stdout_task
+        await stderr_task
 
         duration = time.monotonic() - started_at
         exit_code = process.returncode or 0
@@ -89,14 +124,48 @@ class SubprocessAgentRunner:
             exit_code=exit_code,
             duration_seconds=duration,
             error_summary=error_summary,
+            provider_session_id=session_id,
         )
 
-    def _build_command(self, envelope: ExecutionEnvelope, prompt: str) -> list[str]:
+    def _build_command(
+        self,
+        envelope: ExecutionEnvelope,
+        prompt: str,
+        session: ProviderSession | None = None,
+    ) -> list[str]:
         if envelope.agent == "claude":
-            return ["claude", "-p", prompt, "--model", envelope.model]
+            command = ["claude", "--print", "--output-format", "json", "--model", envelope.model]
+            if session is not None:
+                command.extend(["--session-id", session.session_id])
+            command.append(prompt)
+            return command
         if envelope.agent == "codex":
-            return ["codex", "exec", "--model", envelope.model, prompt]
+            if session is not None:
+                return ["codex", "exec", "resume", "--json", "--model", envelope.model, session.session_id, prompt]
+            return ["codex", "exec", "--json", "--model", envelope.model, prompt]
         raise ValueError(f"unsupported agent: {envelope.agent}")
+
+    def _parse_session_id(self, envelope: ExecutionEnvelope, line: str) -> str | None:
+        stripped = line.strip()
+        if not stripped:
+            return None
+        if envelope.agent == "codex":
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError:
+                return None
+            if payload.get("type") == "thread.started":
+                thread_id = payload.get("thread_id")
+                return thread_id if isinstance(thread_id, str) and thread_id else None
+            return None
+        if envelope.agent == "claude":
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError:
+                return None
+            session_id = payload.get("session_id")
+            return session_id if isinstance(session_id, str) and session_id else None
+        return None
 
     def _build_prompt(self, envelope: ExecutionEnvelope) -> str:
         if envelope.attack_plan is not None and envelope.attack_plan.instructions:
@@ -294,14 +363,15 @@ class PiWorker:
 
     async def _execute_task(self, envelope: ExecutionEnvelope) -> AgentRunResult:
         current_session = getattr(self.session_manager, "session", None)
-        session_reused = current_session is not None and self.session_manager.status == "ready"
         session = self.session_manager.ensure_session()
         result = await self.agent_runner.run(
             envelope,
             lambda: self._emit_heartbeat(envelope),
             session=session,
         )
-        result.session_reused = session_reused
+        if result.provider_session_id is not None:
+            self.session_manager.record_session(result.provider_session_id)
+        result.session_reused = current_session is not None and result.provider_session_id == current_session.session_id
         return result
 
     async def _reconcile_session_reset_request(self) -> None:

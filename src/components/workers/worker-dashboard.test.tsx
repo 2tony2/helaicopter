@@ -20,6 +20,7 @@ import {
   WorkerDashboardSection,
   buildWorkerDashboardModel,
 } from "./worker-dashboard";
+import { WorkerCard } from "./worker-card";
 
 function buildWorkers(): Worker[] {
   return [
@@ -285,6 +286,12 @@ test("worker dashboard renders session state and reset affordance", () => {
   assert.match(markup, /session ready/i);
   assert.match(markup, /provider session bootstrap failed/i);
   assert.match(markup, /reset session/i);
+});
+
+test("WorkerCard keeps reset-session action available for ready sessions", () => {
+  const markup = renderToStaticMarkup(<WorkerCard worker={buildWorkers()[0]!} />);
+
+  assert.match(markup, /Reset session/);
 });
 
 test("operator UI sections render worker, auth, and queue monitoring content", () => {
