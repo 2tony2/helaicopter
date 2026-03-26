@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from helaicopter_api.application.auth import (
     complete_oauth_callback,
+    connect_claude_cli_credential,
     create_credential,
     initiate_oauth,
     list_credentials,
@@ -38,6 +39,22 @@ async def credential_create(
     services: BackendServices = Depends(get_services),
 ) -> CredentialResponse:
     return create_credential(services.sqlite_engine, body)
+
+
+@auth_router.post(
+    "/credentials/claude-cli/connect",
+    response_model=CredentialResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+    summary="Connect a local Claude CLI session credential.",
+)
+async def credential_claude_cli_connect(
+    services: BackendServices = Depends(get_services),
+) -> CredentialResponse:
+    try:
+        return connect_claude_cli_credential(services.sqlite_engine, settings=services.settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @auth_router.post(

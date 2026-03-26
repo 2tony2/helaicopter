@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import secrets
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -64,6 +65,12 @@ class OAuthTokenBundle:
     refresh_token: str | None
     expires_at: datetime | None
     scopes: list[str]
+
+
+@dataclass(slots=True)
+class ClaudeCliSession:
+    cli_config_path: str
+    subscription_tier: str | None = None
 
 
 class OAuthProviderClient(Protocol):
@@ -199,6 +206,60 @@ def _oauth_token_bundle_from_payload(
 def _pkce_challenge(code_verifier: str) -> str:
     digest = hashlib.sha256(code_verifier.encode()).digest()
     return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+def _parse_claude_subscription_tier(output: str) -> str | None:
+    for line in output.splitlines():
+        normalized = line.strip().lower()
+        if normalized.startswith("subscription tier:"):
+            value = line.split(":", 1)[1].strip()
+            return value or None
+        if normalized.startswith("tier:"):
+            value = line.split(":", 1)[1].strip()
+            return value or None
+    return None
+
+
+def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
+    cli_command = [settings.claude_cli_command, "auth", "status"]
+    try:
+        result = subprocess.run(
+            cli_command,
+            cwd=settings.claude_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+        result = None
+        command_error = str(exc)
+    else:
+        command_error = None
+
+    if result is not None and result.returncode == 0:
+        output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        return ClaudeCliSession(
+            cli_config_path=str(settings.claude_dir),
+            subscription_tier=_parse_claude_subscription_tier(output),
+        )
+
+    if settings.claude_dir.exists():
+        return ClaudeCliSession(
+            cli_config_path=str(settings.claude_dir),
+        )
+
+    if command_error is not None:
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: {command_error}. "
+            f"Run '{settings.claude_cli_command} auth login' or create {settings.claude_dir}."
+        )
+
+    exit_code = "unknown" if result is None else result.returncode
+    raise ValueError(
+        f"Claude CLI authentication could not be discovered: '{settings.claude_cli_command} auth status' "
+        f"returned {exit_code}. Run '{settings.claude_cli_command} auth login' and try again."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +402,44 @@ def create_credential(
         session.commit()
         session.refresh(record)
         return _to_response(record)
+
+
+def connect_claude_cli_credential(
+    engine: Engine,
+    *,
+    settings: Settings,
+) -> CredentialResponse:
+    session = discover_claude_cli_session(settings=settings)
+    now = datetime.now(UTC)
+
+    with Session(engine) as db:
+        row = db.execute(
+            select(AuthCredentialRecord)
+            .where(
+                AuthCredentialRecord.provider == "claude",
+                AuthCredentialRecord.credential_type == "local_cli_session",
+                AuthCredentialRecord.status == "active",
+            )
+            .order_by(AuthCredentialRecord.created_at.desc())
+        ).scalars().first()
+        if row is None:
+            request = CreateCredentialRequest.model_validate(
+                {
+                    "provider": "claude",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": session.cli_config_path,
+                    "subscriptionTier": session.subscription_tier,
+                }
+            )
+            return create_credential(engine, request)
+
+        row.cli_config_path = session.cli_config_path
+        row.subscription_tier = session.subscription_tier
+        row.status = "active"
+        row.last_refreshed_at = now
+        db.commit()
+        db.refresh(row)
+        return _to_response(row)
 
 
 def list_credentials(engine: Engine) -> list[CredentialResponse]:

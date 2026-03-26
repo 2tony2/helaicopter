@@ -10,8 +10,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from helaicopter_api.application import auth as auth_application
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.dependencies import get_services
+from helaicopter_api.server.config import Settings
 from helaicopter_api.server.main import create_app
 from helaicopter_db.models.oltp import OltpBase
 
@@ -36,6 +38,7 @@ def _auth_client() -> Iterator[TestClient]:
 
     application.dependency_overrides[get_services] = lambda: _services_stub(
         sqlite_engine=engine,
+        settings=Settings(),
     )
     try:
         with TestClient(application) as client:
@@ -99,6 +102,67 @@ def test_create_local_cli_session_credential() -> None:
         payload = response.json()
         assert payload["credentialType"] == "local_cli_session"
         assert payload["status"] == "active"
+
+
+def test_connect_claude_cli_creates_local_cli_session_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth_application,
+        "discover_claude_cli_session",
+        lambda *, settings: auth_application.ClaudeCliSession(cli_config_path="~/.claude"),
+    )
+
+    with _auth_client() as client:
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["provider"] == "claude"
+        assert payload["credentialType"] == "local_cli_session"
+        assert payload["status"] == "active"
+
+
+def test_connect_claude_cli_returns_400_when_not_authenticated(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(*, settings: object) -> auth_application.ClaudeCliSession:
+        raise ValueError("Claude CLI is not authenticated")
+
+    monkeypatch.setattr(auth_application, "discover_claude_cli_session", _raise)
+
+    with _auth_client() as client:
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 400
+
+
+def test_connect_claude_cli_reuses_existing_active_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth_application,
+        "discover_claude_cli_session",
+        lambda *, settings: auth_application.ClaudeCliSession(cli_config_path="~/.claude/reused"),
+    )
+
+    with _auth_client() as client:
+        created = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "claude",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.claude/original",
+            },
+        )
+        assert created.status_code == 201
+        credential_id = created.json()["credentialId"]
+
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["credentialId"] == credential_id
+        assert payload["cliConfigPath"] == "~/.claude/reused"
+
+        all_credentials = client.get("/auth/credentials").json()
+        active_claude_cli_credentials = [
+            item
+            for item in all_credentials
+            if item["provider"] == "claude" and item["credentialType"] == "local_cli_session" and item["status"] == "active"
+        ]
+        assert len(active_claude_cli_credentials) == 1
 
 
 # ---- List ----
