@@ -28,6 +28,7 @@ from helaicopter_db.models.oltp import (
     FactOrchestrationTaskAttempt,
     OltpBase,
 )
+from oats.graph import EdgePredicate, GraphMutation, TaskGraph, TaskKind, TaskNode, TypedEdge
 from oats.models import (
     AgentInvocationResult,
     FeatureBranchSnapshot,
@@ -1069,3 +1070,270 @@ def _runtime_response(state: RunRuntimeState, state_path: Path):
     from helaicopter_api.ports.orchestration import StoredOatsRuntimeState
 
     return _shape_runtime_state(StoredOatsRuntimeState(path=state_path, state=state)).response
+
+
+# ---------------------------------------------------------------------------
+# Graph-native v2 field tests
+# ---------------------------------------------------------------------------
+
+
+def _build_runtime_state_with_graph(tmp_path: Path) -> RunRuntimeState:
+    """Build a runtime state with a v2 task graph for testing."""
+    now = datetime.now(UTC)
+    repo_root = tmp_path
+
+    graph = TaskGraph()
+    for tid in ["auth", "models", "api", "dashboard", "e2e"]:
+        graph.add_node(TaskNode(task_id=tid, kind=TaskKind.IMPLEMENTATION, title=tid.upper()))
+    graph.add_edge(TypedEdge(from_task="auth", to_task="api", predicate=EdgePredicate.CODE_READY))
+    graph.add_edge(TypedEdge(from_task="models", to_task="api", predicate=EdgePredicate.CODE_READY))
+    graph.add_edge(TypedEdge(from_task="api", to_task="dashboard", predicate=EdgePredicate.CODE_READY))
+    graph.add_edge(TypedEdge(from_task="api", to_task="e2e", predicate=EdgePredicate.PR_MERGED))
+
+    # Mark auth as succeeded so api has a partially satisfied edge
+    graph.record_task_success("auth")
+    graph.evaluate_edges_from("auth")
+
+    return RunRuntimeState(
+        contract_version="oats-runtime-v2",
+        run_id="run_abc",
+        run_title="Graph test run",
+        repo_root=repo_root,
+        config_path=repo_root / ".oats" / "config.toml",
+        run_spec_path=repo_root / "runs" / "test.md",
+        mode="writable",
+        integration_branch="oats/overnight/graph-test",
+        task_pr_target="oats/overnight/graph-test",
+        final_pr_target="main",
+        runtime_dir=repo_root / ".oats" / "runtime" / "run_abc",
+        status="running",
+        started_at=now - timedelta(minutes=10),
+        updated_at=now - timedelta(seconds=5),
+        heartbeat_at=now - timedelta(seconds=5),
+        tasks=[
+            TaskRuntimeRecord(
+                task_id=tid,
+                title=tid.upper(),
+                branch_name=f"oats/task/{tid}",
+                pr_base="oats/overnight/graph-test",
+                agent="claude",
+                status="succeeded" if tid == "auth" else "pending",
+            )
+            for tid in ["auth", "models", "api", "dashboard", "e2e"]
+        ],
+        graph=graph,
+        graph_mutations=[
+            GraphMutation(
+                mutation_id="mut_abc123",
+                kind="insert_tasks",
+                discovered_by="api",
+                nodes_added=["task_extract-middleware"],
+                edges_added=[],
+            )
+        ],
+    )
+
+
+class TestGraphV2Fields:
+    def test_runtime_state_with_graph_returns_nodes_and_edges(
+        self, tmp_path: Path,
+    ) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / "run_abc" / "state.json"
+        response = _runtime_response(state, state_path)
+
+        assert len(response.nodes) == 5
+        assert len(response.edges) == 4
+
+        # Check edge predicates are present
+        edge_predicates = {e.predicate for e in response.edges}
+        assert "code_ready" in edge_predicates
+        assert "pr_merged" in edge_predicates
+
+    def test_runtime_state_with_graph_includes_ready_queue(
+        self, tmp_path: Path,
+    ) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / "run_abc" / "state.json"
+        response = _runtime_response(state, state_path)
+
+        assert isinstance(response.ready_queue, list)
+        # "models" should be ready (no inbound edges, pending)
+        assert "models" in response.ready_queue
+
+    def test_runtime_state_with_graph_includes_mutation_count(
+        self, tmp_path: Path,
+    ) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / "run_abc" / "state.json"
+        response = _runtime_response(state, state_path)
+
+        assert response.graph_mutation_count == 1
+
+    def test_runtime_state_with_graph_edge_satisfaction(
+        self, tmp_path: Path,
+    ) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / "run_abc" / "state.json"
+        response = _runtime_response(state, state_path)
+
+        # The auth -> api edge should be satisfied (auth succeeded)
+        auth_api_edge = next(
+            e for e in response.edges
+            if e.from_task == "auth" and e.to_task == "api"
+        )
+        assert auth_api_edge.satisfied is True
+
+        # The api -> e2e pr_merged edge should NOT be satisfied
+        api_e2e_edge = next(
+            e for e in response.edges
+            if e.from_task == "api" and e.to_task == "e2e"
+        )
+        assert api_e2e_edge.satisfied is False
+
+    def test_graph_endpoint_via_http(
+        self, tmp_path: Path,
+    ) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / "run_abc" / "state.json"
+        _write_model(state_path, state)
+
+        with orchestration_client(tmp_path) as client:
+            response = client.get("/orchestration/oats")
+            assert response.status_code == 200
+            runs = response.json()
+            assert len(runs) == 1
+
+            run = runs[0]
+            assert len(run["nodes"]) == 5
+            assert len(run["edges"]) == 4
+            assert "readyQueue" in run
+            assert run["graphMutationCount"] == 1
+
+    def test_v1_state_without_graph_returns_empty_graph_fields(
+        self, tmp_path: Path,
+    ) -> None:
+        """v1 states without a graph field should have empty nodes/edges."""
+        now = datetime.now(UTC)
+        state = RunRuntimeState(
+            contract_version="oats-runtime-v2",
+            run_id="run_v1",
+            run_title="V1 test",
+            repo_root=tmp_path,
+            config_path=tmp_path / ".oats" / "config.toml",
+            run_spec_path=tmp_path / "runs" / "test.md",
+            mode="writable",
+            integration_branch="oats/overnight/v1-test",
+            task_pr_target="oats/overnight/v1-test",
+            final_pr_target="main",
+            runtime_dir=tmp_path / ".oats" / "runtime" / "run_v1",
+            status="running",
+            started_at=now,
+            updated_at=now,
+            heartbeat_at=now,
+            tasks=[],
+            graph=None,
+        )
+        state_path = tmp_path / ".oats" / "runtime" / "run_v1" / "state.json"
+        response = _runtime_response(state, state_path)
+
+        assert response.nodes == []
+        assert response.edges == []
+        assert response.ready_queue == []
+        assert response.graph_mutation_count == 0
+
+
+class TestRunControlActions:
+    def test_pause_run_updates_status_and_logs_operator_mutation(self, tmp_path: Path) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / state.run_id / "state.json"
+        _write_model(state_path, state)
+
+        with orchestration_client(tmp_path) as client:
+            response = client.post(f"/orchestration/oats/{state.run_id}/pause")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "paused"
+        assert payload["graphMutationCount"] == 2
+        assert payload["graphMutations"][-1]["source"] == "operator"
+        assert payload["graphMutations"][-1]["kind"] == "pause_run"
+
+    def test_cancel_task_marks_descendants_blocked(self, tmp_path: Path) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / state.run_id / "state.json"
+        _write_model(state_path, state)
+
+        with orchestration_client(tmp_path) as client:
+            response = client.post(f"/orchestration/oats/{state.run_id}/tasks/api/cancel")
+
+        assert response.status_code == 200
+        payload = response.json()
+        nodes = {node["taskId"]: node for node in payload["nodes"]}
+        assert nodes["api"]["status"] == "cancelled"
+        assert nodes["dashboard"]["status"] == "blocked_by_failure"
+        assert payload["graphMutations"][-1]["kind"] == "cancel_task"
+
+    def test_force_retry_resets_failed_task_to_pending(self, tmp_path: Path) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state.graph.nodes["api"].status = "failed"
+        for task in state.tasks:
+            if task.task_id == "api":
+                task.status = "failed"
+                task.attempts = 2
+                break
+        state_path = tmp_path / ".oats" / "runtime" / state.run_id / "state.json"
+        _write_model(state_path, state)
+
+        with orchestration_client(tmp_path) as client:
+            response = client.post(f"/orchestration/oats/{state.run_id}/tasks/api/force-retry")
+
+        assert response.status_code == 200
+        payload = response.json()
+        nodes = {node["taskId"]: node for node in payload["nodes"]}
+        assert nodes["api"]["status"] == "pending"
+        assert payload["graphMutations"][-1]["kind"] == "force_retry_task"
+
+    def test_reroute_task_updates_provider_and_model(self, tmp_path: Path) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / state.run_id / "state.json"
+        _write_model(state_path, state)
+
+        with orchestration_client(tmp_path) as client:
+            response = client.post(
+                f"/orchestration/oats/{state.run_id}/tasks/api/reroute",
+                json={"provider": "codex", "model": "o3-pro"},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        nodes = {node["taskId"]: node for node in payload["nodes"]}
+        assert nodes["api"]["agent"] == "codex"
+        assert nodes["api"]["model"] == "o3-pro"
+        assert payload["graphMutations"][-1]["kind"] == "reroute_task"
+
+    def test_insert_task_adds_node_and_dependency(self, tmp_path: Path) -> None:
+        state = _build_runtime_state_with_graph(tmp_path)
+        state_path = tmp_path / ".oats" / "runtime" / state.run_id / "state.json"
+        _write_model(state_path, state)
+
+        with orchestration_client(tmp_path) as client:
+            response = client.post(
+                f"/orchestration/oats/{state.run_id}/tasks",
+                json={
+                    "title": "Operator-added task",
+                    "kind": "implementation",
+                    "dependencies": [{"taskId": "api", "predicate": "code_ready"}],
+                    "agent": "claude",
+                    "model": "claude-sonnet-4-6",
+                },
+            )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["taskId"].startswith("task_")
+        assert payload["graphMutations"][-1]["kind"] == "insert_tasks"
+        inserted = next(node for node in payload["nodes"] if node["taskId"] == payload["taskId"])
+        assert inserted["agent"] == "claude"
+        assert inserted["model"] == "claude-sonnet-4-6"
+        assert payload["readyQueue"] == ["models"]

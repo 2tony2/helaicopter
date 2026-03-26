@@ -188,6 +188,102 @@ class OrchestrationRunResponse(CamelCaseHttpResponseModel):
     record_path: str
     dag: OrchestrationDagResponse
 
+    # Graph-native v2 fields (populated when contract_version == "oats-runtime-v2")
+    nodes: list[OrchestrationGraphNodeResponse] = []
+    edges: list[OrchestrationTypedEdgeResponse] = []
+    ready_queue: list[str] = []
+    graph_mutation_count: int = 0
+    graph_mutations: list["OrchestrationGraphMutationResponse"] = []
+    interruption_count: int = 0
+    last_checkpoint_at: str | None = None
+
+
+class OrchestrationRunActionResponse(OrchestrationRunResponse):
+    """Run response payload for operator actions."""
+
+    task_id: TaskId | None = None
+
+
+# ---------------------------------------------------------------------------
+# Graph-native v2 response models
+# ---------------------------------------------------------------------------
+
+
+class OrchestrationTypedEdgeResponse(CamelCaseHttpResponseModel):
+    """A typed dependency edge in the v2 task graph."""
+
+    from_task: str
+    to_task: str
+    predicate: str  # code_ready|pr_created|pr_merged|checks_passing|review_approved|artifact_ready
+    satisfied: bool = False
+
+
+class OrchestrationAttemptResponse(CamelCaseHttpResponseModel):
+    """A single execution attempt for a task."""
+
+    attempt_id: str
+    session_id: str
+    status: str  # running|succeeded|failed|timed_out|killed
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_seconds: float | None = None
+    exit_code: int | None = None
+    error_summary: str | None = None
+    is_transient: bool | None = None
+
+
+class OrchestrationGraphNodeResponse(CamelCaseHttpResponseModel):
+    """A task node in the v2 graph-native response."""
+
+    task_id: TaskId
+    kind: str  # implementation|review|merge|verification|meta
+    title: str
+    status: TaskRuntimeStatus
+    agent: str | None = None
+    model: str | None = None
+    attempt_count: int = 0
+    last_attempt_status: str | None = None
+    last_attempt_duration_seconds: float | None = None
+    pr: OrchestrationTaskPullRequestResponse | None = None
+    operation_count: int = 0
+    discovered_by: str | None = None
+    discovered_task_count: int = 0
+
+
+class OrchestrationGraphMutationResponse(CamelCaseHttpResponseModel):
+    """A recorded graph mutation (discovered tasks)."""
+
+    mutation_id: str
+    kind: str
+    discovered_by: str
+    source: str = "discovery"
+    timestamp: str
+    nodes_added: list[str] = []
+
+
+class OrchestrationTaskDependencyRequest(CamelCaseHttpResponseModel):
+    """Dependency edge requested for an inserted operator task."""
+
+    task_id: TaskId
+    predicate: str
+
+
+class OrchestrationRerouteTaskRequest(CamelCaseHttpResponseModel):
+    """Requested provider/model override for a pending graph task."""
+
+    provider: ProviderName
+    model: str | None = None
+
+
+class OrchestrationInsertTaskRequest(CamelCaseHttpResponseModel):
+    """Payload for adding a new operator task to a live run graph."""
+
+    title: str
+    kind: str
+    dependencies: list[OrchestrationTaskDependencyRequest] = []
+    agent: ProviderName
+    model: str | None = None
+
 
 class OrchestrationRunFactResponse(CamelCaseHttpResponseModel):
     """Canonical fact record summarising the outcome of a single orchestration run."""

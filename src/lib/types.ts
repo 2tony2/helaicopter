@@ -209,20 +209,25 @@ export interface OrchestrationInvocation {
 
 export type OrchestrationTaskStatus =
   | "pending"
+  | "queued"
   | "running"
   | "succeeded"
   | "failed"
+  | "cancelled"
   | "timed_out"
   | "skipped"
-  | "blocked";
+  | "blocked"
+  | "blocked_by_failure";
 
 export type OrchestrationRunStatus =
   | "pending"
   | "planning"
   | "running"
+  | "paused"
   | "completed"
   | "failed"
-  | "timed_out";
+  | "timed_out"
+  | "interrupted";
 
 export type OrchestrationStackStatus =
   | "building"
@@ -383,6 +388,57 @@ export interface OrchestrationRunEvaluation {
   conversations: OrchestrationRunEvaluationConversation[];
 }
 
+// ---------------------------------------------------------------------------
+// Graph-native v2 types
+// ---------------------------------------------------------------------------
+
+export type EdgePredicate =
+  | "code_ready"
+  | "pr_created"
+  | "pr_merged"
+  | "checks_passing"
+  | "review_approved"
+  | "artifact_ready";
+
+export type TaskKind =
+  | "implementation"
+  | "review"
+  | "merge"
+  | "verification"
+  | "meta";
+
+export interface TypedEdge {
+  fromTask: string;
+  toTask: string;
+  predicate: EdgePredicate;
+  satisfied: boolean;
+}
+
+export interface GraphTaskNode {
+  taskId: string;
+  kind: TaskKind;
+  title: string;
+  status: OrchestrationTaskStatus;
+  agent?: string | null;
+  model?: string | null;
+  attemptCount: number;
+  lastAttemptStatus?: string | null;
+  lastAttemptDurationSeconds?: number | null;
+  pr?: OrchestrationTaskPullRequest | null;
+  operationCount: number;
+  discoveredBy?: string | null;
+  discoveredTaskCount: number;
+}
+
+export interface GraphMutation {
+  mutationId: string;
+  kind: string;
+  discoveredBy: string;
+  source: string;
+  timestamp: string;
+  nodesAdded: string[];
+}
+
 export interface OvernightOatsRunRecord {
   source: "overnight-oats";
   contractVersion:
@@ -416,6 +472,15 @@ export interface OvernightOatsRunRecord {
   recordPath: string;
   dag: OrchestrationDag;
   evaluation?: OrchestrationRunEvaluation;
+
+  // Graph-native v2 fields (populated for oats-runtime-v2 contracts)
+  nodes: GraphTaskNode[];
+  edges: TypedEdge[];
+  readyQueue: string[];
+  graphMutationCount: number;
+  graphMutations?: GraphMutation[];
+  interruptionCount: number;
+  lastCheckpointAt?: string | null;
 }
 
 /** Per-tool or per-category context breakdown */
@@ -952,4 +1017,80 @@ export interface ConversationEvaluation {
   createdAt: string;
   finishedAt?: string | null;
   durationMs?: number | null;
+}
+
+export interface WorkerCapabilities {
+  provider: "claude" | "codex";
+  models: string[];
+  maxConcurrentTasks: number;
+  supportsDiscovery: boolean;
+  supportsResume: boolean;
+  tags: string[];
+}
+
+export type WorkerStatus =
+  | "idle"
+  | "busy"
+  | "draining"
+  | "dead"
+  | "auth_expired";
+
+export interface Worker {
+  workerId: string;
+  workerType: string;
+  provider: WorkerCapabilities["provider"];
+  capabilities: WorkerCapabilities;
+  host: string;
+  pid?: number | null;
+  worktreeRoot?: string | null;
+  registeredAt: string;
+  lastHeartbeatAt: string;
+  status: WorkerStatus;
+  currentTaskId?: string | null;
+  currentRunId?: string | null;
+}
+
+export type CredentialType = "oauth_token" | "api_key" | "local_cli_session";
+export type CredentialStatus = "active" | "expired" | "revoked" | "pending";
+
+export interface AuthCredential {
+  credentialId: string;
+  provider: WorkerCapabilities["provider"];
+  credentialType: CredentialType;
+  status: CredentialStatus;
+  tokenExpiresAt?: string | null;
+  cliConfigPath?: string | null;
+  subscriptionId?: string | null;
+  subscriptionTier?: string | null;
+  rateLimitTier?: string | null;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  lastRefreshedAt?: string | null;
+  cumulativeCostUsd: number;
+  costSinceReset: number;
+}
+
+export interface DispatchQueueEntry {
+  runId: string;
+  taskId: string;
+  provider: WorkerCapabilities["provider"];
+  model: string;
+}
+
+export interface DeferredDispatchQueueEntry extends DispatchQueueEntry {
+  reason: string;
+}
+
+export interface DispatchQueueSnapshot {
+  ready: DispatchQueueEntry[];
+  deferred: DeferredDispatchQueueEntry[];
+}
+
+export interface DispatchHistoryEntry {
+  runId: string;
+  taskId: string;
+  workerId: string;
+  provider: WorkerCapabilities["provider"];
+  model: string;
+  dispatchedAt: string;
 }

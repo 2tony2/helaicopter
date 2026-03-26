@@ -5,9 +5,24 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from helaicopter_api.application.oats_run_actions import refresh_oats_run, resume_oats_run
-from helaicopter_api.application.orchestration import get_oats_facts, list_oats_runs
+from helaicopter_api.application.orchestration import (
+    cancel_oats_task,
+    force_retry_oats_task,
+    get_oats_facts,
+    get_oats_run,
+    insert_oats_task,
+    list_oats_runs,
+    pause_oats_run,
+    reroute_oats_task,
+)
 from helaicopter_api.bootstrap.services import BackendServices
-from helaicopter_api.schema.orchestration import OrchestrationFactsResponse, OrchestrationRunResponse
+from helaicopter_api.schema.orchestration import (
+    OrchestrationFactsResponse,
+    OrchestrationInsertTaskRequest,
+    OrchestrationRerouteTaskRequest,
+    OrchestrationRunActionResponse,
+    OrchestrationRunResponse,
+)
 from helaicopter_api.server.dependencies import get_services
 
 orchestration_router = APIRouter(prefix="/orchestration", tags=["orchestration"])
@@ -47,6 +62,22 @@ async def orchestration_oats_facts(
         outcomes, and timing metrics computed from all local OATS records.
     """
     return get_oats_facts(services)
+
+
+@orchestration_router.get(
+    "/oats/{run_id}",
+    response_model=OrchestrationRunResponse,
+    response_model_by_alias=True,
+    summary="Get a single OATS runtime record.",
+)
+async def orchestration_oats_detail(
+    run_id: str,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunResponse:
+    try:
+        return get_oats_run(services, run_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 
 
 @orchestration_router.post(
@@ -98,5 +129,91 @@ async def orchestration_oats_resume(
         return resume_oats_run(services, run_id)
     except RuntimeError as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+
+@orchestration_router.post(
+    "/oats/{run_id}/pause",
+    response_model=OrchestrationRunActionResponse,
+    response_model_by_alias=True,
+    summary="Pause a graph-native OATS run.",
+)
+async def orchestration_oats_pause(
+    run_id: str,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunActionResponse:
+    try:
+        return pause_oats_run(services, run_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+
+@orchestration_router.post(
+    "/oats/{run_id}/tasks/{task_id}/cancel",
+    response_model=OrchestrationRunActionResponse,
+    response_model_by_alias=True,
+    summary="Cancel a graph task and block descendants.",
+)
+async def orchestration_oats_cancel_task(
+    run_id: str,
+    task_id: str,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunActionResponse:
+    try:
+        return cancel_oats_task(services, run_id, task_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+
+@orchestration_router.post(
+    "/oats/{run_id}/tasks/{task_id}/force-retry",
+    response_model=OrchestrationRunActionResponse,
+    response_model_by_alias=True,
+    summary="Reset a failed graph task back to pending.",
+)
+async def orchestration_oats_force_retry_task(
+    run_id: str,
+    task_id: str,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunActionResponse:
+    try:
+        return force_retry_oats_task(services, run_id, task_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+
+@orchestration_router.post(
+    "/oats/{run_id}/tasks/{task_id}/reroute",
+    response_model=OrchestrationRunActionResponse,
+    response_model_by_alias=True,
+    summary="Change the provider/model assigned to a graph task.",
+)
+async def orchestration_oats_reroute_task(
+    run_id: str,
+    task_id: str,
+    request: OrchestrationRerouteTaskRequest,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunActionResponse:
+    try:
+        return reroute_oats_task(services, run_id, task_id, request)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+
+@orchestration_router.post(
+    "/oats/{run_id}/tasks",
+    status_code=status.HTTP_201_CREATED,
+    response_model=OrchestrationRunActionResponse,
+    response_model_by_alias=True,
+    summary="Insert an operator-authored task into a graph-native OATS run.",
+)
+async def orchestration_oats_insert_task(
+    run_id: str,
+    request: OrchestrationInsertTaskRequest,
+    services: BackendServices = Depends(get_services),
+) -> OrchestrationRunActionResponse:
+    try:
+        return insert_oats_task(services, run_id, request)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error

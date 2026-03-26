@@ -53,6 +53,24 @@ type ConversationRequestOptions = {
   parentSessionId?: string;
 };
 
+type OatsTaskRerouteInput = {
+  provider: "claude" | "codex";
+  model?: string | null;
+};
+
+type OatsInsertedTaskDependencyInput = {
+  taskId: string;
+  predicate: string;
+};
+
+type OatsInsertTaskInput = {
+  title: string;
+  kind: string;
+  dependencies?: OatsInsertedTaskDependencyInput[];
+  agent: "claude" | "codex";
+  model?: string | null;
+};
+
 function readErrorMessage(payload: unknown): string | null {
   if (typeof payload !== "object" || payload === null) {
     return null;
@@ -175,4 +193,53 @@ export function refreshOvernightOatsRun(runId: string): Promise<OvernightOatsRun
 
 export function resumeOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
   return post(endpoints.orchestrationOatsResume(runId), undefined, normalizeOvernightOatsRun);
+}
+
+export function pauseOvernightOatsRun(runId: string): Promise<OvernightOatsRunRecord> {
+  return post(endpoints.orchestrationOatsPause(runId), undefined, normalizeOvernightOatsRun);
+}
+
+export function cancelOvernightOatsTask(
+  runId: string,
+  taskId: string
+): Promise<OvernightOatsRunRecord> {
+  return post(
+    endpoints.orchestrationOatsCancelTask(runId, taskId),
+    undefined,
+    normalizeOvernightOatsRun
+  );
+}
+
+export function forceRetryOvernightOatsTask(
+  runId: string,
+  taskId: string
+): Promise<OvernightOatsRunRecord> {
+  return post(
+    endpoints.orchestrationOatsForceRetryTask(runId, taskId),
+    undefined,
+    normalizeOvernightOatsRun
+  );
+}
+
+export function rerouteOvernightOatsTask(
+  runId: string,
+  taskId: string,
+  input: OatsTaskRerouteInput
+): Promise<OvernightOatsRunRecord> {
+  return post(
+    endpoints.orchestrationOatsRerouteTask(runId, taskId),
+    input,
+    normalizeOvernightOatsRun
+  );
+}
+
+export function insertOvernightOatsTask(
+  runId: string,
+  input: OatsInsertTaskInput
+): Promise<OvernightOatsRunRecord> {
+  return post(
+    endpoints.orchestrationOatsInsertTask(runId),
+    input,
+    normalizeOvernightOatsRun
+  );
 }

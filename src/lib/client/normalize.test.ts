@@ -1950,3 +1950,89 @@ test("database status schema parses current backend shapes and rejects silent fa
     /table_count|tableCount/i
   );
 });
+
+// ---------------------------------------------------------------------------
+// Graph-native v2 normalization tests
+// ---------------------------------------------------------------------------
+
+test("normalizeOvernightOatsRun maps graph-native v2 nodes and edges", async () => {
+  const { normalizeOvernightOatsRun } = await getNormalize();
+  const run = normalizeOvernightOatsRun({
+    source: "overnight-oats",
+    contract_version: "oats-runtime-v2",
+    run_id: "run_abc",
+    run_title: "Graph test",
+    repo_root: "/tmp/repo",
+    config_path: "/tmp/config.toml",
+    run_spec_path: "/tmp/spec.md",
+    mode: "writable",
+    integration_branch: "feat/x",
+    task_pr_target: "feat/x",
+    final_pr_target: "main",
+    status: "running",
+    planner: null,
+    tasks: [],
+    operation_history: [],
+    created_at: "2026-03-25T00:00:00Z",
+    last_updated_at: "2026-03-25T00:01:00Z",
+    recorded_at: "2026-03-25T00:01:00Z",
+    record_path: "/tmp/state.json",
+    dag: { nodes: [], edges: [], stats: { total_nodes: 0, total_edges: 0 } },
+    nodes: [
+      { task_id: "auth", kind: "implementation", title: "Auth", status: "succeeded", attempt_count: 1, operation_count: 0, discovered_task_count: 0 },
+      { task_id: "api", kind: "implementation", title: "API", status: "pending", attempt_count: 0, operation_count: 0, discovered_task_count: 0 },
+    ],
+    edges: [
+      { from_task: "auth", to_task: "api", predicate: "code_ready", satisfied: true },
+    ],
+    ready_queue: ["api"],
+    graph_mutation_count: 1,
+    interruption_count: 0,
+  });
+
+  assert.equal(run.nodes.length, 2);
+  assert.equal(run.edges.length, 1);
+  assert.equal(run.edges[0].predicate, "code_ready");
+  assert.equal(run.edges[0].satisfied, true);
+  assert.equal(run.readyQueue.length, 1);
+  assert.equal(run.readyQueue[0], "api");
+  assert.equal(run.graphMutationCount, 1);
+});
+
+test("normalizeOvernightOatsRun flags discovered tasks via discoveredBy", async () => {
+  const { normalizeOvernightOatsRun } = await getNormalize();
+  const run = normalizeOvernightOatsRun({
+    source: "overnight-oats",
+    contract_version: "oats-runtime-v2",
+    run_id: "run_abc",
+    run_title: "Discovery test",
+    repo_root: "/tmp/repo",
+    config_path: "/tmp/config.toml",
+    run_spec_path: "/tmp/spec.md",
+    mode: "writable",
+    integration_branch: "feat/x",
+    task_pr_target: "feat/x",
+    final_pr_target: "main",
+    status: "running",
+    planner: null,
+    tasks: [],
+    operation_history: [],
+    created_at: "2026-03-25T00:00:00Z",
+    last_updated_at: "2026-03-25T00:01:00Z",
+    recorded_at: "2026-03-25T00:01:00Z",
+    record_path: "/tmp/state.json",
+    dag: { nodes: [], edges: [], stats: { total_nodes: 0, total_edges: 0 } },
+    nodes: [
+      { task_id: "api", kind: "implementation", title: "API", status: "succeeded", attempt_count: 1, operation_count: 0, discovered_task_count: 1 },
+      { task_id: "task_middleware", kind: "implementation", title: "Middleware", status: "pending", attempt_count: 0, operation_count: 0, discovered_task_count: 0, discovered_by: "api" },
+    ],
+    edges: [],
+    ready_queue: [],
+    graph_mutation_count: 0,
+    interruption_count: 0,
+  });
+
+  const discovered = run.nodes.filter((n) => n.discoveredBy);
+  assert.equal(discovered.length, 1);
+  assert.equal(discovered[0].discoveredBy, "api");
+});

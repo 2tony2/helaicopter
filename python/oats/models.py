@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from helaicopter_domain.ids import RunId, SessionId, TaskId
 from helaicopter_domain.vocab import ProviderName, RunRuntimeStatus, TaskRuntimeStatus
+from oats.graph import GraphMutation, TaskGraph, TaskKind
 from oats.stacked_prs import BranchStrategy
 
 
@@ -344,10 +345,13 @@ class TaskRuntimeRecord(BaseModel):
     agent: ProviderName
     role: Literal["executor"] = "executor"
     status: TaskRuntimeStatus = "pending"
+    kind: TaskKind = TaskKind.IMPLEMENTATION
     attempts: int = 0
     task_pr: TaskPullRequestSnapshot = Field(default_factory=TaskPullRequestSnapshot)
     operation_history: list[OperationHistoryEntry] = Field(default_factory=list)
     invocation: InvocationRuntimeRecord | None = None
+    discovered_by: str | None = None
+    discovered_tasks: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def populate_parent_branch(self) -> "TaskRuntimeRecord":
@@ -413,6 +417,8 @@ class RunRuntimeState(BaseModel):
     finished_at: datetime | None = None
     planner: InvocationRuntimeRecord | None = None
     tasks: list[TaskRuntimeRecord] = []
+    graph: TaskGraph | None = None
+    graph_mutations: list[GraphMutation] = Field(default_factory=list)
     final_pr: FinalPullRequestSnapshot = Field(default_factory=FinalPullRequestSnapshot)
     active_operation: OperationHistoryEntry | None = None
     operation_history: list[OperationHistoryEntry] = Field(default_factory=list)

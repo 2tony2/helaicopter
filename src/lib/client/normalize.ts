@@ -32,6 +32,7 @@ import type {
   OrchestrationInvocation,
   OrchestrationOperationHistoryEntry,
   OrchestrationFinalPullRequest,
+  GraphMutation,
   OrchestrationRunEvaluation,
   OrchestrationRunEvaluationConversation,
   OrchestrationReviewSummary,
@@ -51,6 +52,10 @@ import type {
   SubagentInfo,
   SubscriptionSettings,
   TokenUsage,
+  Worker,
+  AuthCredential,
+  DispatchQueueSnapshot,
+  DispatchHistoryEntry,
 } from "@/lib/types";
 import type { DatabaseArtifactPayload, DatabaseStatusPayload } from "./schemas/database.ts";
 import type {
@@ -61,6 +66,9 @@ import type {
   EvaluationPromptPayload,
 } from "./schemas/evaluations.ts";
 import type { SubscriptionSettingsPayload } from "./schemas/subscriptions.ts";
+import type { WorkerPayload } from "./schemas/workers.ts";
+import type { AuthCredentialPayload } from "./schemas/auth.ts";
+import type { DispatchQueueSnapshotPayload } from "./schemas/dispatch.ts";
 import { providerSchema } from "./schemas/shared.ts";
 
 /**
@@ -1245,6 +1253,97 @@ export function normalizeSubscriptionSettings(
   };
 }
 
+export function normalizeWorker(value: WorkerPayload): Worker {
+  return {
+    workerId: value.workerId,
+    workerType: value.workerType,
+    provider: value.provider,
+    capabilities: {
+      provider: value.capabilities.provider,
+      models: value.capabilities.models,
+      maxConcurrentTasks: value.capabilities.maxConcurrentTasks,
+      supportsDiscovery: value.capabilities.supportsDiscovery,
+      supportsResume: value.capabilities.supportsResume,
+      tags: value.capabilities.tags,
+    },
+    host: value.host,
+    pid: value.pid ?? null,
+    worktreeRoot: value.worktreeRoot ?? null,
+    registeredAt: value.registeredAt,
+    lastHeartbeatAt: value.lastHeartbeatAt,
+    status: value.status,
+    currentTaskId: value.currentTaskId ?? null,
+    currentRunId: value.currentRunId ?? null,
+  };
+}
+
+export function normalizeWorkers(value: WorkerPayload[]): Worker[] {
+  return value.map(normalizeWorker);
+}
+
+export function normalizeAuthCredential(value: AuthCredentialPayload): AuthCredential {
+  return {
+    credentialId: value.credentialId,
+    provider: value.provider,
+    credentialType: value.credentialType,
+    status: value.status,
+    tokenExpiresAt: value.tokenExpiresAt ?? null,
+    cliConfigPath: value.cliConfigPath ?? null,
+    subscriptionId: value.subscriptionId ?? null,
+    subscriptionTier: value.subscriptionTier ?? null,
+    rateLimitTier: value.rateLimitTier ?? null,
+    createdAt: value.createdAt,
+    lastUsedAt: value.lastUsedAt ?? null,
+    lastRefreshedAt: value.lastRefreshedAt ?? null,
+    cumulativeCostUsd: value.cumulativeCostUsd,
+    costSinceReset: value.costSinceReset,
+  };
+}
+
+export function normalizeAuthCredentials(value: AuthCredentialPayload[]): AuthCredential[] {
+  return value.map(normalizeAuthCredential);
+}
+
+export function normalizeDispatchQueueSnapshot(
+  value: DispatchQueueSnapshotPayload
+): DispatchQueueSnapshot {
+  return {
+    ready: value.ready.map((entry) => ({
+      runId: entry.runId,
+      taskId: entry.taskId,
+      provider: entry.provider,
+      model: entry.model,
+    })),
+    deferred: value.deferred.map((entry) => ({
+      runId: entry.runId,
+      taskId: entry.taskId,
+      provider: entry.provider,
+      model: entry.model,
+      reason: entry.reason,
+    })),
+  };
+}
+
+export function normalizeDispatchHistory(value: {
+  entries: Array<{
+    runId: string;
+    taskId: string;
+    workerId: string;
+    provider: "claude" | "codex";
+    model: string;
+    dispatchedAt: string;
+  }>;
+}): DispatchHistoryEntry[] {
+  return value.entries.map((entry) => ({
+    runId: entry.runId,
+    taskId: entry.taskId,
+    workerId: entry.workerId,
+    provider: entry.provider,
+    model: entry.model,
+    dispatchedAt: entry.dispatchedAt,
+  }));
+}
+
 function normalizeBooleanLike(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
@@ -1534,6 +1633,53 @@ function normalizeOrchestrationEvaluation(value: unknown): OrchestrationRunEvalu
   };
 }
 
+// ---------------------------------------------------------------------------
+// Graph-native v2 normalization
+// ---------------------------------------------------------------------------
+
+export function normalizeTypedEdge(value: unknown): import("../types.js").TypedEdge {
+  const item = asRecord(value);
+  return {
+    fromTask: stringOr(field(item, "fromTask", "from_task")),
+    toTask: stringOr(field(item, "toTask", "to_task")),
+    predicate: stringOr(field(item, "predicate")) as import("../types.js").EdgePredicate,
+    satisfied: booleanOr(field(item, "satisfied")),
+  };
+}
+
+export function normalizeGraphTaskNode(value: unknown): import("../types.js").GraphTaskNode {
+  const item = asRecord(value);
+  return {
+    taskId: stringOr(field(item, "taskId", "task_id")),
+    kind: stringOr(field(item, "kind")) as import("../types.js").TaskKind,
+    title: stringOr(field(item, "title")),
+    status: stringOr(field(item, "status")) as import("../types.js").OrchestrationTaskStatus,
+    agent: nullableString(field(item, "agent")),
+    model: nullableString(field(item, "model")),
+    attemptCount: numberOr(field(item, "attemptCount", "attempt_count")),
+    lastAttemptStatus: nullableString(field(item, "lastAttemptStatus", "last_attempt_status")),
+    lastAttemptDurationSeconds: nullableNumber(
+      field(item, "lastAttemptDurationSeconds", "last_attempt_duration_seconds")
+    ),
+    pr: normalizeTaskPullRequest(field(item, "pr")),
+    operationCount: numberOr(field(item, "operationCount", "operation_count")),
+    discoveredBy: nullableString(field(item, "discoveredBy", "discovered_by")),
+    discoveredTaskCount: numberOr(field(item, "discoveredTaskCount", "discovered_task_count")),
+  };
+}
+
+export function normalizeGraphMutation(value: unknown): GraphMutation {
+  const item = asRecord(value);
+  return {
+    mutationId: stringOr(field(item, "mutationId", "mutation_id")),
+    kind: stringOr(field(item, "kind")),
+    discoveredBy: stringOr(field(item, "discoveredBy", "discovered_by")),
+    source: stringOr(field(item, "source"), "discovery"),
+    timestamp: stringOr(field(item, "timestamp")),
+    nodesAdded: asArray(field(item, "nodesAdded", "nodes_added")).map((entry) => stringOr(entry)),
+  };
+}
+
 export function normalizeOvernightOatsRun(value: unknown): OvernightOatsRunRecord {
   const item = asRecord(value);
   const contractVersion = stringOr(field(item, "contractVersion", "contract_version"));
@@ -1592,6 +1738,20 @@ export function normalizeOvernightOatsRun(value: unknown): OvernightOatsRunRecor
     recordPath: stringOr(field(item, "recordPath", "record_path")),
     dag: normalizeOrchestrationDag(field(item, "dag")),
     evaluation: normalizeOrchestrationEvaluation(field(item, "evaluation")),
+
+    // Graph-native v2 fields
+    nodes: asArray(field(item, "nodes")).map(normalizeGraphTaskNode),
+    edges: asArray(field(item, "edges")).map(normalizeTypedEdge),
+    readyQueue: asArray(field(item, "readyQueue", "ready_queue")).map((v) => stringOr(v)),
+    graphMutationCount: numberOr(field(item, "graphMutationCount", "graph_mutation_count")),
+    graphMutations: asArray(field(item, "graphMutations", "graph_mutations")).map(
+      normalizeGraphMutation
+    ),
+    interruptionCount: numberOr(field(item, "interruptionCount", "interruption_count")),
+    lastCheckpointAt:
+      field(item, "lastCheckpointAt", "last_checkpoint_at") === null
+        ? null
+        : nullableString(field(item, "lastCheckpointAt", "last_checkpoint_at")),
   };
 }
 
