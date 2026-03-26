@@ -117,8 +117,11 @@ class CodexOAuthClient:
         )
 
     def _exchange_token(self, data: dict[str, str]) -> OAuthTokenBundle:
-        response = httpx.post(self.token_url, data=data, timeout=30.0)
-        response.raise_for_status()
+        try:
+            response = httpx.post(self.token_url, data=data, timeout=30.0)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RuntimeError("Codex OAuth token exchange failed") from exc
         return _oauth_token_bundle_from_payload(response.json(), fallback_scopes=self.scopes)
 
 

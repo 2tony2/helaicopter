@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 import pytest
+import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -97,7 +98,6 @@ def test_initiate_oauth_returns_redirect_url(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("HELA_CODEX_OAUTH_CLIENT_ID", "test-codex-client")
 
     with _oauth_client() as client:
-        auth_application._OAUTH_CLIENTS["codex"] = _StubOAuthClient()
         response = client.post("/auth/credentials/oauth/initiate", json={"provider": "codex"})
         assert response.status_code == 200
         payload = response.json()
@@ -114,7 +114,36 @@ def test_initiate_oauth_uses_registered_codex_client(monkeypatch: pytest.MonkeyP
         response = client.post("/auth/credentials/oauth/initiate", json={"provider": "codex"})
 
         assert response.status_code == 200
-        assert "state=" in response.json()["redirectUrl"]
+        parsed = urlparse(response.json()["redirectUrl"])
+        query = parse_qs(parsed.query)
+        assert parsed.scheme == "https"
+        assert parsed.netloc == "auth.openai.com"
+        assert parsed.path == "/oauth/authorize"
+        assert query["client_id"] == ["test-codex-client"]
+        assert query["redirect_uri"] == ["http://127.0.0.1:31506/auth/credentials/oauth/callback"]
+        assert query["response_type"] == ["code"]
+        assert query["scope"] == ["openid profile email offline_access"]
+        assert query["code_challenge_method"] == ["S256"]
+        assert len(query["code_challenge"][0]) > 20
+        assert len(query["state"][0]) > 20
+
+
+def test_oauth_callback_returns_502_on_token_exchange_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HELA_CODEX_OAUTH_CLIENT_ID", "test-codex-client")
+    request = httpx.Request("POST", "https://auth.openai.com/oauth/token")
+    monkeypatch.setattr(
+        auth_application.httpx,
+        "post",
+        lambda *args, **kwargs: httpx.Response(500, request=request),
+    )
+
+    with _oauth_client() as client:
+        initiate = client.post("/auth/credentials/oauth/initiate", json={"provider": "codex"})
+        state = parse_qs(urlparse(initiate.json()["redirectUrl"]).query)["state"][0]
+        response = client.get(f"/auth/credentials/oauth/callback?code=test_code&state={state}")
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "Codex OAuth token exchange failed"
 
 
 def test_initiate_oauth_returns_400_for_claude() -> None:
@@ -157,6 +186,31 @@ def test_refresh_expired_token() -> None:
         payload = response.json()
         assert payload["status"] == "active"
         assert payload["tokenExpiresAt"] is not None
+
+
+def test_refresh_returns_502_on_token_exchange_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HELA_CODEX_OAUTH_CLIENT_ID", "test-codex-client")
+    request = httpx.Request("POST", "https://auth.openai.com/oauth/token")
+    monkeypatch.setattr(
+        auth_application.httpx,
+        "post",
+        lambda *args, **kwargs: httpx.Response(502, request=request),
+    )
+
+    with _oauth_client() as client:
+        create = client.post("/auth/credentials", json={
+            "provider": "codex",
+            "credentialType": "oauth_token",
+            "accessToken": "expired-access",
+            "refreshToken": "refresh-me",
+            "tokenExpiresAt": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+        })
+        credential_id = create.json()["credentialId"]
+
+        response = client.post(f"/auth/credentials/{credential_id}/refresh")
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "Codex OAuth token exchange failed"
 
 
 def test_resolver_auto_refreshes_expiring_token() -> None:

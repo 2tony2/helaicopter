@@ -50,7 +50,10 @@ async def credential_create(
 async def credential_oauth_initiate(
     body: OAuthInitiateRequest,
 ) -> OAuthInitiateResponse:
-    return initiate_oauth(provider=body.provider)
+    try:
+        return initiate_oauth(provider=body.provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @auth_router.get(
@@ -69,6 +72,8 @@ async def credential_oauth_callback(
         return complete_oauth_callback(engine=services.sqlite_engine, code=code, state=state)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @auth_router.get(
