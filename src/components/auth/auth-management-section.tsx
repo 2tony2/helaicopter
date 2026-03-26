@@ -8,8 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useConnectClaudeCli,
+  useConnectCodexCli,
   useCredentials,
-  useInitiateOauth,
   useRefreshCredential,
   useRevokeCredential,
 } from "@/lib/client/auth";
@@ -24,7 +24,7 @@ export function AuthManagementSection({
   onRefresh,
   onRevoke,
   onConnectClaudeCli,
-  onInitiateOauth,
+  onConnectCodexCli,
   pending = false,
   error,
 }: {
@@ -32,7 +32,7 @@ export function AuthManagementSection({
   onRefresh?: (credentialId: string) => void;
   onRevoke?: (credentialId: string) => void;
   onConnectClaudeCli?: () => void;
-  onInitiateOauth?: () => void;
+  onConnectCodexCli?: () => void;
   pending?: boolean;
   error?: string | null;
 }) {
@@ -53,7 +53,7 @@ export function AuthManagementSection({
         </div>
         <AddCredentialDialog
           onConnectClaudeCli={onConnectClaudeCli}
-          onOauth={onInitiateOauth}
+          onConnectCodexCli={onConnectCodexCli}
           pending={pending}
         />
       </div>
@@ -117,9 +117,9 @@ export function AuthManagementSection({
 export function AuthManagementPanel() {
   const { data: credentials, isLoading } = useCredentials();
   const connectClaudeCli = useConnectClaudeCli();
+  const connectCodexCli = useConnectCodexCli();
   const revokeCredential = useRevokeCredential();
   const refreshCredential = useRefreshCredential();
-  const oauth = useInitiateOauth();
 
   if (isLoading && !(credentials && credentials.length > 0)) {
     return (
@@ -137,30 +137,18 @@ export function AuthManagementPanel() {
       onRefresh={(credentialId) => void refreshCredential.run(credentialId)}
       onRevoke={(credentialId) => void revokeCredential.run(credentialId)}
       onConnectClaudeCli={() => void connectClaudeCli.run()}
-      onInitiateOauth={() => {
-        void oauth.run("codex").then((result) => {
-          if (
-            typeof window !== "undefined" &&
-            result &&
-            typeof result === "object" &&
-            "redirectUrl" in result &&
-            typeof result.redirectUrl === "string"
-          ) {
-            window.location.assign(result.redirectUrl);
-          }
-        });
-      }}
+      onConnectCodexCli={() => void connectCodexCli.run()}
       pending={
         connectClaudeCli.isMutating ||
+        connectCodexCli.isMutating ||
         revokeCredential.isMutating ||
-        refreshCredential.isMutating ||
-        oauth.isMutating
+        refreshCredential.isMutating
       }
       error={
         connectClaudeCli.error ??
+        connectCodexCli.error ??
         revokeCredential.error ??
-        refreshCredential.error ??
-        oauth.error
+        refreshCredential.error
       }
     />
   );

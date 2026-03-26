@@ -57,7 +57,7 @@ def test_claude_provider_is_ready_when_cli_session_and_worker_exist() -> None:
         engine.dispose()
 
 
-def test_codex_provider_is_ready_when_oauth_token_and_worker_exist() -> None:
+def test_codex_provider_is_ready_when_cli_session_and_worker_exist() -> None:
     from helaicopter_api.application.provider_readiness import build_provider_readiness
 
     engine = _engine()
@@ -67,10 +67,8 @@ def test_codex_provider_is_ready_when_oauth_token_and_worker_exist() -> None:
             CreateCredentialRequest.model_validate(
                 {
                     "provider": "codex",
-                    "credentialType": "oauth_token",
-                    "accessToken": "token-1",
-                    "refreshToken": "refresh-1",
-                    "tokenExpiresAt": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.codex",
                 }
             ),
         )
@@ -100,8 +98,10 @@ def test_codex_provider_ignores_active_mismatched_credential_type() -> None:
             CreateCredentialRequest.model_validate(
                 {
                     "provider": "codex",
-                    "credentialType": "local_cli_session",
-                    "cliConfigPath": "~/.codex",
+                    "credentialType": "oauth_token",
+                    "accessToken": "token-1",
+                    "refreshToken": "refresh-1",
+                    "tokenExpiresAt": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
                 }
             ),
         )
@@ -116,7 +116,7 @@ def test_codex_provider_ignores_active_mismatched_credential_type() -> None:
 
         assert readiness.status == "blocked"
         assert readiness.active_credential_count == 0
-        assert readiness.blocking_reasons[0].code == "missing_credential"
+        assert readiness.blocking_reasons[0].code == "missing_cli_session"
     finally:
         engine.dispose()
 
@@ -132,8 +132,8 @@ def test_provider_readiness_explains_missing_auth_and_missing_worker_separately(
 
     assert readiness.status == "blocked"
     assert len(readiness.blocking_reasons) == 2
-    assert readiness.blocking_reasons[0].code == "missing_credential"
-    assert readiness.blocking_reasons[0].message == "No valid Codex OAuth credential is available."
+    assert readiness.blocking_reasons[0].code == "missing_cli_session"
+    assert readiness.blocking_reasons[0].message == "No valid local Codex CLI session is available."
     assert "worker" in readiness.blocking_reasons[1].message.lower()
 
 
@@ -151,7 +151,7 @@ def test_provider_readiness_from_store_blocks_provider_without_credentials() -> 
 
         assert readiness is not None
         assert readiness.status == "blocked"
-        assert readiness.blocking_reasons[0].code == "missing_credential"
+        assert readiness.blocking_reasons[0].code == "missing_cli_session"
     finally:
         engine.dispose()
 
@@ -193,7 +193,9 @@ def test_mismatched_invalid_credentials_are_normalized_by_provider() -> None:
             CreateCredentialRequest.model_validate(
                 {
                     "provider": "codex",
-                    "credentialType": "local_cli_session",
+                    "credentialType": "oauth_token",
+                    "accessToken": "token-1",
+                    "refreshToken": "refresh-1",
                 }
             ),
         )
@@ -221,8 +223,8 @@ def test_mismatched_invalid_credentials_are_normalized_by_provider() -> None:
             workers=[],
         )
 
-        assert codex_readiness.blocking_reasons[0].code == "missing_credential"
-        assert codex_readiness.blocking_reasons[0].message == "No valid Codex OAuth credential is available."
+        assert codex_readiness.blocking_reasons[0].code == "missing_cli_session"
+        assert codex_readiness.blocking_reasons[0].message == "No valid local Codex CLI session is available."
         assert claude_readiness.blocking_reasons[0].code == "missing_cli_session"
         assert claude_readiness.blocking_reasons[0].message == "No valid local Claude CLI session is available."
     finally:

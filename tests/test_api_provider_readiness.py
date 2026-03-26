@@ -96,10 +96,8 @@ def test_operator_bootstrap_provider_summaries_include_provider_readiness_status
             CreateCredentialRequest.model_validate(
                 {
                     "provider": "codex",
-                    "credentialType": "oauth_token",
-                    "accessToken": "token-1",
-                    "refreshToken": "refresh-1",
-                    "tokenExpiresAt": "2099-01-01T00:00:00+00:00",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.codex",
                 }
             ),
         )

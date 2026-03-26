@@ -137,10 +137,8 @@ def test_operator_bootstrap_reports_ready_when_workers_and_credentials_exist() -
             CreateCredentialRequest.model_validate(
                 {
                     "provider": "codex",
-                    "credentialType": "oauth_token",
-                    "accessToken": "token-1",
-                    "refreshToken": "refresh-1",
-                    "tokenExpiresAt": "2026-04-01T00:00:00Z",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.codex",
                 }
             ),
         )

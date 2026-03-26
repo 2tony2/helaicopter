@@ -106,7 +106,7 @@ def _expected_credential_type(provider: str) -> str:
     if provider == "claude":
         return "local_cli_session"
     if provider == "codex":
-        return "oauth_token"
+        return "local_cli_session"
     return "credential"
 
 
@@ -114,7 +114,7 @@ def _missing_auth_code(provider: str) -> str:
     if provider == "claude":
         return "missing_cli_session"
     if provider == "codex":
-        return "missing_credential"
+        return "missing_cli_session"
     return "missing_credential"
 
 
@@ -122,7 +122,7 @@ def _missing_auth_message(provider: str) -> str:
     if provider == "claude":
         return "No valid local Claude CLI session is available."
     if provider == "codex":
-        return "No valid Codex OAuth credential is available."
+        return "No valid local Codex CLI session is available."
     return f"No active {provider} credential is available."
 
 

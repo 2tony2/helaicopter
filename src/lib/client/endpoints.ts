@@ -265,8 +265,8 @@ export function authCredentialClaudeCliConnect() {
   return api("/auth/credentials/claude-cli/connect");
 }
 
-export function authCredentialOauthInitiate() {
-  return api("/auth/credentials/oauth/initiate");
+export function authCredentialCodexCliConnect() {
+  return api("/auth/credentials/codex-cli/connect");
 }
 
 // ---------------------------------------------------------------------------

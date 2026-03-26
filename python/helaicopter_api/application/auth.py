@@ -73,6 +73,11 @@ class ClaudeCliSession:
     subscription_tier: str | None = None
 
 
+@dataclass(slots=True)
+class CodexCliSession:
+    cli_config_path: str
+
+
 class OAuthProviderClient(Protocol):
     def build_authorization_url(self, *, state: str, code_challenge: str) -> str: ...
 
@@ -346,6 +351,42 @@ def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
     )
 
 
+def discover_codex_cli_session(*, settings: Settings) -> CodexCliSession:
+    cli_command = ["codex", "login", "status"]
+    try:
+        result = subprocess.run(
+            cli_command,
+            cwd=settings.codex_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError(
+            "Codex CLI authentication could not be discovered: 'codex login status' timed out."
+        ) from exc
+    except (FileNotFoundError, OSError) as exc:
+        raise ValueError(
+            "Codex CLI authentication could not be discovered: 'codex' is unavailable. "
+            "Run 'codex login' and try again."
+        ) from exc
+
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+    if result.returncode == 0:
+        if not output or "logged in" not in output.lower():
+            raise ValueError(
+                "Codex CLI authentication could not be discovered: 'codex login status' returned 0 without"
+                " authenticated session details. Run 'codex login' and try again."
+            )
+        return CodexCliSession(cli_config_path=str(settings.codex_dir))
+
+    raise ValueError(
+        "Codex CLI authentication could not be discovered: 'codex login status' "
+        f"returned {result.returncode}.{' Output: ' + output if output else ''} Run 'codex login' and try again."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -505,6 +546,18 @@ def _active_claude_cli_rows(session: Session) -> list[AuthCredentialRecord]:
     ).scalars().all()
 
 
+def _active_codex_cli_rows(session: Session) -> list[AuthCredentialRecord]:
+    return session.execute(
+        select(AuthCredentialRecord)
+        .where(
+            AuthCredentialRecord.provider == "codex",
+            AuthCredentialRecord.credential_type == "local_cli_session",
+            AuthCredentialRecord.status == "active",
+        )
+        .order_by(AuthCredentialRecord.created_at.desc())
+    ).scalars().all()
+
+
 def connect_claude_cli_credential(
     engine: Engine,
     *,
@@ -532,6 +585,41 @@ def connect_claude_cli_credential(
         row = rows[0]
         row.cli_config_path = session.cli_config_path
         row.subscription_tier = session.subscription_tier
+        row.status = "active"
+        row.last_refreshed_at = now
+        for duplicate in rows[1:]:
+            duplicate.status = "revoked"
+            duplicate.last_refreshed_at = now
+        db.commit()
+        db.refresh(row)
+        return _to_response(row)
+
+
+def connect_codex_cli_credential(
+    engine: Engine,
+    *,
+    settings: Settings,
+) -> CredentialResponse:
+    session = discover_codex_cli_session(settings=settings)
+    now = datetime.now(UTC)
+
+    with Session(engine) as db:
+        rows = _active_codex_cli_rows(db)
+        request = CreateCredentialRequest.model_validate(
+            {
+                "provider": "codex",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": session.cli_config_path,
+            }
+        )
+        if not rows:
+            record = _create_credential_record(db, request)
+            db.commit()
+            db.refresh(record)
+            return _to_response(record)
+
+        row = rows[0]
+        row.cli_config_path = session.cli_config_path
         row.status = "active"
         row.last_refreshed_at = now
         for duplicate in rows[1:]:

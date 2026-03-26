@@ -172,10 +172,8 @@ def test_smoke_cold_start_to_healthy_system(tmp_path: Path) -> None:
             CreateCredentialRequest.model_validate(
                 {
                     "provider": "codex",
-                    "credentialType": "oauth_token",
-                    "accessToken": "token-1",
-                    "refreshToken": "refresh-1",
-                    "tokenExpiresAt": "2026-04-01T00:00:00Z",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": "~/.codex",
                 }
             ),
         )

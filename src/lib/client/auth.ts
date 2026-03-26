@@ -10,11 +10,7 @@ import {
   normalizeAuthCredential,
   normalizeAuthCredentials,
 } from "@/lib/client/normalize";
-import {
-  authCredentialListSchema,
-  authCredentialSchema,
-  oauthInitiateSchema,
-} from "@/lib/client/schemas/auth";
+import { authCredentialListSchema, authCredentialSchema } from "@/lib/client/schemas/auth";
 
 const authSwrOptions = {
   revalidateOnFocus: false,
@@ -67,6 +63,17 @@ export function useConnectClaudeCli() {
   );
 }
 
+export function useConnectCodexCli() {
+  return useCredentialMutation(() =>
+    post(
+      endpoints.authCredentialCodexCliConnect(),
+      undefined,
+      authCredentialSchema,
+      normalizeAuthCredential
+    )
+  );
+}
+
 export function useRevokeCredential() {
   return useCredentialMutation((credentialId: string) =>
     del(endpoints.authCredential(credentialId))
@@ -81,11 +88,5 @@ export function useRefreshCredential() {
       authCredentialSchema,
       normalizeAuthCredential
     )
-  );
-}
-
-export function useInitiateOauth() {
-  return useCredentialMutation((provider: AuthCredential["provider"]) =>
-    post(endpoints.authCredentialOauthInitiate(), { provider }, oauthInitiateSchema)
   );
 }

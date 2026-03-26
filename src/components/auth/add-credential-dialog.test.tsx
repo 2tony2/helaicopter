@@ -72,14 +72,14 @@ function buildCredential(): AuthCredential {
 
 test("CredentialProviderActions invokes the Claude and Codex callbacks", () => {
   let claudeConnectCount = 0;
-  let oauthCalls = 0;
+  let codexConnectCount = 0;
 
   const tree = CredentialProviderActions({
     onConnectClaudeCli: () => {
       claudeConnectCount += 1;
     },
-    onOauth: () => {
-      oauthCalls += 1;
+    onConnectCodexCli: () => {
+      codexConnectCount += 1;
     },
   });
 
@@ -88,25 +88,25 @@ test("CredentialProviderActions invokes the Claude and Codex callbacks", () => {
   claudeButton!.props.onClick();
   assert.equal(claudeConnectCount, 1);
 
-  const codexButton = findByText(tree, "OAuth redirect");
+  const codexButton = findByText(tree, "Reuse Codex CLI session");
   assert.ok(codexButton);
   codexButton!.props.onClick();
-  assert.equal(oauthCalls, 1);
+  assert.equal(codexConnectCount, 1);
 });
 
 test("AuthManagementSection passes provider-aware actions through to the add-credential dialog", () => {
   const onConnectClaudeCli = () => undefined;
-  const onInitiateOauth = () => undefined;
+  const onConnectCodexCli = () => undefined;
   const tree = AuthManagementSection({
     credentials: [buildCredential()],
     onConnectClaudeCli,
-    onInitiateOauth,
+    onConnectCodexCli,
   });
 
   const dialog = findByType(tree, AddCredentialDialog);
   assert.ok(dialog);
   assert.equal(dialog!.props.onConnectClaudeCli, onConnectClaudeCli);
-  assert.equal(dialog!.props.onOauth, onInitiateOauth);
+  assert.equal(dialog!.props.onConnectCodexCli, onConnectCodexCli);
 });
 
 test("AuthManagementSection active summary only counts provider-ready credentials", () => {
@@ -133,7 +133,8 @@ test("CredentialProviderActions shows provider-aware Claude and Codex actions wi
   const markup = renderToStaticMarkup(<CredentialProviderActions />);
 
   assert.match(markup, /Reuse Claude CLI session/);
-  assert.match(markup, /OAuth redirect/);
+  assert.match(markup, /Reuse Codex CLI session/);
+  assert.doesNotMatch(markup, /OAuth redirect/);
   assert.doesNotMatch(markup, /API key/i);
   assert.doesNotMatch(markup, /Save API key/i);
 });

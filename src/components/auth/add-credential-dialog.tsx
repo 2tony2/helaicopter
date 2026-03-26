@@ -13,11 +13,11 @@ import type { AuthCredential } from "@/lib/types";
 
 export function CredentialProviderActions({
   onConnectClaudeCli,
-  onOauth,
+  onConnectCodexCli,
   pending = false,
 }: {
   onConnectClaudeCli?: () => void;
-  onOauth?: () => void;
+  onConnectCodexCli?: () => void;
   pending?: boolean;
 }) {
   return (
@@ -36,9 +36,9 @@ export function CredentialProviderActions({
 
       <div className="rounded-lg border bg-muted/30 p-4">
         <div className="text-sm font-medium">Codex</div>
-        <p className="mt-1 text-sm text-muted-foreground">OAuth redirect.</p>
-        <Button className="mt-4 w-full" disabled={pending} onClick={() => onOauth?.()}>
-          OAuth redirect
+        <p className="mt-1 text-sm text-muted-foreground">Reuse Codex CLI session.</p>
+        <Button className="mt-4 w-full" disabled={pending} onClick={() => onConnectCodexCli?.()}>
+          Reuse Codex CLI session
         </Button>
       </div>
     </div>
@@ -47,11 +47,11 @@ export function CredentialProviderActions({
 
 export function AddCredentialDialog({
   onConnectClaudeCli,
-  onOauth,
+  onConnectCodexCli,
   pending = false,
 }: {
   onConnectClaudeCli?: () => void;
-  onOauth?: () => void;
+  onConnectCodexCli?: () => void;
   pending?: boolean;
 }) {
   return (
@@ -63,13 +63,13 @@ export function AddCredentialDialog({
         <DialogHeader>
           <DialogTitle>Add credential</DialogTitle>
           <DialogDescription>
-            Reuse your local Claude CLI session or start a Codex OAuth redirect.
+            Reuse your local Claude CLI session or your local Codex CLI session.
           </DialogDescription>
         </DialogHeader>
 
         <CredentialProviderActions
           onConnectClaudeCli={onConnectClaudeCli}
-          onOauth={onOauth}
+          onConnectCodexCli={onConnectCodexCli}
           pending={pending}
         />
 

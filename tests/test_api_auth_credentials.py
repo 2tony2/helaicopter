@@ -346,6 +346,96 @@ def test_connect_claude_cli_revokes_duplicate_active_credentials(
         assert len(revoked_claude_cli_credentials) == 1
 
 
+def test_connect_codex_cli_creates_local_cli_session_credential(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout="Logged in using ChatGPT\n", stderr="")
+
+    with _auth_client(settings=Settings(codex_dir=codex_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/codex-cli/connect")
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["provider"] == "codex"
+        assert payload["credentialType"] == "local_cli_session"
+        assert payload["status"] == "active"
+        assert payload["cliConfigPath"] == str(codex_dir)
+
+
+def test_connect_codex_cli_returns_400_when_login_status_is_not_authenticated(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 1, stdout="", stderr="not logged in")
+
+    with _auth_client(settings=Settings(codex_dir=codex_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/codex-cli/connect")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Codex CLI authentication could not be discovered: 'codex login status' "
+            "returned 1. Output: not logged in Run 'codex login' and try again."
+        )
+
+
+def test_connect_codex_cli_rejects_empty_successful_status_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+    with _auth_client(settings=Settings(codex_dir=codex_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/codex-cli/connect")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Codex CLI authentication could not be discovered: 'codex login status' returned 0 without"
+            " authenticated session details. Run 'codex login' and try again."
+        )
+
+
+def test_connect_codex_cli_reuses_existing_active_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth_application,
+        "discover_codex_cli_session",
+        lambda *, settings: auth_application.CodexCliSession(cli_config_path="~/.codex/reused"),
+    )
+
+    with _auth_client() as client:
+        created = client.post(
+            "/auth/credentials",
+            json={
+                "provider": "codex",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": "~/.codex/original",
+            },
+        )
+        assert created.status_code == 201
+        credential_id = created.json()["credentialId"]
+
+        response = client.post("/auth/credentials/codex-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["credentialId"] == credential_id
+        assert payload["cliConfigPath"] == "~/.codex/reused"
+
+
 # ---- List ----
 
 
