@@ -20,6 +20,7 @@ from helaicopter_api.application import auth as auth_application
 from helaicopter_api.application.dispatch import InMemoryWorkerRegistry
 from helaicopter_api.application.resolver import ResolverLoop
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 from helaicopter_db.models.oltp import OltpBase, WorkerRegistryRecord
@@ -33,7 +34,7 @@ def _services_stub(**attrs: object) -> BackendServices:
 
 
 @contextmanager
-def _oauth_client() -> Iterator[TestClient]:
+def _oauth_client(*, settings: Settings | None = None) -> Iterator[TestClient]:
     application = create_app()
     engine = create_engine(
         "sqlite:///:memory:",
@@ -42,7 +43,10 @@ def _oauth_client() -> Iterator[TestClient]:
     )
     OltpBase.metadata.create_all(engine)
 
-    application.dependency_overrides[get_services] = lambda: _services_stub(sqlite_engine=engine)
+    application.dependency_overrides[get_services] = lambda: _services_stub(
+        sqlite_engine=engine,
+        settings=settings or Settings(),
+    )
     try:
         with TestClient(application) as client:
             yield client
@@ -134,6 +138,28 @@ def test_initiate_oauth_uses_registered_codex_client(monkeypatch: pytest.MonkeyP
         assert query["code_challenge_method"] == ["S256"]
         assert len(query["code_challenge"][0]) > 20
         assert len(query["state"][0]) > 20
+
+
+def test_oauth_routes_use_request_scoped_codex_settings_instead_of_global_cache() -> None:
+    settings = Settings(
+        codex_oauth_client_id="request-scoped-client",
+        codex_oauth_authorize_url="https://auth.example.test/oauth/authorize",
+        codex_oauth_token_url="https://auth.example.test/oauth/token",
+        codex_oauth_redirect_uri="http://127.0.0.1:43123/auth/callback",
+        codex_oauth_scopes=("openid", "offline_access", "profile.custom"),
+    )
+
+    with _oauth_client(settings=settings) as client:
+        initiate = client.post("/auth/credentials/oauth/initiate", json={"provider": "codex"})
+
+        assert initiate.status_code == 200
+        parsed = urlparse(initiate.json()["redirectUrl"])
+        query = parse_qs(parsed.query)
+        assert parsed.netloc == "auth.example.test"
+        assert parsed.path == "/oauth/authorize"
+        assert query["client_id"] == ["request-scoped-client"]
+        assert query["redirect_uri"] == ["http://127.0.0.1:43123/auth/callback"]
+        assert query["scope"] == ["openid offline_access profile.custom"]
 
 
 def test_oauth_callback_returns_502_on_token_exchange_failure(monkeypatch: pytest.MonkeyPatch) -> None:

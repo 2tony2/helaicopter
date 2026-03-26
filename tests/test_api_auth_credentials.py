@@ -235,6 +235,27 @@ def test_connect_claude_cli_rejects_empty_credentials_blob(
         assert response.status_code == 400
 
 
+def test_connect_claude_cli_rejects_empty_successful_status_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Claude CLI authentication could not be discovered: 'claude auth status' returned 0 without"
+            " authenticated session details. Run 'claude auth login' and try again."
+        )
+
+
 def test_connect_claude_cli_reuses_existing_active_credential(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         auth_application,
@@ -277,7 +298,12 @@ def test_connect_claude_cli_revokes_duplicate_active_credentials(
     claude_dir.mkdir()
 
     def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(
+            args[0],
+            0,
+            stdout="Logged in as tony@naronadata.com\nSubscription Tier: max",
+            stderr="",
+        )
 
     with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
         monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)

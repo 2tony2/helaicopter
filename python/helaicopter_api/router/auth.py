@@ -66,9 +66,10 @@ async def credential_claude_cli_connect(
 )
 async def credential_oauth_initiate(
     body: OAuthInitiateRequest,
+    services: BackendServices = Depends(get_services),
 ) -> OAuthInitiateResponse:
     try:
-        return initiate_oauth(provider=body.provider)
+        return initiate_oauth(provider=body.provider, settings=services.settings)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -86,7 +87,12 @@ async def credential_oauth_callback(
     services: BackendServices = Depends(get_services),
 ) -> CredentialResponse:
     try:
-        return complete_oauth_callback(engine=services.sqlite_engine, code=code, state=state)
+        return complete_oauth_callback(
+            engine=services.sqlite_engine,
+            code=code,
+            state=state,
+            settings=services.settings,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -146,7 +152,11 @@ async def credential_refresh(
     services: BackendServices = Depends(get_services),
 ) -> CredentialResponse:
     try:
-        refreshed = refresh_credential(services.sqlite_engine, credential_id)
+        refreshed = refresh_credential(
+            services.sqlite_engine,
+            credential_id,
+            settings=services.settings,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RuntimeError as exc:

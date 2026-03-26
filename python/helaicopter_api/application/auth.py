@@ -143,15 +143,23 @@ _OAUTH_CLIENTS: dict[str, OAuthProviderClient] = {}
 _PENDING_OAUTH_STATES: dict[str, PendingOAuthState] = {}
 
 
-def _ensure_provider_auth_configured() -> None:
-    if _OAUTH_CLIENTS:
-        return
-    configure_provider_auth(settings=Settings())
+def _configured_oauth_clients(*, settings: Settings) -> dict[str, OAuthProviderClient]:
+    clients: dict[str, OAuthProviderClient] = {}
+    if settings.codex_oauth_client_id:
+        clients["codex"] = CodexOAuthClient(
+            client_id=settings.codex_oauth_client_id,
+            authorize_url=settings.codex_oauth_authorize_url,
+            token_url=settings.codex_oauth_token_url,
+            redirect_uri=settings.codex_oauth_redirect_uri,
+            scopes=settings.codex_oauth_scopes,
+        )
+    return clients
 
 
-def _get_oauth_client(provider: str) -> OAuthProviderClient:
-    _ensure_provider_auth_configured()
+def _get_oauth_client(provider: str, *, settings: Settings) -> OAuthProviderClient:
     client = _OAUTH_CLIENTS.get(provider)
+    if client is None:
+        client = _configured_oauth_clients(settings=settings).get(provider)
     if client is None:
         raise ValueError(f"OAuth client is not configured for provider '{provider}'")
     return client
@@ -159,14 +167,7 @@ def _get_oauth_client(provider: str) -> OAuthProviderClient:
 
 def configure_provider_auth(*, settings: Settings) -> None:
     _OAUTH_CLIENTS.clear()
-    if settings.codex_oauth_client_id:
-        _OAUTH_CLIENTS["codex"] = CodexOAuthClient(
-            client_id=settings.codex_oauth_client_id,
-            authorize_url=settings.codex_oauth_authorize_url,
-            token_url=settings.codex_oauth_token_url,
-            redirect_uri=settings.codex_oauth_redirect_uri,
-            scopes=settings.codex_oauth_scopes,
-        )
+    _OAUTH_CLIENTS.update(_configured_oauth_clients(settings=settings))
 
 
 def _oauth_token_bundle_from_payload(
@@ -218,6 +219,20 @@ def _parse_claude_subscription_tier(output: str) -> str | None:
             value = line.split(":", 1)[1].strip()
             return value or None
     return None
+
+
+def _claude_status_output_indicates_authenticated_session(output: str) -> bool:
+    normalized = output.lower()
+    indicators = (
+        "logged in",
+        "authenticated",
+        "subscription tier:",
+        "tier:",
+        "email:",
+        "org id:",
+        "org name:",
+    )
+    return any(indicator in normalized for indicator in indicators)
 
 
 def _claude_auth_payload_has_meaningful_fields(payload: dict[str, object]) -> bool:
@@ -310,6 +325,12 @@ def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
             else:
                 if isinstance(payload, dict):
                     return _parse_claude_status_payload(payload, settings=settings)
+        if not stripped_output or not _claude_status_output_indicates_authenticated_session(stripped_output):
+            raise ValueError(
+                f"Claude CLI authentication could not be discovered: '{settings.claude_cli_command} auth status' "
+                f"returned 0 without authenticated session details. Run '{settings.claude_cli_command} auth login' "
+                "and try again."
+            )
         return ClaudeCliSession(
             cli_config_path=str(settings.claude_dir),
             subscription_tier=_parse_claude_subscription_tier(output),
@@ -558,8 +579,8 @@ def record_cost(
 # ---------------------------------------------------------------------------
 
 
-def initiate_oauth(*, provider: str) -> OAuthInitiateResponse:
-    client = _get_oauth_client(provider)
+def initiate_oauth(*, provider: str, settings: Settings) -> OAuthInitiateResponse:
+    client = _get_oauth_client(provider, settings=settings)
     state = secrets.token_urlsafe(24)
     code_verifier = secrets.token_urlsafe(48)
     redirect_url = client.build_authorization_url(
@@ -574,12 +595,18 @@ def initiate_oauth(*, provider: str) -> OAuthInitiateResponse:
     return OAuthInitiateResponse(redirect_url=redirect_url, state=state)
 
 
-def complete_oauth_callback(*, engine: Engine, code: str, state: str) -> CredentialResponse:
+def complete_oauth_callback(
+    *,
+    engine: Engine,
+    code: str,
+    state: str,
+    settings: Settings,
+) -> CredentialResponse:
     pending = _PENDING_OAUTH_STATES.pop(state, None)
     if pending is None:
         raise ValueError("OAuth state is invalid or has expired")
 
-    client = _get_oauth_client(pending.provider)
+    client = _get_oauth_client(pending.provider, settings=settings)
     token_bundle = client.exchange_code(code=code, code_verifier=pending.code_verifier)
     request = CreateCredentialRequest.model_validate({
         "provider": pending.provider,
@@ -592,7 +619,12 @@ def complete_oauth_callback(*, engine: Engine, code: str, state: str) -> Credent
     return create_credential(engine, request)
 
 
-def refresh_credential(engine: Engine, credential_id: str) -> CredentialResponse | None:
+def refresh_credential(
+    engine: Engine,
+    credential_id: str,
+    *,
+    settings: Settings,
+) -> CredentialResponse | None:
     with Session(engine) as session:
         row = session.get(AuthCredentialRecord, credential_id)
         if row is None:
@@ -605,7 +637,7 @@ def refresh_credential(engine: Engine, credential_id: str) -> CredentialResponse
             raise ValueError("OAuth credential is missing a refresh token")
 
         try:
-            token_bundle = _get_oauth_client(row.provider).refresh_access_token(
+            token_bundle = _get_oauth_client(row.provider, settings=settings).refresh_access_token(
                 refresh_token=refresh_token,
             )
         except Exception:
