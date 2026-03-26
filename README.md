@@ -135,6 +135,14 @@ Browse and view saved implementation plans from `~/.claude/plans/` rendered as m
 ### Orchestration
 View live OATS orchestration runs and conversation DAG relationships through the orchestration hub page.
 
+For permanent-worker-loop local bootstrap, see [docs/orchestration/bootstrap.md](docs/orchestration/bootstrap.md). The shortest healthy-path flow is:
+
+```bash
+npm run dev
+uv run oats pi start --provider claude --model claude-sonnet-4-6 --control-plane http://127.0.0.1:30000
+uv run oats pi start --provider codex --model o3-pro --control-plane http://127.0.0.1:30000
+```
+
 ### Databases
 Inspect local database artifacts (SQLite, DuckDB) through the Databases page.
 

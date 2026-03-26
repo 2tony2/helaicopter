@@ -100,6 +100,12 @@ export function AuthManagementSection({
         </div>
       ) : null}
 
+      {credentials.some((credential) => credential.providerStatusCode && credential.providerStatusCode !== "ready") ? (
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          {credentials.find((credential) => credential.providerStatusCode && credential.providerStatusCode !== "ready")?.providerStatusMessage}
+        </div>
+      ) : null}
+
       <CredentialList
         credentials={credentials}
         onRefresh={onRefresh}

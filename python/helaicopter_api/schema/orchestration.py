@@ -194,6 +194,7 @@ class OrchestrationRunResponse(CamelCaseHttpResponseModel):
     ready_queue: list[str] = []
     graph_mutation_count: int = 0
     graph_mutations: list["OrchestrationGraphMutationResponse"] = []
+    operator_actions: list["OrchestrationOperatorActionResponse"] = []
     interruption_count: int = 0
     last_checkpoint_at: str | None = None
 
@@ -259,6 +260,16 @@ class OrchestrationGraphMutationResponse(CamelCaseHttpResponseModel):
     source: str = "discovery"
     timestamp: str
     nodes_added: list[str] = []
+
+
+class OrchestrationOperatorActionResponse(CamelCaseHttpResponseModel):
+    """A durable operator-initiated control action."""
+
+    action: str
+    actor: str
+    created_at: str
+    target_task_id: str | None = None
+    details: dict[str, object] = {}
 
 
 class OrchestrationTaskDependencyRequest(CamelCaseHttpResponseModel):

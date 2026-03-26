@@ -150,6 +150,22 @@ function buildRunFixture(): OvernightOatsRunRecord {
         details: { refreshed: 3 },
       },
     ],
+    operatorActions: [
+      {
+        action: "pause",
+        actor: "operator",
+        createdAt: "2026-03-20T09:05:00Z",
+        targetTaskId: "task-ui",
+        details: { taskId: "task-ui" },
+      },
+      {
+        action: "reroute",
+        actor: "operator",
+        createdAt: "2026-03-20T09:06:00Z",
+        targetTaskId: "task-ui",
+        details: { taskId: "task-ui", provider: "codex", model: "o3-pro" },
+      },
+    ],
   };
 }
 
@@ -175,6 +191,8 @@ test("buildOatsViewModel aligns selected task across the DAG and PR stack", () =
   assert.equal(viewModel.taskPrSummary.awaitingChecks, 1);
   assert.equal(viewModel.taskPrSummary.mergeReady, 1);
   assert.equal(viewModel.selectedOperationHistory[0].sessionId, "resolver-session");
+  assert.equal(viewModel.operatorActions.length, 2);
+  assert.equal(viewModel.operatorActions[1]?.details.provider, "codex");
 });
 
 test("buildOatsViewModel falls back to the active task when the requested task is missing", () => {

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from helaicopter_api.schema.common import CamelCaseHttpResponseModel, camel_case_request_config
+from helaicopter_api.schema.provider_readiness import ProviderReadinessResponse
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +47,11 @@ class WorkerHeartbeatRequest(BaseModel):
     status: str
     current_task_id: str | None = None
     current_run_id: str | None = None
+    provider_session_id: str | None = None
+    session_status: str | None = None
+    session_started_at: str | None = None
+    session_last_used_at: str | None = None
+    session_failure_reason: str | None = None
 
 
 class WorkerTaskReportRequest(BaseModel):
@@ -60,6 +66,12 @@ class WorkerTaskReportRequest(BaseModel):
     branch_name: str | None = None
     commit_sha: str | None = None
     error_summary: str | None = None
+    provider_session_id: str | None = None
+    session_status: str | None = None
+    session_started_at: str | None = None
+    session_last_used_at: str | None = None
+    session_failure_reason: str | None = None
+    session_reused: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -91,8 +103,16 @@ class WorkerDetailResponse(CamelCaseHttpResponseModel):
     registered_at: str
     last_heartbeat_at: str
     status: str
+    readiness_reason: str | None = None
     current_task_id: str | None = None
     current_run_id: str | None = None
+    provider_session_id: str | None = None
+    session_status: str = "absent"
+    session_started_at: str | None = None
+    session_last_used_at: str | None = None
+    session_failure_reason: str | None = None
+    session_reset_available: bool = True
+    session_reset_requested_at: str | None = None
 
 
 class WorkerRegistrationResponse(CamelCaseHttpResponseModel):
@@ -100,3 +120,7 @@ class WorkerRegistrationResponse(CamelCaseHttpResponseModel):
 
     worker_id: str
     status: str
+
+
+class WorkerProviderReadinessResponse(ProviderReadinessResponse):
+    """Provider-level readiness payload exposed under the workers API."""

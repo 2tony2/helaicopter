@@ -131,6 +131,44 @@ test("endpoint builders stay relative when NEXT_PUBLIC_API_BASE_URL is unset", a
   }
 });
 
+test("normalizeWorker preserves Pi v2 session fields from worker payloads", async () => {
+  const { normalizeWorker } = await getNormalize();
+
+  const normalized = normalizeWorker({
+    workerId: "wkr_123",
+    workerType: "pi_shell",
+    provider: "claude",
+    capabilities: {
+      provider: "claude",
+      models: ["claude-sonnet-4-6"],
+      maxConcurrentTasks: 1,
+      supportsDiscovery: false,
+      supportsResume: false,
+      tags: [],
+    },
+    host: "local",
+    pid: 123,
+    worktreeRoot: "/tmp/worker",
+    registeredAt: "2026-03-26T09:00:00Z",
+    lastHeartbeatAt: "2026-03-26T09:01:00Z",
+    status: "idle",
+    readinessReason: null,
+    currentTaskId: null,
+    currentRunId: null,
+    providerSessionId: "sess_provider_1",
+    sessionStatus: "ready",
+    sessionStartedAt: "2026-03-26T09:00:00Z",
+    sessionLastUsedAt: "2026-03-26T09:01:00Z",
+    sessionFailureReason: null,
+    sessionResetAvailable: true,
+    sessionResetRequestedAt: null,
+  });
+
+  assert.equal(normalized.providerSessionId, "sess_provider_1");
+  assert.equal(normalized.sessionStatus, "ready");
+  assert.equal(normalized.sessionResetAvailable, true);
+});
+
 test("endpoint builders append parent_session_id only when the caller provides parentSessionId", async () => {
   const { setBaseUrl, conversation, conversationDag, conversationEvaluations, tasks } = await getEndpoints();
   setBaseUrl("https://api.example.test/");
@@ -173,6 +211,76 @@ test("endpoint builders append parent_session_id only when the caller provides p
     tasks("claude-agent-1", { parentSessionId: "claude-session-1" }),
     "https://api.example.test/tasks/claude-agent-1?parent_session_id=claude-session-1"
   );
+});
+
+test("orchestration runtime endpoint builder targets the dedicated materialization route", async () => {
+  const { setBaseUrl, orchestrationRuntime } = await getEndpoints();
+  setBaseUrl("https://api.example.test/");
+
+  assert.equal(
+    orchestrationRuntime("run_abc"),
+    "https://api.example.test/orchestration/runtime/run_abc"
+  );
+});
+
+test("normalizeRuntimeMaterializedRun accepts snake_case runtime payloads", async () => {
+  const { normalizeRuntimeMaterializedRun } = await getNormalize();
+  const normalized = normalizeRuntimeMaterializedRun({
+    run_id: "run_abc",
+    source: "runtime",
+    task_attempts: [
+      {
+        task_id: "api",
+        attempt_id: "att_2",
+        worker_id: "worker_1",
+        provider_session_id: "sess_provider_1",
+        session_reused: true,
+        session_status_after_task: "ready",
+        status: "succeeded",
+        duration_seconds: 42,
+        branch_name: "oats/task/api",
+        commit_sha: "abc123",
+        error_summary: null,
+      },
+    ],
+    graph_mutations: [
+      {
+        mutation_id: "mut_1",
+        kind: "pause_run",
+        discovered_by: "operator",
+        source: "operator",
+        timestamp: "2026-03-25T00:02:00Z",
+        nodes_added: ["api"],
+      },
+    ],
+    dispatch_events: [
+      {
+        run_id: "run_abc",
+        task_id: "api",
+        worker_id: "worker_1",
+        provider: "claude",
+        model: "claude-sonnet-4-6",
+        dispatched_at: "2026-03-25T00:01:30Z",
+      },
+    ],
+    operator_actions: [
+      {
+        action: "pause",
+        actor: "operator",
+        created_at: "2026-03-25T00:02:00Z",
+        target_task_id: "api",
+        details: {},
+      },
+    ],
+  });
+
+  assert.equal(normalized.taskAttempts[0]?.attemptId, "att_2");
+  assert.equal(normalized.taskAttempts[0]?.providerSessionId, "sess_provider_1");
+  assert.equal(normalized.taskAttempts[0]?.sessionReused, true);
+  assert.equal(normalized.taskAttempts[0]?.sessionStatusAfterTask, "ready");
+  assert.equal(normalized.graphMutations[0]?.source, "operator");
+  assert.equal(normalized.dispatchEvents[0]?.workerId, "worker_1");
+  assert.equal(normalized.operatorActions[0]?.action, "pause");
 });
 
 test("normalizeConversations preserves canonical conversation refs from summary payloads", async () => {
@@ -1987,6 +2095,15 @@ test("normalizeOvernightOatsRun maps graph-native v2 nodes and edges", async () 
     ],
     ready_queue: ["api"],
     graph_mutation_count: 1,
+    operator_actions: [
+      {
+        action: "pause",
+        actor: "operator",
+        created_at: "2026-03-25T00:02:00Z",
+        target_task_id: "api",
+        details: {},
+      },
+    ],
     interruption_count: 0,
   });
 
@@ -1997,6 +2114,7 @@ test("normalizeOvernightOatsRun maps graph-native v2 nodes and edges", async () 
   assert.equal(run.readyQueue.length, 1);
   assert.equal(run.readyQueue[0], "api");
   assert.equal(run.graphMutationCount, 1);
+  assert.equal(run.operatorActions?.[0]?.action, "pause");
 });
 
 test("normalizeOvernightOatsRun flags discovered tasks via discoveredBy", async () => {

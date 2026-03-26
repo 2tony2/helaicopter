@@ -13,6 +13,10 @@ from urllib.parse import quote
 from pydantic import ConfigDict, InstanceOf, validate_call
 
 from helaicopter_api.application.conversation_refs import build_conversation_ref
+from helaicopter_api.application.runtime_materialization import (
+    get_materialized_runtime_run,
+    project_operator_actions,
+)
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.application.conversations import _resolve_conversation_identity
 from helaicopter_api.ports.orchestration import StoredOatsRunRecord, StoredOatsRuntimeState
@@ -27,6 +31,7 @@ from helaicopter_api.schema.orchestration import (
     OrchestrationGraphMutationResponse,
     OrchestrationGraphNodeResponse,
     OrchestrationInsertTaskRequest,
+    OrchestrationOperatorActionResponse,
     OrchestrationRunActionResponse,
     OrchestrationRerouteTaskRequest,
     OrchestrationInvocationResponse,
@@ -38,6 +43,11 @@ from helaicopter_api.schema.orchestration import (
     OrchestrationTaskAttemptFactResponse,
     OrchestrationTaskResponse,
     OrchestrationTypedEdgeResponse,
+)
+from helaicopter_api.schema.runtime_materialization import (
+    MaterializedGraphMutation,
+    MaterializedRuntimeRun,
+    MaterializedTaskAttempt,
 )
 from helaicopter_api.pure.orchestration_analytics import (
     StoredRuntimeArtifact,
@@ -176,7 +186,8 @@ def get_oats_run(
     run_id: str,
 ) -> OrchestrationRunResponse:
     stored = _get_runtime_state_for_run(services, run_id)
-    return _shape_runtime_state(stored, services=services).response
+    materialized = get_materialized_runtime_run(services, run_id)
+    return _shape_runtime_state(stored, services=services, materialized=materialized).response
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -680,6 +691,7 @@ def _shape_runtime_state(
     stored: StoredOatsRuntimeState,
     *,
     services: BackendServices | None = None,
+    materialized: MaterializedRuntimeRun | None = None,
 ) -> _ShapedRun:
     state = stored.state
     repo_root = state.repo_root
@@ -687,8 +699,15 @@ def _shape_runtime_state(
     heartbeat_at = _isoformat(state.heartbeat_at)
     conversation_paths = _build_conversation_path_lookup(services)
     planner = _shape_invocation(state.planner, repo_root, conversation_paths=conversation_paths)
+    materialized_attempts = _materialized_attempts_by_task(materialized)
     tasks = [
-        _shape_runtime_task(task, repo_root, stale=is_stale, conversation_paths=conversation_paths)
+        _shape_runtime_task(
+            task,
+            repo_root,
+            stale=is_stale,
+            conversation_paths=conversation_paths,
+            materialized_attempt=materialized_attempts.get(str(task.task_id)),
+        )
         for task in state.tasks
     ]
     last_updated_at = _coerce_datetime(state.updated_at)
@@ -728,7 +747,7 @@ def _shape_runtime_state(
             run_status=status,
             active_task_id=active_task_id,
         ),
-        **_extract_graph_v2_fields(state),
+        **_extract_graph_v2_fields(state, materialized=materialized),
     )
     return _ShapedRun(response=response, last_updated_at=last_updated_at)
 
@@ -792,6 +811,7 @@ def _shape_runtime_task(
     *,
     stale: bool = False,
     conversation_paths: _ConversationPathLookup,
+    materialized_attempt: MaterializedTaskAttempt | None = None,
 ) -> OrchestrationTaskResponse:
     invocation = _shape_invocation(
         task.invocation,
@@ -800,7 +820,8 @@ def _shape_runtime_task(
         fallback_role=task.role,
         conversation_paths=conversation_paths,
     )
-    status: TaskRuntimeStatus = "pending" if stale and task.status == "running" else task.status
+    base_status = materialized_attempt.status if materialized_attempt is not None else task.status
+    status: TaskRuntimeStatus = "pending" if stale and base_status == "running" else cast(TaskRuntimeStatus, base_status)
     return OrchestrationTaskResponse(
         task_id=task.task_id,
         title=task.title,
@@ -834,7 +855,11 @@ def _shape_record_task(
     )
 
 
-def _extract_graph_v2_fields(state: RunRuntimeState) -> dict:
+def _extract_graph_v2_fields(
+    state: RunRuntimeState,
+    *,
+    materialized: MaterializedRuntimeRun | None = None,
+) -> dict:
     """Extract graph-native v2 fields from runtime state.
 
     Returns a dict suitable for ** unpacking into OrchestrationRunResponse.
@@ -866,18 +891,34 @@ def _extract_graph_v2_fields(state: RunRuntimeState) -> dict:
         for edge in graph.edges
     ]
     ready_queue = graph.ready_tasks()
+    mutation_source = materialized.graph_mutations if materialized is not None else state.graph_mutations
+    operator_source = (
+        materialized.operator_actions
+        if materialized is not None
+        else project_operator_actions(state, list(mutation_source))
+    )
     graph_mutations = [
         OrchestrationGraphMutationResponse(
             mutation_id=mutation.mutation_id,
             kind=mutation.kind,
             discovered_by=mutation.discovered_by,
             source=mutation.source,
-            timestamp=_isoformat(mutation.timestamp) or "",
+            timestamp=_graph_mutation_timestamp(mutation),
             nodes_added=list(mutation.nodes_added),
         )
-        for mutation in state.graph_mutations
+        for mutation in mutation_source
     ]
-    graph_mutation_count = len(state.graph_mutations)
+    operator_actions = [
+        OrchestrationOperatorActionResponse(
+            action=action.action,
+            actor=action.actor,
+            created_at=action.created_at,
+            target_task_id=action.target_task_id,
+            details=dict(action.details),
+        )
+        for action in operator_source
+    ]
+    graph_mutation_count = len(mutation_source)
 
     return {
         "nodes": nodes,
@@ -885,8 +926,23 @@ def _extract_graph_v2_fields(state: RunRuntimeState) -> dict:
         "ready_queue": ready_queue,
         "graph_mutation_count": graph_mutation_count,
         "graph_mutations": graph_mutations,
+        "operator_actions": operator_actions,
         "last_checkpoint_at": _isoformat(state.updated_at),
     }
+
+
+def _materialized_attempts_by_task(
+    materialized: MaterializedRuntimeRun | None,
+) -> dict[str, MaterializedTaskAttempt]:
+    if materialized is None:
+        return {}
+    return {attempt.task_id: attempt for attempt in materialized.task_attempts}
+
+
+def _graph_mutation_timestamp(mutation: GraphMutation | MaterializedGraphMutation) -> str:
+    if isinstance(mutation, MaterializedGraphMutation):
+        return mutation.timestamp or ""
+    return _isoformat(mutation.timestamp) or ""
 
 
 def _shape_feature_branch(state: RunRuntimeState) -> OrchestrationFeatureBranchResponse | None:

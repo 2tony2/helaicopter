@@ -19,14 +19,17 @@ TaskRuntimeStatus = Literal[
     "running",
     "succeeded",
     "failed",
+    "cancelled",
     "timed_out",
     "skipped",
     "blocked",
+    "blocked_by_failure",
 ]
 RunRuntimeStatus = Literal[
     "pending",
     "planning",
     "running",
+    "paused",
     "completed",
     "failed",
     "timed_out",

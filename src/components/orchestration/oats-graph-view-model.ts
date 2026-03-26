@@ -8,6 +8,10 @@
 
 import type {
   GraphTaskNode,
+  MaterializedRuntimeRun,
+  MaterializedDispatchEvent,
+  MaterializedTaskAttempt,
+  GraphMutation,
   OvernightOatsRunRecord,
   TypedEdge,
   EdgePredicate,
@@ -63,13 +67,21 @@ export interface OatsGraphViewModel {
   graphMutationCount: number;
   canRefresh: boolean;
   canResume: boolean;
+  sidebar: {
+    attempts: MaterializedTaskAttempt[];
+    graphMutations: GraphMutation[];
+    dispatchEvents: MaterializedDispatchEvent[];
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Builder
 // ---------------------------------------------------------------------------
 
-export function buildGraphViewModel(run: OvernightOatsRunRecord): OatsGraphViewModel {
+export function buildGraphViewModel(
+  run: OvernightOatsRunRecord,
+  materialized?: MaterializedRuntimeRun | null
+): OatsGraphViewModel {
   const readySet = new Set(run.readyQueue);
 
   const TERMINAL_STATUSES = new Set<string>(["completed", "failed", "timed_out"]);
@@ -109,5 +121,10 @@ export function buildGraphViewModel(run: OvernightOatsRunRecord): OatsGraphViewM
     graphMutationCount: run.graphMutationCount,
     canRefresh: !TERMINAL_STATUSES.has(run.status),
     canResume: !TERMINAL_STATUSES.has(run.status) && HAS_FAILED_TASKS,
+    sidebar: {
+      attempts: materialized?.taskAttempts ?? [],
+      graphMutations: materialized?.graphMutations ?? run.graphMutations ?? [],
+      dispatchEvents: materialized?.dispatchEvents ?? [],
+    },
   };
 }

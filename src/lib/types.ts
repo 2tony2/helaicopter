@@ -439,6 +439,46 @@ export interface GraphMutation {
   nodesAdded: string[];
 }
 
+export interface OperatorAction {
+  action: string;
+  actor: string;
+  createdAt: string;
+  targetTaskId?: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface MaterializedTaskAttempt {
+  taskId: string;
+  attemptId?: string | null;
+  workerId?: string | null;
+  providerSessionId?: string | null;
+  sessionReused?: boolean;
+  sessionStatusAfterTask?: string | null;
+  status: OrchestrationTaskStatus;
+  durationSeconds?: number | null;
+  branchName?: string | null;
+  commitSha?: string | null;
+  errorSummary?: string | null;
+}
+
+export interface MaterializedDispatchEvent {
+  runId: string;
+  taskId: string;
+  workerId: string;
+  provider: string;
+  model: string;
+  dispatchedAt: string;
+}
+
+export interface MaterializedRuntimeRun {
+  runId: string;
+  source: string;
+  taskAttempts: MaterializedTaskAttempt[];
+  graphMutations: GraphMutation[];
+  dispatchEvents: MaterializedDispatchEvent[];
+  operatorActions: OperatorAction[];
+}
+
 export interface OvernightOatsRunRecord {
   source: "overnight-oats";
   contractVersion:
@@ -479,6 +519,7 @@ export interface OvernightOatsRunRecord {
   readyQueue: string[];
   graphMutationCount: number;
   graphMutations?: GraphMutation[];
+  operatorActions?: OperatorAction[];
   interruptionCount: number;
   lastCheckpointAt?: string | null;
 }
@@ -1035,6 +1076,15 @@ export type WorkerStatus =
   | "dead"
   | "auth_expired";
 
+export type WorkerSessionStatus =
+  | "absent"
+  | "starting"
+  | "ready"
+  | "degraded"
+  | "stale"
+  | "failed"
+  | "resetting";
+
 export interface Worker {
   workerId: string;
   workerType: string;
@@ -1046,8 +1096,16 @@ export interface Worker {
   registeredAt: string;
   lastHeartbeatAt: string;
   status: WorkerStatus;
+  readinessReason?: string | null;
   currentTaskId?: string | null;
   currentRunId?: string | null;
+  providerSessionId?: string | null;
+  sessionStatus: WorkerSessionStatus;
+  sessionStartedAt?: string | null;
+  sessionLastUsedAt?: string | null;
+  sessionFailureReason?: string | null;
+  sessionResetAvailable: boolean;
+  sessionResetRequestedAt?: string | null;
 }
 
 export type CredentialType = "oauth_token" | "api_key" | "local_cli_session";
@@ -1058,6 +1116,8 @@ export interface AuthCredential {
   provider: WorkerCapabilities["provider"];
   credentialType: CredentialType;
   status: CredentialStatus;
+  providerStatusCode?: string | null;
+  providerStatusMessage?: string | null;
   tokenExpiresAt?: string | null;
   cliConfigPath?: string | null;
   subscriptionId?: string | null;
@@ -1079,6 +1139,8 @@ export interface DispatchQueueEntry {
 
 export interface DeferredDispatchQueueEntry extends DispatchQueueEntry {
   reason: string;
+  reasonLabel?: string | null;
+  canRetry?: boolean;
 }
 
 export interface DispatchQueueSnapshot {
@@ -1093,4 +1155,39 @@ export interface DispatchHistoryEntry {
   provider: WorkerCapabilities["provider"];
   model: string;
   dispatchedAt: string;
+}
+
+export interface BootstrapReason {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  nextStep?: string | null;
+}
+
+export interface ProviderReadiness {
+  provider: WorkerCapabilities["provider"];
+  status: "ready" | "degraded" | "blocked" | "unknown";
+  healthyWorkerCount: number;
+  readyWorkerCount: number;
+  activeCredentialCount: number;
+  blockingReasons: BootstrapReason[];
+}
+
+export interface ProviderBootstrapSummary {
+  provider: WorkerCapabilities["provider"];
+  status: "ready" | "degraded" | "blocked" | "unknown";
+  workerCount: number;
+  credentialCount: number;
+  blockingReasons: BootstrapReason[];
+}
+
+export interface OperatorBootstrapSummary {
+  overallStatus: "ready" | "blocked";
+  resolverRunning: boolean;
+  blockingReasons: BootstrapReason[];
+  providers: ProviderBootstrapSummary[];
+  totalWorkerCount: number;
+  totalCredentialCount: number;
+  hasClaudeWorker: boolean;
+  hasCodexWorker: boolean;
 }

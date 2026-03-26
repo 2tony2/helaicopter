@@ -9,6 +9,8 @@ export const authCredentialSchema = z.object({
   provider: providerSchema,
   credentialType: credentialTypeSchema,
   status: credentialStatusSchema,
+  providerStatusCode: z.string().nullable().optional(),
+  providerStatusMessage: z.string().nullable().optional(),
   tokenExpiresAt: z.string().nullable().optional(),
   cliConfigPath: z.string().nullable().optional(),
   subscriptionId: z.string().nullable().optional(),

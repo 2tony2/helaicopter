@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import {
   Background,
   Controls,
@@ -25,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuthManagementPanel } from "@/components/auth/auth-management-section";
 import { QueueMonitorPanel } from "@/components/dispatch/queue-monitor";
+import { OperatorBootstrapPanelContainer } from "@/components/orchestration/operator-bootstrap-panel";
 import { WorkerDashboardPanel } from "@/components/workers/worker-dashboard";
 import { getLayoutedElements } from "@/lib/conversation-dag-layout";
 import {
@@ -37,7 +39,11 @@ import {
   resumeOvernightOatsRun,
 } from "@/lib/client/mutations";
 import { useOvernightOatsRuns } from "@/hooks/use-conversations";
+import { requestJson } from "@/lib/client/fetcher";
+import * as endpoints from "@/lib/client/endpoints";
+import { normalizeRuntimeMaterializedRun } from "@/lib/client/normalize";
 import type {
+  MaterializedRuntimeRun,
   OrchestrationDagNode,
   OrchestrationStatusTone,
   OvernightOatsRunRecord,
@@ -445,10 +451,20 @@ export function OvernightOatsPanel() {
     return filteredRuns[0] ?? null;
   }, [filteredRuns, selectedRecordPath]);
 
+  const { data: selectedRuntime } = useSWR<MaterializedRuntimeRun>(
+    selectedRun ? endpoints.orchestrationRuntime(selectedRun.runId) : null,
+    (url: string) => requestJson(url, undefined, normalizeRuntimeMaterializedRun),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      refreshInterval: selectedRun?.isRunning ? 5_000 : 0,
+    }
+  );
+
   const selectedRunViewModel = useMemo(
     () =>
-      selectedRun ? buildOatsViewModel(selectedRun, selectedTaskId) : null,
-    [selectedRun, selectedTaskId]
+      selectedRun ? buildOatsViewModel(selectedRun, selectedTaskId, selectedRuntime) : null,
+    [selectedRun, selectedTaskId, selectedRuntime]
   );
 
   const aggregate = useMemo(() => {
@@ -936,6 +952,175 @@ export function OvernightOatsPanel() {
                 />
               </ReactFlowProvider>
 
+              {selectedRunViewModel ? (
+                <Card>
+                  <CardContent className="space-y-4 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">Runtime truth</div>
+                        <div className="text-sm text-muted-foreground">
+                          Materialized attempts, dispatches, and graph mutations for the live run.
+                        </div>
+                      </div>
+                      <Badge variant="outline">
+                        {selectedRunViewModel.graphMutations.length} mutation
+                        {selectedRunViewModel.graphMutations.length === 1 ? "" : "s"}
+                      </Badge>
+                    </div>
+
+                    {selectedRunViewModel.selectedTaskId ? (
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Selected task attempts
+                          </div>
+                          {selectedRunViewModel.selectedTaskAttempts.length > 0 ? (
+                            selectedRunViewModel.selectedTaskAttempts.map((attempt) => (
+                              <div
+                                key={attempt.attemptId ?? `${attempt.taskId}-${attempt.status}`}
+                                className="rounded-xl border bg-muted/30 p-3 text-sm"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge variant="secondary">{attempt.status}</Badge>
+                                  {attempt.attemptId ? (
+                                    <Badge variant="outline">{attempt.attemptId}</Badge>
+                                  ) : null}
+                                  {attempt.workerId ? (
+                                    <Badge variant="outline">worker {attempt.workerId}</Badge>
+                                  ) : null}
+                                  {attempt.providerSessionId ? (
+                                    <Badge variant="outline">session {attempt.providerSessionId}</Badge>
+                                  ) : null}
+                                  {attempt.sessionReused ? (
+                                    <Badge variant="outline">session reused</Badge>
+                                  ) : null}
+                                  {attempt.sessionStatusAfterTask ? (
+                                    <Badge variant="outline">{attempt.sessionStatusAfterTask}</Badge>
+                                  ) : null}
+                                </div>
+                                <div className="mt-2 text-muted-foreground">
+                                  {attempt.durationSeconds != null
+                                    ? `${attempt.durationSeconds}s`
+                                    : "duration unavailable"}
+                                  {attempt.branchName ? ` · ${attempt.branchName}` : ""}
+                                  {attempt.commitSha ? ` · ${attempt.commitSha}` : ""}
+                                </div>
+                                {attempt.errorSummary ? (
+                                  <div className="mt-2 text-rose-700 dark:text-rose-300">
+                                    {attempt.errorSummary}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
+                              No materialized attempts for {selectedRunViewModel.selectedTaskId} yet.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Selected task dispatch
+                          </div>
+                          {selectedRunViewModel.selectedTaskDispatchEvents.length > 0 ? (
+                            selectedRunViewModel.selectedTaskDispatchEvents.map((event) => (
+                              <div
+                                key={`${event.taskId}-${event.dispatchedAt}-${event.workerId}`}
+                                className="rounded-xl border bg-muted/30 p-3 text-sm"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge variant="secondary">{event.provider}</Badge>
+                                  <Badge variant="outline">{event.model}</Badge>
+                                  <Badge variant="outline">worker {event.workerId}</Badge>
+                                </div>
+                                <div className="mt-2 text-muted-foreground">
+                                  dispatched {new Date(event.dispatchedAt).toLocaleString()}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
+                              No dispatch history for {selectedRunViewModel.selectedTaskId} yet.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Operator actions
+                      </div>
+                      {selectedRunViewModel.operatorActions.length > 0 ? (
+                        selectedRunViewModel.operatorActions.map((action) => (
+                          <div
+                            key={`${action.action}-${action.createdAt}-${action.targetTaskId ?? "run"}`}
+                            className="rounded-xl border bg-muted/30 p-3 text-sm"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="secondary">{action.action}</Badge>
+                              <Badge variant="outline">{action.actor}</Badge>
+                              {action.targetTaskId ? (
+                                <Badge variant="outline">{action.targetTaskId}</Badge>
+                              ) : null}
+                            </div>
+                            <div className="mt-2 text-muted-foreground">
+                              {action.createdAt
+                                ? new Date(action.createdAt).toLocaleString()
+                                : "timestamp unavailable"}
+                            </div>
+                            {Object.keys(action.details).length > 0 ? (
+                              <div className="mt-2 text-muted-foreground">
+                                {Object.entries(action.details)
+                                  .map(([key, value]) => `${key}: ${String(value)}`)
+                                  .join(" · ")}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
+                          No operator actions have been materialized for this run yet.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Graph mutations
+                      </div>
+                      {selectedRunViewModel.graphMutations.length > 0 ? (
+                        selectedRunViewModel.graphMutations.map((mutation) => (
+                          <div
+                            key={`${mutation.mutationId}-${mutation.timestamp}`}
+                            className="rounded-xl border bg-muted/30 p-3 text-sm"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="secondary">{mutation.kind}</Badge>
+                              <Badge variant="outline">{mutation.source}</Badge>
+                              <Badge variant="outline">{mutation.discoveredBy}</Badge>
+                            </div>
+                            <div className="mt-2 text-muted-foreground">
+                              {mutation.timestamp
+                                ? new Date(mutation.timestamp).toLocaleString()
+                                : "timestamp unavailable"}
+                              {mutation.nodesAdded.length > 0
+                                ? ` · nodes ${mutation.nodesAdded.join(", ")}`
+                                : ""}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
+                          No materialized graph mutations yet.
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
               <Card>
                 <CardContent className="p-4">
                   <div className="mb-3 text-sm font-medium">Session links</div>
@@ -974,6 +1159,7 @@ export function OvernightOatsPanel() {
         </div>
       )}
 
+      <OperatorBootstrapPanelContainer />
       <WorkerDashboardPanel />
       <AuthManagementPanel />
       <QueueMonitorPanel />

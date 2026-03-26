@@ -42,6 +42,46 @@ function makeRunWithGraph(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeRuntimeMaterialization(overrides: Record<string, unknown> = {}) {
+  return {
+    runId: "run_abc",
+    source: "runtime",
+    taskAttempts: [
+      {
+        taskId: "api",
+        attemptId: "att_2",
+        workerId: "worker_1",
+        status: "succeeded",
+        durationSeconds: 42,
+        branchName: "oats/task/api",
+        commitSha: "abc123",
+        errorSummary: null,
+      },
+    ],
+    graphMutations: [
+      {
+        mutationId: "mut_1",
+        kind: "pause_run",
+        discoveredBy: "operator",
+        source: "operator",
+        timestamp: "2026-03-25T00:02:00Z",
+        nodesAdded: ["api"],
+      },
+    ],
+    dispatchEvents: [
+      {
+        runId: "run_abc",
+        taskId: "api",
+        workerId: "worker_1",
+        provider: "claude",
+        model: "claude-sonnet-4-6",
+        dispatchedAt: "2026-03-25T00:01:30Z",
+      },
+    ],
+    ...overrides,
+  };
+}
+
 test("buildGraphViewModel produces edge color map", async () => {
   const { buildGraphViewModel } = await getGraphViewModel();
   const model = buildGraphViewModel(makeRunWithGraph());
@@ -121,4 +161,13 @@ test("buildGraphViewModel edge style: solid when satisfied, dashed when not", as
   }));
   assert.equal(model.edges[0].style, "solid");
   assert.equal(model.edges[1].style, "dashed");
+});
+
+test("buildGraphViewModel includes materialized runtime context for the sidebar", async () => {
+  const { buildGraphViewModel } = await getGraphViewModel();
+  const model = buildGraphViewModel(makeRunWithGraph(), makeRuntimeMaterialization());
+
+  assert.equal(model.sidebar.attempts[0]?.attemptId, "att_2");
+  assert.equal(model.sidebar.graphMutations[0]?.source, "operator");
+  assert.equal(model.sidebar.dispatchEvents[0]?.workerId, "worker_1");
 });

@@ -4,15 +4,21 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 
 from oats.graph import EdgePredicate, TaskGraph, TaskKind, TaskNode, TypedEdge
+from helaicopter_api.application.auth import create_credential
 from helaicopter_api.application.resolver import ResolverLoop, TaskResult
 from helaicopter_api.application.dispatch import (
     InMemoryWorkerRegistry,
     select_worker,
 )
+from helaicopter_api.schema.auth import CreateCredentialRequest
+from helaicopter_db.models.oltp import OltpBase
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +62,16 @@ def _task_model_map(*pairs: tuple[str, str]) -> dict[str, str]:
 def _run(coro):  # noqa: ANN001, ANN202
     """Run an async coroutine synchronously (no pytest-asyncio needed)."""
     return asyncio.run(coro)
+
+
+def _sqlite_engine():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    OltpBase.metadata.create_all(engine)
+    return engine
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +194,35 @@ class TestResolverTick:
 
         assert graph.get_node("ml-task").status == "pending"
 
+    def test_does_not_dispatch_when_provider_is_not_runnable_even_with_matching_worker(self) -> None:
+        registry = InMemoryWorkerRegistry()
+        registry.register(provider="codex", models=["o3-pro"])
+        engine = _sqlite_engine()
+        try:
+            create_credential(
+                engine,
+                CreateCredentialRequest.model_validate(
+                    {
+                        "provider": "codex",
+                        "credentialType": "local_cli_session",
+                    }
+                ),
+            )
+            graph = build_single_task_graph("codex-task")
+            resolver = ResolverLoop(
+                registry=registry,
+                graphs={"run_1": graph},
+                task_agents=_task_agent_map(("codex-task", "codex")),
+                task_models=_task_model_map(("codex-task", "o3-pro")),
+                sqlite_engine=engine,
+            )
+
+            _run(resolver.tick())
+
+            assert graph.get_node("codex-task").status == "pending"
+        finally:
+            engine.dispose()
+
     def test_reaps_dead_worker_and_retries_task(self) -> None:
         """A worker that misses heartbeat threshold is reaped; its task is retried."""
         registry = InMemoryWorkerRegistry()
@@ -232,6 +277,29 @@ class TestResolverTick:
         assert graph.get_node("a").status == "succeeded"
         # b should now be ready and dispatched
         assert graph.get_node("b").status == "running"
+
+    def test_dispatch_writes_dispatch_history_jsonl(self, tmp_path: Path) -> None:
+        registry = InMemoryWorkerRegistry()
+        registry.register(
+            provider="claude",
+            models=["claude-sonnet-4-6"],
+            worker_id="wkr_history",
+        )
+
+        graph = build_single_task_graph("auth")
+        resolver = ResolverLoop(
+            registry=registry,
+            graphs={"run_1": graph},
+            task_agents=_task_agent_map(("auth", "claude")),
+            task_models=_task_model_map(("auth", "claude-sonnet-4-6")),
+            runtime_dir=tmp_path / ".oats" / "runtime",
+        )
+
+        _run(resolver.tick())
+
+        history_path = tmp_path / ".oats" / "runtime" / "dispatch_history.jsonl"
+        assert history_path.exists()
+        assert '"task_id": "auth"' in history_path.read_text(encoding="utf-8")
 
     def test_skips_dispatch_for_expired_auth(self) -> None:
         """A worker with expired auth is skipped during dispatch."""

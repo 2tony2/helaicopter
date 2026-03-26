@@ -1442,6 +1442,11 @@ def pi_start(
         heartbeat_interval=heartbeat_interval,
         poll_interval=poll_interval,
     )
+    issues = worker.preflight()
+    if issues:
+        for issue in issues:
+            typer.echo(f"Error: {issue}")
+        raise typer.Exit(code=1)
     asyncio.run(worker.run_loop())
 
 

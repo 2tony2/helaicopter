@@ -95,6 +95,14 @@ export function QueueMonitorSection({
                   <div className="text-muted-foreground">
                     {entry.runId} · {entry.provider} · {entry.reason}
                   </div>
+                  {entry.reasonLabel ? (
+                    <div className="mt-1 text-muted-foreground">{entry.reasonLabel}</div>
+                  ) : null}
+                  {entry.canRetry ? (
+                    <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                      Retry or re-route is available once a worker is ready.
+                    </div>
+                  ) : null}
                 </div>
               ))
             )}

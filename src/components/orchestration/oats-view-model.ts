@@ -1,4 +1,9 @@
 import type {
+  MaterializedRuntimeRun,
+  MaterializedDispatchEvent,
+  MaterializedTaskAttempt,
+  GraphMutation,
+  OperatorAction,
   OrchestrationOperationHistoryEntry,
   OrchestrationTaskRecord,
   OvernightOatsRunRecord,
@@ -38,6 +43,10 @@ export interface OatsViewModel {
   selectedNodeId: string | null;
   selectedTask: OrchestrationTaskRecord | null;
   selectedOperationHistory: OrchestrationOperationHistoryEntry[];
+  selectedTaskAttempts: MaterializedTaskAttempt[];
+  selectedTaskDispatchEvents: MaterializedDispatchEvent[];
+  operatorActions: OperatorAction[];
+  graphMutations: GraphMutation[];
   stackItems: OatsPrStackItem[];
   taskPrSummary: OatsTaskPrSummary;
 }
@@ -162,11 +171,18 @@ function orderedTasks(run: OvernightOatsRunRecord) {
 
 export function buildOatsViewModel(
   run: OvernightOatsRunRecord,
-  selectedTaskId?: string | null
+  selectedTaskId?: string | null,
+  materialized?: MaterializedRuntimeRun | null
 ): OatsViewModel {
   const resolvedSelectedTaskId = resolveSelectedTaskId(run, selectedTaskId);
   const selectedTask =
     run.tasks.find((task) => task.taskId === resolvedSelectedTaskId) ?? null;
+  const selectedTaskAttempts = (materialized?.taskAttempts ?? []).filter(
+    (attempt) => attempt.taskId === resolvedSelectedTaskId
+  );
+  const selectedTaskDispatchEvents = (materialized?.dispatchEvents ?? []).filter(
+    (event) => event.taskId === resolvedSelectedTaskId
+  );
 
   return {
     selectedTaskId: resolvedSelectedTaskId,
@@ -176,6 +192,10 @@ export function buildOatsViewModel(
       selectedTask?.operationHistory.length
         ? selectedTask.operationHistory
         : run.operationHistory,
+    selectedTaskAttempts,
+    selectedTaskDispatchEvents,
+    operatorActions: materialized?.operatorActions ?? run.operatorActions ?? [],
+    graphMutations: materialized?.graphMutations ?? run.graphMutations ?? [],
     stackItems: orderedTasks(run).map(({ task, parentTaskId, depth }) => ({
       taskId: task.taskId,
       title: task.title,

@@ -32,3 +32,7 @@ class OatsRunStore(Protocol):
     def list_run_records(self) -> list[StoredOatsRunRecord]:
         """Return parsed terminal run records from local artifacts."""
         ...
+
+    def get_runtime_state(self, run_id: str) -> StoredOatsRuntimeState | None:
+        """Return one parsed runtime state snapshot by run ID, if present."""
+        ...

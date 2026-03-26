@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import json
+from pathlib import Path
 
 from oats.graph import EdgePredicate, TaskGraph, TaskKind, TaskNode, TypedEdge
 from helaicopter_api.application.dispatch import InMemoryWorkerRegistry
@@ -249,6 +251,32 @@ def test_discovered_task_with_satisfied_deps_dispatches_same_tick() -> None:
 
     assert worker.current_task_id == "b"
     assert graph.get_node("b").status == "running"
+
+
+def test_dispatch_history_artifact_is_reload_safe_for_materialization(tmp_path: Path) -> None:
+    runtime_root = tmp_path / ".oats" / "runtime"
+    registry = InMemoryWorkerRegistry()
+    registry.register(provider="claude", models=["claude-sonnet-4-6"])
+    graph = build_graph([_make_node("auth", agent="claude", model="claude-sonnet-4-6")])
+
+    resolver = ResolverLoop(
+        registry=registry,
+        graphs={"run_1": graph},
+        runtime_dir=runtime_root,
+    )
+
+    _run(resolver.tick())
+
+    history_path = runtime_root / "dispatch_history.jsonl"
+    payloads = [
+        json.loads(line)
+        for line in history_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    assert history_path == Path(tmp_path / ".oats" / "runtime" / "dispatch_history.jsonl")
+    assert payloads[-1]["run_id"] == "run_1"
+    assert payloads[-1]["task_id"] == "auth"
 
 
 def test_discovered_task_creating_cycle_is_rejected() -> None:

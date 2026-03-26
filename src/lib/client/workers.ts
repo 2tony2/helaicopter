@@ -3,11 +3,11 @@
 import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
-import type { Worker } from "@/lib/types";
+import type { ProviderReadiness, Worker } from "@/lib/types";
 import * as endpoints from "@/lib/client/endpoints";
 import { del, post, requestJson } from "@/lib/client/fetcher";
-import { normalizeWorkers } from "@/lib/client/normalize";
-import { workerListSchema } from "@/lib/client/schemas/workers";
+import { normalizeProviderReadinessList, normalizeWorkers } from "@/lib/client/normalize";
+import { workerListSchema, workerProviderReadinessListSchema } from "@/lib/client/schemas/workers";
 
 const workerSwrOptions = {
   revalidateOnFocus: false,
@@ -19,6 +19,15 @@ export function useWorkers(provider?: Worker["provider"]) {
   return useSWR<Worker[]>(
     endpoints.workers({ provider }),
     (url: string) => requestJson(url, undefined, workerListSchema, normalizeWorkers),
+    workerSwrOptions
+  );
+}
+
+export function useWorkerProviders() {
+  return useSWR<ProviderReadiness[]>(
+    endpoints.workerProviders(),
+    (url: string) =>
+      requestJson(url, undefined, workerProviderReadinessListSchema, normalizeProviderReadinessList),
     workerSwrOptions
   );
 }
@@ -55,4 +64,8 @@ export function useDrainWorker() {
 
 export function useRemoveWorker() {
   return useWorkerAction((workerId) => del(endpoints.worker(workerId)));
+}
+
+export function useResetWorkerSession() {
+  return useWorkerAction((workerId) => post(endpoints.workerResetSession(workerId)));
 }

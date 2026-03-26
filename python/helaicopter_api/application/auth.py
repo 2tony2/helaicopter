@@ -102,12 +102,22 @@ def _generate_credential_id() -> str:
     return f"cred_{secrets.token_hex(12)}"
 
 
+@dataclass(frozen=True, slots=True)
+class CredentialProviderStatus:
+    code: str
+    message: str
+    runnable: bool
+
+
 def _to_response(row: AuthCredentialRecord) -> CredentialResponse:
+    provider_status = credential_provider_status_from_record(row)
     return CredentialResponse(
         credential_id=row.credential_id,
         provider=row.provider,
         credential_type=row.credential_type,
         status=row.status,
+        provider_status_code=provider_status.code,
+        provider_status_message=provider_status.message,
         token_expires_at=row.token_expires_at.isoformat() if row.token_expires_at else None,
         cli_config_path=row.cli_config_path,
         subscription_id=row.subscription_id,
@@ -124,7 +134,70 @@ def _to_response(row: AuthCredentialRecord) -> CredentialResponse:
 def _parse_timestamp(value: str | None) -> datetime | None:
     if value is None:
         return None
-    return datetime.fromisoformat(value)
+    return _ensure_utc_datetime(datetime.fromisoformat(value))
+
+
+def _ensure_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
+def credential_is_provider_active(credential: CredentialResponse) -> bool:
+    return credential_provider_status_from_response(credential).runnable
+
+
+def credential_provider_status_from_response(
+    credential: CredentialResponse,
+) -> CredentialProviderStatus:
+    if credential.provider_status_code and credential.provider_status_message:
+        return CredentialProviderStatus(
+            code=credential.provider_status_code,
+            message=credential.provider_status_message,
+            runnable=credential.provider_status_code == "ready",
+        )
+    expires_at = _parse_timestamp(credential.token_expires_at)
+    return _credential_provider_status(
+        status=credential.status,
+        credential_type=credential.credential_type,
+        cli_config_path=credential.cli_config_path,
+        token_expires_at=expires_at,
+    )
+
+
+def credential_provider_status_from_record(
+    credential: AuthCredentialRecord,
+) -> CredentialProviderStatus:
+    return _credential_provider_status(
+        status=credential.status,
+        credential_type=credential.credential_type,
+        cli_config_path=credential.cli_config_path,
+        token_expires_at=_ensure_utc_datetime(credential.token_expires_at),
+    )
+
+
+def _credential_provider_status(
+    *,
+    status: str,
+    credential_type: str,
+    cli_config_path: str | None,
+    token_expires_at: datetime | None,
+) -> CredentialProviderStatus:
+    if status == "revoked":
+        return CredentialProviderStatus("revoked", "Credential has been revoked.", False)
+    if status == "expired":
+        return CredentialProviderStatus("expired", "Credential has expired and must be refreshed.", False)
+    if credential_type == "local_cli_session" and not cli_config_path:
+        return CredentialProviderStatus(
+            "missing_cli_session",
+            "Local CLI session metadata is missing for this provider credential.",
+            False,
+        )
+    if credential_type == "oauth_token" and token_expires_at is not None and token_expires_at <= datetime.now(UTC):
+        return CredentialProviderStatus("expired", "Credential has expired and must be refreshed.", False)
+    return CredentialProviderStatus("ready", "Credential is ready for provider execution.", True)
 
 
 # ---------------------------------------------------------------------------

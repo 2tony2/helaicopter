@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from helaicopter_api.application.dispatch import InMemoryWorkerRegistry, RegisteredWorker, select_worker
+from helaicopter_api.application.provider_readiness import build_provider_readiness_from_store
+from helaicopter_api.application.dispatch import (
+    InMemoryWorkerRegistry,
+    dispatch_reason_label,
+    select_worker,
+)
 from helaicopter_api.application.resolver import ResolverLoop
 from helaicopter_api.schema.dispatch import (
     DeferredDispatchQueueEntry,
@@ -21,10 +26,15 @@ def _resolve_task_metadata(resolver: ResolverLoop, task_id: str, *, node_provide
 
 def _deferred_reason(
     *,
+    resolver: ResolverLoop,
+    run_id: str,
+    task_id: str,
     provider: str,
     model: str,
     registry: InMemoryWorkerRegistry,
 ) -> str:
+    if resolver.interrupted_task_record(run_id=run_id, task_id=task_id) is not None:
+        return "worker_interrupted"
     workers = [worker for worker in registry.all_workers() if worker.provider == provider]
     if not workers:
         return "no_registered_worker"
@@ -48,6 +58,7 @@ def get_queue_snapshot(resolver: ResolverLoop) -> QueueSnapshotResponse:
     """Describe ready versus deferred tasks without mutating resolver state."""
     ready: list[DispatchQueueEntry] = []
     deferred: list[DeferredDispatchQueueEntry] = []
+    readiness_by_provider: dict[str, object | None] = {}
 
     for run_id, graph in resolver._graphs.items():
         for task_id in graph.ready_tasks():
@@ -67,6 +78,23 @@ def get_queue_snapshot(resolver: ResolverLoop) -> QueueSnapshotResponse:
                 provider=provider,
                 model=model,
             )
+            if provider not in readiness_by_provider:
+                readiness_by_provider[provider] = build_provider_readiness_from_store(
+                    provider=provider,
+                    engine=resolver._sqlite_engine,
+                    workers=resolver._registry.all_workers(),
+                )
+            readiness = readiness_by_provider[provider]
+            if readiness is not None and readiness.status == "blocked":
+                deferred.append(
+                    DeferredDispatchQueueEntry(
+                        **entry.model_dump(),
+                        reason="provider_not_ready",
+                        reason_label=dispatch_reason_label("provider_not_ready"),
+                        can_retry=False,
+                    )
+                )
+                continue
             worker = select_worker(
                 provider=provider,
                 model=model,
@@ -77,10 +105,32 @@ def get_queue_snapshot(resolver: ResolverLoop) -> QueueSnapshotResponse:
                     DeferredDispatchQueueEntry(
                         **entry.model_dump(),
                         reason=_deferred_reason(
+                            resolver=resolver,
+                            run_id=run_id,
+                            task_id=task_id,
                             provider=provider,
                             model=model,
                             registry=resolver._registry,
                         ),
+                        reason_label=dispatch_reason_label(
+                            _deferred_reason(
+                                resolver=resolver,
+                                run_id=run_id,
+                                task_id=task_id,
+                                provider=provider,
+                                model=model,
+                                registry=resolver._registry,
+                            )
+                        ),
+                        can_retry=_deferred_reason(
+                            resolver=resolver,
+                            run_id=run_id,
+                            task_id=task_id,
+                            provider=provider,
+                            model=model,
+                            registry=resolver._registry,
+                        )
+                        == "worker_interrupted",
                     )
                 )
                 continue

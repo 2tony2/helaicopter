@@ -18,6 +18,8 @@ class DeferredDispatchQueueEntry(DispatchQueueEntry):
     """A task deferred from dispatch and the reason why."""
 
     reason: str
+    reason_label: str
+    can_retry: bool = False
 
 
 class QueueSnapshotResponse(CamelCaseHttpResponseModel):

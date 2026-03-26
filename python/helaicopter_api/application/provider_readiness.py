@@ -1,0 +1,100 @@
+"""Provider-level readiness model for real worker execution."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from sqlalchemy.engine import Engine
+
+from helaicopter_api.application.auth import (
+    credential_is_provider_active,
+    credential_provider_status_from_response,
+    list_credentials,
+)
+from helaicopter_api.application.dispatch import RegisteredWorker
+from helaicopter_api.schema.auth import CredentialResponse
+from helaicopter_api.schema.provider_readiness import ProviderBlockingReason, ProviderReadinessResponse
+
+
+def build_provider_readiness(
+    *,
+    provider: str,
+    credentials: list[CredentialResponse],
+    workers: list[object],
+) -> ProviderReadinessResponse:
+    provider_credentials = [item for item in credentials if item.provider == provider]
+    provider_workers = [item for item in workers if getattr(item, "provider", None) == provider]
+    active_credential_count = sum(
+        1 for credential in provider_credentials if credential_is_provider_active(credential)
+    )
+    healthy_worker_count = sum(1 for worker in provider_workers if getattr(worker, "status", None) != "dead")
+    ready_worker_count = sum(
+        1
+        for worker in provider_workers
+        if getattr(worker, "status", None) == "idle" and _worker_auth_status(worker) != "expired"
+    )
+
+    blocking_reasons: list[ProviderBlockingReason] = []
+    if active_credential_count == 0:
+        credential_issue = next(
+            (
+                credential_provider_status_from_response(item)
+                for item in provider_credentials
+                if not credential_is_provider_active(item)
+            ),
+            None,
+        )
+        blocking_reasons.append(
+            ProviderBlockingReason(
+                code=credential_issue.code if credential_issue is not None else "missing_credential",
+                message=(
+                    credential_issue.message
+                    if credential_issue is not None
+                    else f"No active {provider} credential is available."
+                ),
+            )
+        )
+    if healthy_worker_count == 0:
+        blocking_reasons.append(
+            ProviderBlockingReason(
+                code="missing_worker",
+                message=f"No healthy {provider} worker is registered.",
+            )
+        )
+
+    if blocking_reasons:
+        status = "blocked"
+    elif ready_worker_count == 0:
+        status = "degraded"
+    else:
+        status = "ready"
+
+    return ProviderReadinessResponse(
+        provider=provider,
+        status=status,
+        healthy_worker_count=healthy_worker_count,
+        ready_worker_count=ready_worker_count,
+        active_credential_count=active_credential_count,
+        blocking_reasons=blocking_reasons,
+    )
+
+
+def _worker_auth_status(worker: object) -> str:
+    auth_status = getattr(worker, "auth_status", None)
+    if isinstance(auth_status, str):
+        return auth_status
+    return "expired" if getattr(worker, "status", None) == "auth_expired" else "valid"
+
+
+def build_provider_readiness_from_store(
+    *,
+    provider: str,
+    engine: Engine | None,
+    workers: list[RegisteredWorker],
+) -> ProviderReadinessResponse | None:
+    if engine is None:
+        return None
+    credentials = list_credentials(engine)
+    if not any(item.provider == provider for item in credentials):
+        return None
+    return build_provider_readiness(provider=provider, credentials=credentials, workers=workers)
