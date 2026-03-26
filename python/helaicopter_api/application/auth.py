@@ -220,6 +220,31 @@ def _parse_claude_subscription_tier(output: str) -> str | None:
     return None
 
 
+def _claude_auth_payload_has_meaningful_fields(payload: dict[str, object]) -> bool:
+    meaningful_keys = ("authMethod", "apiProvider", "email", "orgId", "orgName", "subscriptionType")
+    return any(bool(payload.get(key)) for key in meaningful_keys)
+
+
+def _parse_claude_status_payload(
+    payload: dict[str, object],
+    *,
+    settings: Settings,
+) -> ClaudeCliSession:
+    if payload.get("loggedIn") is not True:
+        raise ValueError("Claude CLI status does not indicate an authenticated session")
+    if not _claude_auth_payload_has_meaningful_fields(payload):
+        raise ValueError("Claude CLI status output is missing authenticated session metadata")
+
+    subscription_tier = payload.get("subscriptionType") or payload.get("subscription_tier")
+    if subscription_tier is not None and not isinstance(subscription_tier, str):
+        raise ValueError("Claude CLI status output has an invalid subscription type")
+
+    return ClaudeCliSession(
+        cli_config_path=str(settings.claude_dir),
+        subscription_tier=subscription_tier or None,
+    )
+
+
 def _discover_claude_cli_session_from_filesystem(*, settings: Settings) -> ClaudeCliSession:
     credentials_path = settings.claude_dir / "credentials.json"
     if not credentials_path.exists():
@@ -235,15 +260,24 @@ def _discover_claude_cli_session_from_filesystem(*, settings: Settings) -> Claud
             f"Claude CLI authentication could not be discovered: '{credentials_path}' is unreadable."
         ) from exc
 
-    subscription_tier = None
-    if isinstance(payload, dict):
-        tier_value = payload.get("subscription_tier") or payload.get("subscriptionTier")
-        if isinstance(tier_value, str):
-            subscription_tier = tier_value or None
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: '{credentials_path}' must contain a JSON object."
+        )
+    if payload.get("loggedIn") is not True:
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: '{credentials_path}' does not describe an active login."
+        )
+    if not _claude_auth_payload_has_meaningful_fields(payload):
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: '{credentials_path}' does not contain authenticated session metadata."
+        )
 
     return ClaudeCliSession(
         cli_config_path=str(settings.claude_dir),
-        subscription_tier=subscription_tier,
+        subscription_tier=(payload.get("subscriptionType") or payload.get("subscription_tier"))
+        if isinstance(payload.get("subscriptionType") or payload.get("subscription_tier"), str)
+        else None,
     )
 
 
@@ -267,6 +301,15 @@ def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
 
     if result is not None and result.returncode == 0:
         output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        stripped_output = output.strip()
+        if stripped_output.startswith("{") and stripped_output.endswith("}"):
+            try:
+                payload = json.loads(stripped_output)
+            except json.JSONDecodeError:
+                pass
+            else:
+                if isinstance(payload, dict):
+                    return _parse_claude_status_payload(payload, settings=settings)
         return ClaudeCliSession(
             cli_config_path=str(settings.claude_dir),
             subscription_tier=_parse_claude_subscription_tier(output),
@@ -398,6 +441,14 @@ def create_credential(
     engine: Engine,
     request: CreateCredentialRequest,
 ) -> CredentialResponse:
+    with Session(engine) as session:
+        record = _create_credential_record(session, request)
+        session.commit()
+        session.refresh(record)
+        return _to_response(record)
+
+
+def _create_credential_record(session: Session, request: CreateCredentialRequest) -> AuthCredentialRecord:
     now = datetime.now(UTC)
     record = AuthCredentialRecord(
         credential_id=_generate_credential_id(),
@@ -417,11 +468,20 @@ def create_credential(
         cumulative_cost_usd=0.0,
         cost_since_reset=0.0,
     )
-    with Session(engine) as session:
-        session.add(record)
-        session.commit()
-        session.refresh(record)
-        return _to_response(record)
+    session.add(record)
+    return record
+
+
+def _active_claude_cli_rows(session: Session) -> list[AuthCredentialRecord]:
+    return session.execute(
+        select(AuthCredentialRecord)
+        .where(
+            AuthCredentialRecord.provider == "claude",
+            AuthCredentialRecord.credential_type == "local_cli_session",
+            AuthCredentialRecord.status == "active",
+        )
+        .order_by(AuthCredentialRecord.created_at.desc())
+    ).scalars().all()
 
 
 def connect_claude_cli_credential(
@@ -433,25 +493,20 @@ def connect_claude_cli_credential(
     now = datetime.now(UTC)
 
     with Session(engine) as db:
-        rows = db.execute(
-            select(AuthCredentialRecord)
-            .where(
-                AuthCredentialRecord.provider == "claude",
-                AuthCredentialRecord.credential_type == "local_cli_session",
-                AuthCredentialRecord.status == "active",
-            )
-            .order_by(AuthCredentialRecord.created_at.desc())
-        ).scalars().all()
+        rows = _active_claude_cli_rows(db)
+        request = CreateCredentialRequest.model_validate(
+            {
+                "provider": "claude",
+                "credentialType": "local_cli_session",
+                "cliConfigPath": session.cli_config_path,
+                "subscriptionTier": session.subscription_tier,
+            }
+        )
         if not rows:
-            request = CreateCredentialRequest.model_validate(
-                {
-                    "provider": "claude",
-                    "credentialType": "local_cli_session",
-                    "cliConfigPath": session.cli_config_path,
-                    "subscriptionTier": session.subscription_tier,
-                }
-            )
-            return create_credential(engine, request)
+            record = _create_credential_record(db, request)
+            db.commit()
+            db.refresh(record)
+            return _to_response(record)
 
         row = rows[0]
         row.cli_config_path = session.cli_config_path

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import json
 from typing import Iterator
 import subprocess
 
@@ -111,7 +112,52 @@ def test_connect_claude_cli_creates_local_cli_session_credential(
 ) -> None:
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
-    claude_dir.joinpath("credentials.json").write_text('{"subscription_tier": "pro"}')
+    status_output = json.dumps(
+        {
+            "loggedIn": True,
+            "authMethod": "claude.ai",
+            "apiProvider": "firstParty",
+            "email": "tony@naronadata.com",
+            "orgId": "org_123",
+            "orgName": "Narona",
+            "subscriptionType": "max",
+        }
+    )
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args[0], 0, stdout=status_output, stderr="")
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["provider"] == "claude"
+        assert payload["credentialType"] == "local_cli_session"
+        assert payload["status"] == "active"
+        assert payload["cliConfigPath"] == str(claude_dir)
+        assert payload["subscriptionTier"] == "max"
+
+
+def test_connect_claude_cli_uses_meaningful_credentials_blob_when_cli_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    claude_dir.joinpath("credentials.json").write_text(
+        json.dumps(
+            {
+                "loggedIn": True,
+                "authMethod": "claude.ai",
+                "apiProvider": "firstParty",
+                "email": "tony@naronadata.com",
+                "orgId": "org_123",
+                "orgName": "Narona",
+                "subscriptionType": "max",
+            }
+        )
+    )
 
     def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise FileNotFoundError("claude not installed")
@@ -123,9 +169,7 @@ def test_connect_claude_cli_creates_local_cli_session_credential(
         payload = response.json()
         assert payload["provider"] == "claude"
         assert payload["credentialType"] == "local_cli_session"
-        assert payload["status"] == "active"
-        assert payload["cliConfigPath"] == str(claude_dir)
-        assert payload["subscriptionTier"] == "pro"
+        assert payload["subscriptionTier"] == "max"
 
 
 def test_connect_claude_cli_returns_400_when_auth_status_fails_and_dir_exists(
@@ -142,6 +186,23 @@ def test_connect_claude_cli_returns_400_when_auth_status_fails_and_dir_exists(
             stdout="",
             stderr="not logged in",
         )
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
+        monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+        response = client.post("/auth/credentials/claude-cli/connect")
+        assert response.status_code == 400
+
+
+def test_connect_claude_cli_rejects_empty_credentials_blob(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    claude_dir.joinpath("credentials.json").write_text("{}")
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("claude not installed")
 
     with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
         monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
