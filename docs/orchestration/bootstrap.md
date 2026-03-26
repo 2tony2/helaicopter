@@ -71,7 +71,7 @@ If the status remains blocked, use the `blockingReasons` array and the worker da
 
 ## Auth Management Quick Check
 
-After the app is running, open [http://127.0.0.1:30001/orchestration#auth-management](http://127.0.0.1:30001/orchestration#auth-management) and confirm:
+After the app is running, open `/orchestration#auth-management` on the local frontend URL and confirm:
 
 - Claude shows `Reuse Claude CLI session`.
 - Codex shows `OAuth redirect`.
