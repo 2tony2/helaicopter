@@ -231,11 +231,17 @@ def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
             check=False,
             timeout=10,
         )
-    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
-        result = None
-        command_error = str(exc)
-    else:
-        command_error = None
+    except (FileNotFoundError, OSError) as exc:
+        if settings.claude_dir.exists():
+            return ClaudeCliSession(cli_config_path=str(settings.claude_dir))
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: {exc}. "
+            f"Run '{settings.claude_cli_command} auth login' or create {settings.claude_dir}."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError(
+            f"Claude CLI authentication could not be discovered: '{settings.claude_cli_command} auth status' timed out."
+        ) from exc
 
     if result is not None and result.returncode == 0:
         output = "\n".join(part for part in (result.stdout, result.stderr) if part)
@@ -244,21 +250,13 @@ def discover_claude_cli_session(*, settings: Settings) -> ClaudeCliSession:
             subscription_tier=_parse_claude_subscription_tier(output),
         )
 
-    if settings.claude_dir.exists():
-        return ClaudeCliSession(
-            cli_config_path=str(settings.claude_dir),
-        )
-
-    if command_error is not None:
-        raise ValueError(
-            f"Claude CLI authentication could not be discovered: {command_error}. "
-            f"Run '{settings.claude_cli_command} auth login' or create {settings.claude_dir}."
-        )
-
-    exit_code = "unknown" if result is None else result.returncode
+    stderr = (result.stderr or "").strip() if result is not None else ""
+    stdout = (result.stdout or "").strip() if result is not None else ""
+    details = " ".join(part for part in (stderr, stdout) if part)
     raise ValueError(
         f"Claude CLI authentication could not be discovered: '{settings.claude_cli_command} auth status' "
-        f"returned {exit_code}. Run '{settings.claude_cli_command} auth login' and try again."
+        f"returned {result.returncode if result is not None else 'unknown'}."
+        f"{f' Output: {details}' if details else ''} Run '{settings.claude_cli_command} auth login' and try again."
     )
 
 

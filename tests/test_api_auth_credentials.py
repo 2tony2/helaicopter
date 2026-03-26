@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import Iterator
+import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,7 +27,7 @@ def _services_stub(**attrs: object) -> BackendServices:
 
 
 @contextmanager
-def _auth_client() -> Iterator[TestClient]:
+def _auth_client(*, settings: Settings | None = None) -> Iterator[TestClient]:
     """Test client with an in-memory SQLite engine for auth credential tests."""
     application = create_app()
     engine = create_engine(
@@ -38,7 +39,7 @@ def _auth_client() -> Iterator[TestClient]:
 
     application.dependency_overrides[get_services] = lambda: _services_stub(
         sqlite_engine=engine,
-        settings=Settings(),
+        settings=settings or Settings(),
     )
     try:
         with TestClient(application) as client:
@@ -120,13 +121,24 @@ def test_connect_claude_cli_creates_local_cli_session_credential(monkeypatch: py
         assert payload["status"] == "active"
 
 
-def test_connect_claude_cli_returns_400_when_not_authenticated(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _raise(*, settings: object) -> auth_application.ClaudeCliSession:
-        raise ValueError("Claude CLI is not authenticated")
+def test_connect_claude_cli_returns_400_when_auth_status_fails_and_dir_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
 
-    monkeypatch.setattr(auth_application, "discover_claude_cli_session", _raise)
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args[0],
+            1,
+            stdout="",
+            stderr="not logged in",
+        )
 
-    with _auth_client() as client:
+    monkeypatch.setattr(auth_application.subprocess, "run", _fake_run)
+
+    with _auth_client(settings=Settings(claude_dir=claude_dir)) as client:
         response = client.post("/auth/credentials/claude-cli/connect")
         assert response.status_code == 400
 
