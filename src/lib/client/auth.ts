@@ -79,6 +79,17 @@ export function useAddCredential() {
   );
 }
 
+export function useConnectClaudeCli() {
+  return useCredentialMutation(() =>
+    post(
+      endpoints.authCredentialClaudeCliConnect(),
+      undefined,
+      authCredentialSchema,
+      normalizeAuthCredential
+    )
+  );
+}
+
 export function useRevokeCredential() {
   return useCredentialMutation((credentialId: string) =>
     del(endpoints.authCredential(credentialId))

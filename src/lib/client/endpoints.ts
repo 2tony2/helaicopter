@@ -261,6 +261,10 @@ export function authCredentialRefresh(credentialId: string) {
   return api(`/auth/credentials/${enc(credentialId)}/refresh`);
 }
 
+export function authCredentialClaudeCliConnect() {
+  return api("/auth/credentials/claude-cli/connect");
+}
+
 export function authCredentialOauthInitiate() {
   return api("/auth/credentials/oauth/initiate");
 }

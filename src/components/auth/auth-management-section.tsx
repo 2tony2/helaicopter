@@ -7,7 +7,7 @@ import { CredentialList } from "@/components/auth/credential-list";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  useAddCredential,
+  useConnectClaudeCli,
   useCredentials,
   useInitiateOauth,
   useRefreshCredential,
@@ -23,7 +23,7 @@ export function AuthManagementSection({
   credentials,
   onRefresh,
   onRevoke,
-  onAddApiKey,
+  onConnectClaudeCli,
   onInitiateOauth,
   pending = false,
   error,
@@ -31,11 +31,7 @@ export function AuthManagementSection({
   credentials: AuthCredential[];
   onRefresh?: (credentialId: string) => void;
   onRevoke?: (credentialId: string) => void;
-  onAddApiKey?: (input: {
-    provider: AuthCredential["provider"];
-    credentialType: "api_key";
-    apiKey: string;
-  }) => void;
+  onConnectClaudeCli?: () => void;
   onInitiateOauth?: (provider: AuthCredential["provider"]) => void;
   pending?: boolean;
   error?: string | null;
@@ -53,7 +49,7 @@ export function AuthManagementSection({
           </p>
         </div>
         <AddCredentialDialog
-          onSubmit={onAddApiKey}
+          onConnectClaudeCli={onConnectClaudeCli}
           onOauth={onInitiateOauth}
           pending={pending}
         />
@@ -117,7 +113,7 @@ export function AuthManagementSection({
 
 export function AuthManagementPanel() {
   const { data: credentials, isLoading } = useCredentials();
-  const addCredential = useAddCredential();
+  const connectClaudeCli = useConnectClaudeCli();
   const revokeCredential = useRevokeCredential();
   const refreshCredential = useRefreshCredential();
   const oauth = useInitiateOauth();
@@ -137,7 +133,7 @@ export function AuthManagementPanel() {
       credentials={credentials ?? []}
       onRefresh={(credentialId) => void refreshCredential.run(credentialId)}
       onRevoke={(credentialId) => void revokeCredential.run(credentialId)}
-      onAddApiKey={(input) => void addCredential.run(input)}
+      onConnectClaudeCli={() => void connectClaudeCli.run()}
       onInitiateOauth={(provider) => {
         void oauth.run(provider).then((result) => {
           if (
@@ -152,13 +148,13 @@ export function AuthManagementPanel() {
         });
       }}
       pending={
-        addCredential.isMutating ||
+        connectClaudeCli.isMutating ||
         revokeCredential.isMutating ||
         refreshCredential.isMutating ||
         oauth.isMutating
       }
       error={
-        addCredential.error ??
+        connectClaudeCli.error ??
         revokeCredential.error ??
         refreshCredential.error ??
         oauth.error

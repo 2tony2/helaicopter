@@ -213,6 +213,16 @@ test("endpoint builders append parent_session_id only when the caller provides p
   );
 });
 
+test("Claude CLI auth connect endpoint targets the dedicated reuse route", async () => {
+  const { setBaseUrl, authCredentialClaudeCliConnect } = await getEndpoints();
+  setBaseUrl("https://api.example.test/");
+
+  assert.equal(
+    authCredentialClaudeCliConnect(),
+    "https://api.example.test/auth/credentials/claude-cli/connect"
+  );
+});
+
 test("orchestration runtime endpoint builder targets the dedicated materialization route", async () => {
   const { setBaseUrl, orchestrationRuntime } = await getEndpoints();
   setBaseUrl("https://api.example.test/");
