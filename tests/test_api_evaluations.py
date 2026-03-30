@@ -12,7 +12,7 @@ from typing import Any, Callable, Iterator
 from fastapi.testclient import TestClient
 
 from helaicopter_api.adapters.app_sqlite import SqliteAppStore
-from helaicopter_api.bootstrap.services import BackendServices, build_services
+from helaicopter_api.bootstrap.services import BackendServices, LocalCache, build_services
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
@@ -498,6 +498,7 @@ class FakeEvaluationRunner:
 
 def _services_stub(**attrs: object) -> BackendServices:
     services = object.__new__(BackendServices)
+    setattr(services, "cache", LocalCache())
     for name, value in attrs.items():
         setattr(services, name, value)
     return services

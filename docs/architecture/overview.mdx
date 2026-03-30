@@ -10,7 +10,7 @@ Helaicopter is a two-process local application:
 | Layer | Tech | Port | Responsibility |
 |-------|------|------|----------------|
 | Frontend | Next.js 16, React 19, SWR | 3000 | UI rendering, client-side caching, chart visualization |
-| Backend | FastAPI, SQLAlchemy 2, Pydantic v2 | 30000 | Data parsing, analytics, database management, orchestration APIs |
+| Backend | FastAPI, SQLAlchemy 2, Pydantic v2 | 30000 | Data parsing, analytics, database management |
 
 The frontend never reads the filesystem directly. All conversation parsing, token aggregation, and database operations happen in the backend. The frontend consumes a typed JSON API and uses SWR for client-side caching with configurable refresh intervals.
 
@@ -73,7 +73,6 @@ src/
 │   ├── databases/    # Database dashboard, OLAP preview
 │   ├── evaluations/  # Prompt manager
 │   ├── layout/       # Sidebar, breadcrumbs, page header
-│   ├── orchestration/# OATS dashboard and DAG views
 │   ├── plans/        # Plan viewer, plan panel
 │   └── ui/           # shadcn/ui primitives (Card, Badge, Tabs, etc.)
 ├── hooks/            # SWR data-fetching hooks (20+ hooks)

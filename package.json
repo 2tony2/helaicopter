@@ -10,7 +10,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "oats": "uv run oats",
     "db:refresh": "uv run python -m helaicopter_db.refresh --trigger cli",
     "db:migrate:oltp": "uv run alembic -x target=oltp upgrade head",
     "db:migrate:olap": "uv run alembic -x target=olap upgrade head",

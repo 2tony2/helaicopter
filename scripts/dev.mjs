@@ -21,7 +21,6 @@ const checkoutInstance = buildCheckoutInstance(repoRoot, {
       ? undefined
       : Number.parseInt(process.env.HELA_WEB_PORT, 10),
 });
-const apiPort = String(checkoutInstance.apiPort);
 const nextLockPath = path.join(repoRoot, ".next", "dev", "lock");
 
 function runOutput(command, args) {

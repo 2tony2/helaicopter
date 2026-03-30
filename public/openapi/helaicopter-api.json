@@ -106,6 +106,306 @@
         }
       }
     },
+    "/auth/credentials": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "List all credentials (secrets redacted).",
+        "operationId": "credential_list_auth_credentials_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Credential List Auth Credentials Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create a new auth credential.",
+        "operationId": "credential_create_auth_credentials_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCredentialRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/credentials/oauth/initiate": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start a managed OAuth credential flow.",
+        "operationId": "credential_oauth_initiate_auth_credentials_oauth_initiate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthInitiateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthInitiateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/credentials/oauth/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Complete a managed OAuth credential flow.",
+        "operationId": "credential_oauth_callback_auth_credentials_oauth_callback_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/credentials/{credential_id}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Revoke a credential.",
+        "operationId": "credential_revoke_auth_credentials__credential_id__delete",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Credential Revoke Auth Credentials  Credential Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/credentials/{credential_id}/record-cost": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Record cost against a credential.",
+        "operationId": "credential_record_cost_auth_credentials__credential_id__record_cost_post",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordCostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Credential Record Cost Auth Credentials  Credential Id  Record Cost Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/credentials/{credential_id}/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Refresh a managed OAuth credential.",
+        "operationId": "credential_refresh_auth_credentials__credential_id__refresh_post",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/analytics": {
       "get": {
         "tags": [
@@ -241,8 +541,7 @@
                     "all",
                     "claude",
                     "codex",
-                    "openclaw",
-                    "opencloud"
+                    "openclaw"
                   ],
                   "type": "string"
                 },
@@ -1041,140 +1340,6 @@
                     "$ref": "#/components/schemas/HistoryEntryResponse"
                   },
                   "title": "Response History Index History Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orchestration/oats": {
-      "get": {
-        "tags": [
-          "orchestration"
-        ],
-        "summary": "List OATS local-runtime records.",
-        "description": "List all OATS run records found in the local runtime directory.\n\nReturns:\n    A list of OATS run records parsed from repo-local runtime and record\n    files, each describing the run ID, status, and associated task attempts.",
-        "operationId": "orchestration_oats_index_orchestration_oats_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/OrchestrationRunResponse"
-                  },
-                  "type": "array",
-                  "title": "Response Orchestration Oats Index Orchestration Oats Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orchestration/oats/facts": {
-      "get": {
-        "tags": [
-          "orchestration"
-        ],
-        "summary": "List canonical OATS orchestration analytics facts.",
-        "description": "Return canonical analytics facts derived from repo-local OATS artifacts.\n\nReturns:\n    Aggregated orchestration facts including run counts, task-attempt\n    outcomes, and timing metrics computed from all local OATS records.",
-        "operationId": "orchestration_oats_facts_orchestration_oats_facts_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrchestrationFactsResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orchestration/oats/{run_id}/refresh": {
-      "post": {
-        "tags": [
-          "orchestration"
-        ],
-        "summary": "Refresh stacked PR state for a persisted OATS run.",
-        "description": "Refresh the stacked PR state for a persisted OATS run.\n\nArgs:\n    run_id: Unique identifier of the OATS run to refresh.\n\nReturns:\n    The updated OATS run record reflecting the latest stacked PR state.",
-        "operationId": "orchestration_oats_refresh_orchestration_oats__run_id__refresh_post",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrchestrationRunResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orchestration/oats/{run_id}/resume": {
-      "post": {
-        "tags": [
-          "orchestration"
-        ],
-        "summary": "Resume stacked PR state for a persisted OATS run.",
-        "description": "Resume a stalled or paused OATS run, re-triggering stacked PR progression.\n\nArgs:\n    run_id: Unique identifier of the OATS run to resume.\n\nReturns:\n    The updated OATS run record after the resume action has been dispatched.",
-        "operationId": "orchestration_oats_resume_orchestration_oats__run_id__resume_post",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrchestrationRunResponse"
                 }
               }
             }
@@ -2425,6 +2590,22 @@
             "type": "string",
             "title": "Session Id"
           },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "openclaw"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
           "project_path": {
             "type": "string",
             "title": "Project Path",
@@ -2615,6 +2796,22 @@
             "type": "string",
             "title": "Session Id"
           },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "openclaw"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
           "project_path": {
             "type": "string",
             "title": "Project Path",
@@ -2714,6 +2911,16 @@
           "context_window": {
             "$ref": "#/components/schemas/ConversationContextWindowResponse"
           },
+          "provider_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationProviderDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reasoning_effort": {
             "anyOf": [
               {
@@ -2768,8 +2975,7 @@
             "enum": [
               "claude",
               "codex",
-              "openclaw",
-              "opencloud"
+              "openclaw"
             ],
             "title": "Provider"
           },
@@ -2867,8 +3073,7 @@
             "enum": [
               "claude",
               "codex",
-              "openclaw",
-              "opencloud"
+              "openclaw"
             ],
             "title": "Provider"
           },
@@ -3113,8 +3318,7 @@
             "enum": [
               "claude",
               "codex",
-              "openclaw",
-              "opencloud"
+              "openclaw"
             ],
             "title": "Provider"
           },
@@ -3240,6 +3444,26 @@
         ],
         "title": "ConversationPlanStepResponse",
         "description": "A single step within an embedded conversation plan."
+      },
+      "ConversationProviderDetailResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "openclaw",
+            "title": "Kind"
+          },
+          "openclaw": {
+            "$ref": "#/components/schemas/OpenClawConversationDetailResponse"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "openclaw"
+        ],
+        "title": "ConversationProviderDetailResponse",
+        "description": "Provider-specific detail envelope."
       },
       "ConversationRefResolutionResponse": {
         "properties": {
@@ -3393,6 +3617,22 @@
           "session_id": {
             "type": "string",
             "title": "Session Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "openclaw"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
           },
           "project_path": {
             "type": "string",
@@ -3750,6 +3990,249 @@
         "title": "ConversationUsageResponse",
         "description": "Token usage counts for a single conversation or message."
       },
+      "CreateCredentialRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "credentialType": {
+            "type": "string",
+            "title": "Credentialtype"
+          },
+          "accessToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accesstoken"
+          },
+          "refreshToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshtoken"
+          },
+          "tokenExpiresAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokenexpiresat"
+          },
+          "oauthScopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauthscopes"
+          },
+          "apiKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikey"
+          },
+          "cliConfigPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cliconfigpath"
+          },
+          "subscriptionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriptionid"
+          },
+          "subscriptionTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriptiontier"
+          },
+          "rateLimitTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratelimittier"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "credentialType"
+        ],
+        "title": "CreateCredentialRequest",
+        "description": "Body for ``POST /auth/credentials``."
+      },
+      "CredentialResponse": {
+        "properties": {
+          "credentialId": {
+            "type": "string",
+            "title": "Credentialid"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "credentialType": {
+            "type": "string",
+            "title": "Credentialtype"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "tokenExpiresAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokenexpiresat"
+          },
+          "cliConfigPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cliconfigpath"
+          },
+          "subscriptionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriptionid"
+          },
+          "subscriptionTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriptiontier"
+          },
+          "rateLimitTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratelimittier"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastusedat"
+          },
+          "lastRefreshedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrefreshedat"
+          },
+          "cumulativeCostUsd": {
+            "type": "number",
+            "title": "Cumulativecostusd",
+            "default": 0.0
+          },
+          "costSinceReset": {
+            "type": "number",
+            "title": "Costsincereset",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "credentialId",
+          "provider",
+          "credentialType",
+          "status",
+          "createdAt"
+        ],
+        "title": "CredentialResponse",
+        "description": "Credential detail \u2014 never exposes secrets."
+      },
       "DailyUsageResponse": {
         "properties": {
           "date": {
@@ -3878,8 +4361,7 @@
             "enum": [
               "cache",
               "metadata",
-              "inspection",
-              "orchestration"
+              "inspection"
             ],
             "title": "Role"
           },
@@ -4715,1290 +5197,95 @@
         "title": "HistoryPastedContentsResponse",
         "description": "Opaque pasted-content payload exposed on the legacy history surface."
       },
-      "OrchestrationDagEdgeResponse": {
+      "OAuthInitiateRequest": {
         "properties": {
-          "id": {
+          "provider": {
             "type": "string",
-            "title": "Id"
-          },
-          "source": {
-            "type": "string",
-            "title": "Source"
-          },
-          "target": {
-            "type": "string",
-            "title": "Target"
-          },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label"
+            "title": "Provider"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "id",
-          "source",
-          "target"
+          "provider"
         ],
-        "title": "OrchestrationDagEdgeResponse",
-        "description": "A directed dependency edge between two nodes in the orchestration DAG."
+        "title": "OAuthInitiateRequest",
+        "description": "Body for ``POST /auth/credentials/oauth/initiate``."
       },
-      "OrchestrationDagNodeResponse": {
+      "OAuthInitiateResponse": {
         "properties": {
-          "id": {
+          "redirectUrl": {
             "type": "string",
-            "title": "Id"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "planner",
-              "task"
-            ],
-            "title": "Kind"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          },
-          "agent": {
-            "type": "string",
-            "enum": [
-              "claude",
-              "codex",
-              "openclaw",
-              "opencloud"
-            ],
-            "title": "Agent"
-          },
-          "sessionId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sessionid"
-          },
-          "projectPath": {
-            "anyOf": [
-              {
-                "type": "string",
-                "description": "Opaque encoded project key used in URLs and persisted records."
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Projectpath"
-          },
-          "conversationPath": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conversationpath"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "pending",
-                  "running",
-                  "succeeded",
-                  "failed",
-                  "timed_out",
-                  "skipped",
-                  "blocked"
-                ]
-              },
-              {
-                "type": "string",
-                "enum": [
-                  "pending",
-                  "planning",
-                  "running",
-                  "completed",
-                  "failed",
-                  "timed_out"
-                ]
-              }
-            ],
-            "title": "Status"
-          },
-          "isActive": {
-            "type": "boolean",
-            "title": "Isactive",
-            "default": false
-          },
-          "attempts": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attempts"
-          },
-          "lastHeartbeatAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastheartbeatat"
-          },
-          "exitCode": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exitcode"
-          },
-          "timedOut": {
-            "type": "boolean",
-            "title": "Timedout",
-            "default": false
-          },
-          "depth": {
-            "type": "integer",
-            "title": "Depth",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "label",
-          "role",
-          "agent",
-          "status"
-        ],
-        "title": "OrchestrationDagNodeResponse",
-        "description": "A single node (planner or task) in the orchestration run DAG."
-      },
-      "OrchestrationDagResponse": {
-        "properties": {
-          "nodes": {
-            "items": {
-              "$ref": "#/components/schemas/OrchestrationDagNodeResponse"
-            },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "edges": {
-            "items": {
-              "$ref": "#/components/schemas/OrchestrationDagEdgeResponse"
-            },
-            "type": "array",
-            "title": "Edges",
-            "default": []
-          },
-          "stats": {
-            "$ref": "#/components/schemas/OrchestrationDagStatsResponse"
-          }
-        },
-        "type": "object",
-        "required": [
-          "stats"
-        ],
-        "title": "OrchestrationDagResponse",
-        "description": "Complete DAG representation for an orchestration run, including nodes, edges, and stats."
-      },
-      "OrchestrationDagStatsResponse": {
-        "properties": {
-          "totalNodes": {
-            "type": "integer",
-            "title": "Totalnodes",
-            "default": 0
-          },
-          "totalEdges": {
-            "type": "integer",
-            "title": "Totaledges",
-            "default": 0
-          },
-          "maxDepth": {
-            "type": "integer",
-            "title": "Maxdepth",
-            "default": 0
-          },
-          "maxBreadth": {
-            "type": "integer",
-            "title": "Maxbreadth",
-            "default": 0
-          },
-          "rootCount": {
-            "type": "integer",
-            "title": "Rootcount",
-            "default": 0
-          },
-          "providerBreakdown": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "propertyNames": {
-              "enum": [
-                "claude",
-                "codex",
-                "openclaw",
-                "opencloud"
-              ]
-            },
-            "type": "object",
-            "title": "Providerbreakdown",
-            "default": {}
-          },
-          "timedOutCount": {
-            "type": "integer",
-            "title": "Timedoutcount",
-            "default": 0
-          },
-          "activeCount": {
-            "type": "integer",
-            "title": "Activecount",
-            "default": 0
-          },
-          "pendingCount": {
-            "type": "integer",
-            "title": "Pendingcount",
-            "default": 0
-          },
-          "failedCount": {
-            "type": "integer",
-            "title": "Failedcount",
-            "default": 0
-          },
-          "succeededCount": {
-            "type": "integer",
-            "title": "Succeededcount",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "title": "OrchestrationDagStatsResponse",
-        "description": "Aggregate structural and status statistics for an orchestration run DAG."
-      },
-      "OrchestrationFactsResponse": {
-        "properties": {
-          "canonicalRules": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Canonicalrules",
-            "default": []
-          },
-          "runFacts": {
-            "items": {
-              "$ref": "#/components/schemas/OrchestrationRunFactResponse"
-            },
-            "type": "array",
-            "title": "Runfacts",
-            "default": []
-          },
-          "taskAttemptFacts": {
-            "items": {
-              "$ref": "#/components/schemas/OrchestrationTaskAttemptFactResponse"
-            },
-            "type": "array",
-            "title": "Taskattemptfacts",
-            "default": []
-          }
-        },
-        "type": "object",
-        "title": "OrchestrationFactsResponse",
-        "description": "Canonical routing facts for all runs and task attempts across a project."
-      },
-      "OrchestrationFeatureBranchResponse": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "baseBranch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Basebranch"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "OrchestrationFeatureBranchResponse",
-        "description": "Feature branch associated with an orchestration run."
-      },
-      "OrchestrationFinalPullRequestResponse": {
-        "properties": {
-          "number": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Number"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
+            "title": "Redirecturl"
           },
           "state": {
             "type": "string",
             "title": "State"
-          },
-          "reviewGateStatus": {
-            "type": "string",
-            "title": "Reviewgatestatus"
-          },
-          "baseBranch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Basebranch"
-          },
-          "headBranch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Headbranch"
-          },
-          "checksSummary": {
+          }
+        },
+        "type": "object",
+        "required": [
+          "redirectUrl",
+          "state"
+        ],
+        "title": "OAuthInitiateResponse",
+        "description": "OAuth initiation details for the frontend."
+      },
+      "OpenClawConversationDetailResponse": {
+        "properties": {
+          "artifact_inventory": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Checkssummary",
+            "title": "Artifact Inventory",
             "default": {}
           },
-          "snapshotSource": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Snapshotsource"
-          },
-          "lastRefreshedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastrefreshedat"
-          },
-          "isStale": {
-            "type": "boolean",
-            "title": "Isstale",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "state",
-          "reviewGateStatus"
-        ],
-        "title": "OrchestrationFinalPullRequestResponse",
-        "description": "Final integration pull request snapshot for a completed orchestration run."
-      },
-      "OrchestrationInvocationResponse": {
-        "properties": {
-          "agent": {
-            "type": "string",
-            "enum": [
-              "claude",
-              "codex",
-              "openclaw",
-              "opencloud"
-            ],
-            "title": "Agent"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          },
-          "command": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Command"
-          },
-          "cwd": {
-            "type": "string",
-            "title": "Cwd"
-          },
-          "prompt": {
-            "type": "string",
-            "title": "Prompt"
-          },
-          "sessionId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sessionid"
-          },
-          "outputText": {
-            "type": "string",
-            "title": "Outputtext",
-            "default": ""
-          },
-          "rawStdout": {
-            "type": "string",
-            "title": "Rawstdout",
-            "default": ""
-          },
-          "rawStderr": {
-            "type": "string",
-            "title": "Rawstderr",
-            "default": ""
-          },
-          "exitCode": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exitcode"
-          },
-          "timedOut": {
-            "type": "boolean",
-            "title": "Timedout",
-            "default": false
-          },
-          "startedAt": {
-            "type": "string",
-            "title": "Startedat"
-          },
-          "lastHeartbeatAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastheartbeatat"
-          },
-          "finishedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finishedat"
-          },
-          "projectPath": {
-            "anyOf": [
-              {
-                "type": "string",
-                "description": "Opaque encoded project key used in URLs and persisted records."
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Projectpath"
-          },
-          "conversationPath": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conversationpath"
-          }
-        },
-        "type": "object",
-        "required": [
-          "agent",
-          "role",
-          "command",
-          "cwd",
-          "prompt",
-          "startedAt"
-        ],
-        "title": "OrchestrationInvocationResponse",
-        "description": "Agent invocation snapshot."
-      },
-      "OrchestrationOperationHistoryResponse": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "sessionId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sessionid"
-          },
-          "startedAt": {
-            "type": "string",
-            "title": "Startedat"
-          },
-          "finishedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finishedat"
-          },
-          "details": {
+          "session_store": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Details",
+            "title": "Session Store",
+            "default": {}
+          },
+          "skills": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Skills",
+            "default": {}
+          },
+          "system_prompt": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "System Prompt",
+            "default": {}
+          },
+          "transcript_diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Transcript Diagnostics",
+            "default": {}
+          },
+          "usage_reconciliation": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Usage Reconciliation",
+            "default": {}
+          },
+          "memory_store": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Memory Store",
+            "default": {}
+          },
+          "raw": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Raw",
             "default": {}
           }
         },
+        "additionalProperties": false,
         "type": "object",
-        "required": [
-          "kind",
-          "status",
-          "startedAt"
-        ],
-        "title": "OrchestrationOperationHistoryResponse",
-        "description": "A single recorded operation event in an orchestration run or task history."
-      },
-      "OrchestrationReviewSummaryResponse": {
-        "properties": {
-          "blockingState": {
-            "type": "string",
-            "title": "Blockingstate"
-          },
-          "approvals": {
-            "type": "integer",
-            "title": "Approvals",
-            "default": 0
-          },
-          "changesRequested": {
-            "type": "integer",
-            "title": "Changesrequested",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "blockingState"
-        ],
-        "title": "OrchestrationReviewSummaryResponse",
-        "description": "Aggregated pull request review state for an orchestration task."
-      },
-      "OrchestrationRunFactResponse": {
-        "properties": {
-          "runId": {
-            "type": "string",
-            "title": "Runid"
-          },
-          "runTitle": {
-            "type": "string",
-            "title": "Runtitle"
-          },
-          "sourceKind": {
-            "type": "string",
-            "enum": [
-              "runtime_snapshot",
-              "terminal_record"
-            ],
-            "title": "Sourcekind"
-          },
-          "canonicalReason": {
-            "type": "string",
-            "title": "Canonicalreason"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "planning",
-              "running",
-              "completed",
-              "failed",
-              "timed_out"
-            ],
-            "title": "Status"
-          },
-          "taskCount": {
-            "type": "integer",
-            "title": "Taskcount",
-            "default": 0
-          },
-          "attemptCount": {
-            "type": "integer",
-            "title": "Attemptcount",
-            "default": 0
-          },
-          "completedTaskCount": {
-            "type": "integer",
-            "title": "Completedtaskcount",
-            "default": 0
-          },
-          "failedTaskCount": {
-            "type": "integer",
-            "title": "Failedtaskcount",
-            "default": 0
-          },
-          "pendingTaskCount": {
-            "type": "integer",
-            "title": "Pendingtaskcount",
-            "default": 0
-          },
-          "runningTaskCount": {
-            "type": "integer",
-            "title": "Runningtaskcount",
-            "default": 0
-          },
-          "timedOutTaskCount": {
-            "type": "integer",
-            "title": "Timedouttaskcount",
-            "default": 0
-          },
-          "activeTaskId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activetaskid"
-          },
-          "isRunning": {
-            "type": "boolean",
-            "title": "Isrunning",
-            "default": false
-          },
-          "isStale": {
-            "type": "boolean",
-            "title": "Isstale",
-            "default": false
-          },
-          "runtimeStatePath": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Runtimestatepath"
-          },
-          "terminalRecordPath": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Terminalrecordpath"
-          }
-        },
-        "type": "object",
-        "required": [
-          "runId",
-          "runTitle",
-          "sourceKind",
-          "canonicalReason",
-          "status"
-        ],
-        "title": "OrchestrationRunFactResponse",
-        "description": "Canonical fact record summarising the outcome of a single orchestration run."
-      },
-      "OrchestrationRunResponse": {
-        "properties": {
-          "source": {
-            "type": "string",
-            "const": "overnight-oats",
-            "title": "Source",
-            "default": "overnight-oats"
-          },
-          "contractVersion": {
-            "type": "string",
-            "title": "Contractversion"
-          },
-          "runId": {
-            "type": "string",
-            "title": "Runid"
-          },
-          "runTitle": {
-            "type": "string",
-            "title": "Runtitle"
-          },
-          "repoRoot": {
-            "type": "string",
-            "title": "Reporoot"
-          },
-          "configPath": {
-            "type": "string",
-            "title": "Configpath"
-          },
-          "runSpecPath": {
-            "type": "string",
-            "title": "Runspecpath"
-          },
-          "mode": {
-            "type": "string",
-            "title": "Mode"
-          },
-          "integrationBranch": {
-            "type": "string",
-            "title": "Integrationbranch"
-          },
-          "taskPrTarget": {
-            "type": "string",
-            "title": "Taskprtarget"
-          },
-          "finalPrTarget": {
-            "type": "string",
-            "title": "Finalprtarget"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "planning",
-              "running",
-              "completed",
-              "failed",
-              "timed_out"
-            ],
-            "title": "Status"
-          },
-          "stackStatus": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stackstatus"
-          },
-          "featureBranch": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OrchestrationFeatureBranchResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "activeTaskId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activetaskid"
-          },
-          "heartbeatAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Heartbeatat"
-          },
-          "finishedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finishedat"
-          },
-          "planner": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OrchestrationInvocationResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "tasks": {
-            "items": {
-              "$ref": "#/components/schemas/OrchestrationTaskResponse"
-            },
-            "type": "array",
-            "title": "Tasks",
-            "default": []
-          },
-          "finalPr": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OrchestrationFinalPullRequestResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "operationHistory": {
-            "items": {
-              "$ref": "#/components/schemas/OrchestrationOperationHistoryResponse"
-            },
-            "type": "array",
-            "title": "Operationhistory",
-            "default": []
-          },
-          "createdAt": {
-            "type": "string",
-            "title": "Createdat"
-          },
-          "lastUpdatedAt": {
-            "type": "string",
-            "title": "Lastupdatedat"
-          },
-          "isRunning": {
-            "type": "boolean",
-            "title": "Isrunning",
-            "default": false
-          },
-          "recordedAt": {
-            "type": "string",
-            "title": "Recordedat"
-          },
-          "recordPath": {
-            "type": "string",
-            "title": "Recordpath"
-          },
-          "dag": {
-            "$ref": "#/components/schemas/OrchestrationDagResponse"
-          }
-        },
-        "type": "object",
-        "required": [
-          "contractVersion",
-          "runId",
-          "runTitle",
-          "repoRoot",
-          "configPath",
-          "runSpecPath",
-          "mode",
-          "integrationBranch",
-          "taskPrTarget",
-          "finalPrTarget",
-          "status",
-          "createdAt",
-          "lastUpdatedAt",
-          "recordedAt",
-          "recordPath",
-          "dag"
-        ],
-        "title": "OrchestrationRunResponse",
-        "description": "Full orchestration run record."
-      },
-      "OrchestrationTaskAttemptFactResponse": {
-        "properties": {
-          "runId": {
-            "type": "string",
-            "title": "Runid"
-          },
-          "taskId": {
-            "type": "string",
-            "title": "Taskid"
-          },
-          "taskTitle": {
-            "type": "string",
-            "title": "Tasktitle"
-          },
-          "attemptNumber": {
-            "type": "integer",
-            "title": "Attemptnumber"
-          },
-          "sourceKind": {
-            "type": "string",
-            "enum": [
-              "runtime_snapshot",
-              "terminal_record"
-            ],
-            "title": "Sourcekind"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "running",
-              "succeeded",
-              "failed",
-              "timed_out",
-              "skipped",
-              "blocked"
-            ],
-            "title": "Status"
-          },
-          "agent": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "claude",
-                  "codex",
-                  "openclaw",
-                  "opencloud"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent"
-          },
-          "sessionId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sessionid"
-          },
-          "exitCode": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exitcode"
-          },
-          "timedOut": {
-            "type": "boolean",
-            "title": "Timedout",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "runId",
-          "taskId",
-          "taskTitle",
-          "attemptNumber",
-          "sourceKind",
-          "status"
-        ],
-        "title": "OrchestrationTaskAttemptFactResponse",
-        "description": "Canonical fact record for a single task attempt within an orchestration run."
-      },
-      "OrchestrationTaskPullRequestResponse": {
-        "properties": {
-          "number": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Number"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
-          },
-          "state": {
-            "type": "string",
-            "title": "State"
-          },
-          "mergeGateStatus": {
-            "type": "string",
-            "title": "Mergegatestatus"
-          },
-          "baseBranch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Basebranch"
-          },
-          "headBranch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Headbranch"
-          },
-          "mergeability": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mergeability"
-          },
-          "checksSummary": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Checkssummary",
-            "default": {}
-          },
-          "reviewSummary": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OrchestrationReviewSummaryResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "snapshotSource": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Snapshotsource"
-          },
-          "lastRefreshedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastrefreshedat"
-          },
-          "isStale": {
-            "type": "boolean",
-            "title": "Isstale",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "state",
-          "mergeGateStatus"
-        ],
-        "title": "OrchestrationTaskPullRequestResponse",
-        "description": "Pull request snapshot for an individual orchestration task branch."
-      },
-      "OrchestrationTaskResponse": {
-        "properties": {
-          "taskId": {
-            "type": "string",
-            "title": "Taskid"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "dependsOn": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Dependson",
-            "default": []
-          },
-          "parentBranch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parentbranch"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "running",
-              "succeeded",
-              "failed",
-              "timed_out",
-              "skipped",
-              "blocked"
-            ],
-            "title": "Status"
-          },
-          "attempts": {
-            "type": "integer",
-            "title": "Attempts",
-            "default": 0
-          },
-          "taskPr": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OrchestrationTaskPullRequestResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "operationHistory": {
-            "items": {
-              "$ref": "#/components/schemas/OrchestrationOperationHistoryResponse"
-            },
-            "type": "array",
-            "title": "Operationhistory",
-            "default": []
-          },
-          "invocation": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OrchestrationInvocationResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "taskId",
-          "title",
-          "status"
-        ],
-        "title": "OrchestrationTaskResponse",
-        "description": "A single task within an orchestration run."
+        "title": "OpenClawConversationDetailResponse",
+        "description": "Provider-specific OpenClaw detail sections."
       },
       "PlanDetailResponse": {
         "properties": {
@@ -6023,8 +5310,7 @@
             "enum": [
               "claude",
               "codex",
-              "openclaw",
-              "opencloud"
+              "openclaw"
             ],
             "title": "Provider"
           },
@@ -6172,8 +5458,7 @@
             "enum": [
               "claude",
               "codex",
-              "openclaw",
-              "opencloud"
+              "openclaw"
             ],
             "title": "Provider"
           },
@@ -6326,8 +5611,7 @@
             "enum": [
               "claude",
               "codex",
-              "openclaw",
-              "opencloud"
+              "openclaw"
             ],
             "title": "Provider"
           },
@@ -6386,8 +5670,7 @@
                 "enum": [
                   "claude",
                   "codex",
-                  "openclaw",
-                  "opencloud"
+                  "openclaw"
                 ]
               },
               {
@@ -6412,6 +5695,21 @@
         "type": "object",
         "title": "ProviderSubscriptionSettingUpdateRequest",
         "description": "Mutable subscription-setting fields accepted by the PATCH endpoint."
+      },
+      "RecordCostRequest": {
+        "properties": {
+          "costUsd": {
+            "type": "number",
+            "title": "Costusd"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "costUsd"
+        ],
+        "title": "RecordCostRequest",
+        "description": "Body for ``POST /auth/credentials/{id}/record-cost``."
       },
       "SubscriptionSettingsResponse": {
         "properties": {
@@ -6549,7 +5847,7 @@
     },
     {
       "name": "gateway",
-      "description": "Backend-owned API gateway direction across frontend, stores, cache, and orchestration surfaces."
+      "description": "Backend-owned API gateway direction across frontend, stores, cache, and database surfaces."
     },
     {
       "name": "history",
@@ -6570,10 +5868,6 @@
     {
       "name": "tasks",
       "description": "Task payloads associated with Claude sessions."
-    },
-    {
-      "name": "orchestration",
-      "description": "Repo-local OATS orchestration and runtime inspection surfaces."
     }
   ]
 }

@@ -35,7 +35,6 @@ Domain-grouped `APIRouter` modules. Each router defines HTTP endpoints and deleg
 | `tasks.py` | Task payloads per session | Tool/task data |
 | `history.py` | Merged CLI histories | Command history |
 | `subscriptions.py` | Get/update settings | Subscription config |
-| `orchestration.py` | OATS run records | OATS monitoring |
 | `ops.py` | Health, docs, OpenAPI | Operations |
 | `gateway.py` | Root landing, deployment info | Gateway |
 
@@ -57,8 +56,6 @@ Pydantic v2 response models. All responses inherit from a base that serializes f
 - `ProcessedConversationResponse` — full message tree with blocks, tool calls, thinking
 - `AnalyticsDataResponse` — time-series, model breakdown, cost summary
 - `DatabaseStatusResponse` — per-artifact health, table inventory, refresh state
-- `OrchestrationRunResponse` — OATS DAG with task nodes and dependency edges
-
 ### Ports layer (`ports/`)
 
 Protocol classes (Python `typing.Protocol`) that define interfaces for external dependencies:
@@ -68,7 +65,6 @@ Protocol classes (Python `typing.Protocol`) that define interfaces for external 
 | `claude_fs.py` | Claude filesystem conversation reader |
 | `codex_sqlite.py` | Codex SQLite session reader |
 | `app_sqlite.py` | App metadata store (evaluations, subscriptions) |
-| `orchestration.py` | OATS artifact storage |
 | `evaluations.py` | Evaluation job runner |
 
 ### Adapter layer (`adapters/`)
@@ -78,7 +74,6 @@ Concrete implementations of the port interfaces:
 - `claude_fs/` — reads `~/.claude/projects/` directory tree, parses JSONL with streaming
 - `codex_sqlite/` — reads Codex SQLite schema for sessions
 - `app_sqlite/` — SQLAlchemy ORM for the app metadata database
-- `oats_artifacts/` — parses `.oats/runtime/` files for run records
 - `evaluation_jobs.py` — spawns CLI subprocess for LLM evaluation
 
 ### Bootstrap (`bootstrap/`)
@@ -137,10 +132,6 @@ Concrete implementations of the port interfaces:
 - `evaluation-dialog.tsx` — start evaluation modal
 - `evaluations-tab.tsx` — evaluation history display
 - `context-tab.tsx` — token attribution charts and tables
-
-### Orchestration (`orchestration/`)
-- `orchestration-hub.tsx` — unified interface with tab switching
-- `overnight-oats-panel.tsx` — OATS run records with DAG visualization
 
 ### Databases (`databases/`)
 - `database-dashboard.tsx` — health status, refresh controls, table inspection

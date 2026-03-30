@@ -49,7 +49,7 @@ export function AuthManagementSection({
         <div>
           <h2 className="text-xl font-semibold">Auth Management</h2>
           <p className="text-sm text-muted-foreground">
-            Credential health, expiry, and spend tracking for worker dispatch eligibility.
+            Credential health, expiry, and spend tracking for local provider access.
           </p>
         </div>
         <AddCredentialDialog

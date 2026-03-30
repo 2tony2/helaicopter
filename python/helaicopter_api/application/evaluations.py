@@ -1,4 +1,4 @@
-"""Application-layer conversation evaluation job orchestration."""
+"""Application-layer conversation evaluation job logic."""
 
 from __future__ import annotations
 

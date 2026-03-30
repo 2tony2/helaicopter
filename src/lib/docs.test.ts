@@ -20,5 +20,5 @@ test("loadAppDoc resolves nested documentation pages", () => {
 test("getAppDocsNavigation returns repo-backed entries with docs routes", () => {
   const entries = getAppDocsNavigation();
   assert.ok(entries.some((entry) => entry.href === "/docs/api/overview"));
-  assert.ok(entries.some((entry) => entry.href === "/docs/orchestration/overview"));
+  assert.ok(!entries.some((entry) => entry.href === "/docs/orchestration/overview"));
 });

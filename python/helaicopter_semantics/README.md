@@ -132,5 +132,5 @@ All 25 tests pass and provide golden test coverage for semantic correctness.
 This package is the **Phase 1** foundation. Future phases will:
 
 1. **Phase 2:** Add ingestion adapters that use `normalize_token_fields()` before persistence
-2. **Phase 3:** Add orchestration status vocabulary mapping (currently in `helaicopter_domain.vocab`)
+2. **Phase 3:** Expand shared semantic helpers where another cross-cutting contract justifies them
 3. **Phase 4:** Remove frontend business logic duplication and normalization proxies
