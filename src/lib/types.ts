@@ -731,6 +731,8 @@ export interface AuthCredential {
   provider: "claude" | "codex";
   credentialType: CredentialType;
   status: CredentialStatus;
+  providerStatusCode?: string | null;
+  providerStatusMessage?: string | null;
   tokenExpiresAt?: string | null;
   cliConfigPath?: string | null;
   subscriptionId?: string | null;

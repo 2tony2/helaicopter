@@ -170,6 +170,48 @@
         }
       }
     },
+    "/auth/credentials/claude-cli/connect": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Connect a local Claude CLI session credential.",
+        "operationId": "credential_claude_cli_connect_auth_credentials_claude_cli_connect_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/credentials/codex-cli/connect": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Connect a local Codex CLI session credential.",
+        "operationId": "credential_codex_cli_connect_auth_credentials_codex_cli_connect_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/credentials/oauth/initiate": {
       "post": {
         "tags": [
@@ -4129,6 +4171,28 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "providerStatusCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providerstatuscode"
+          },
+          "providerStatusMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providerstatusmessage"
           },
           "tokenExpiresAt": {
             "anyOf": [

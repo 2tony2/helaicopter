@@ -7,9 +7,9 @@ import { CredentialList } from "@/components/auth/credential-list";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  useAddCredential,
+  useConnectClaudeCli,
+  useConnectCodexCli,
   useCredentials,
-  useInitiateOauth,
   useRefreshCredential,
   useRevokeCredential,
 } from "@/lib/client/auth";
@@ -23,24 +23,23 @@ export function AuthManagementSection({
   credentials,
   onRefresh,
   onRevoke,
-  onAddApiKey,
-  onInitiateOauth,
+  onConnectClaudeCli,
+  onConnectCodexCli,
   pending = false,
   error,
 }: {
   credentials: AuthCredential[];
   onRefresh?: (credentialId: string) => void;
   onRevoke?: (credentialId: string) => void;
-  onAddApiKey?: (input: {
-    provider: AuthCredential["provider"];
-    credentialType: "api_key";
-    apiKey: string;
-  }) => void;
-  onInitiateOauth?: (provider: AuthCredential["provider"]) => void;
+  onConnectClaudeCli?: () => void;
+  onConnectCodexCli?: () => void;
   pending?: boolean;
   error?: string | null;
 }) {
-  const active = credentials.filter((credential) => credential.status === "active").length;
+  const active = credentials.filter(
+    (credential) =>
+      credential.status === "active" && credential.providerStatusCode === "ready"
+  ).length;
   const revoked = credentials.filter((credential) => credential.status === "revoked").length;
 
   return (
@@ -53,8 +52,8 @@ export function AuthManagementSection({
           </p>
         </div>
         <AddCredentialDialog
-          onSubmit={onAddApiKey}
-          onOauth={onInitiateOauth}
+          onConnectClaudeCli={onConnectClaudeCli}
+          onConnectCodexCli={onConnectCodexCli}
           pending={pending}
         />
       </div>
@@ -100,6 +99,12 @@ export function AuthManagementSection({
         </div>
       ) : null}
 
+      {credentials.some((credential) => credential.providerStatusCode && credential.providerStatusCode !== "ready") ? (
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          {credentials.find((credential) => credential.providerStatusCode && credential.providerStatusCode !== "ready")?.providerStatusMessage}
+        </div>
+      ) : null}
+
       <CredentialList
         credentials={credentials}
         onRefresh={onRefresh}
@@ -111,10 +116,10 @@ export function AuthManagementSection({
 
 export function AuthManagementPanel() {
   const { data: credentials, isLoading } = useCredentials();
-  const addCredential = useAddCredential();
+  const connectClaudeCli = useConnectClaudeCli();
+  const connectCodexCli = useConnectCodexCli();
   const revokeCredential = useRevokeCredential();
   const refreshCredential = useRefreshCredential();
-  const oauth = useInitiateOauth();
 
   if (isLoading && !(credentials && credentials.length > 0)) {
     return (
@@ -131,31 +136,19 @@ export function AuthManagementPanel() {
       credentials={credentials ?? []}
       onRefresh={(credentialId) => void refreshCredential.run(credentialId)}
       onRevoke={(credentialId) => void revokeCredential.run(credentialId)}
-      onAddApiKey={(input) => void addCredential.run(input)}
-      onInitiateOauth={(provider) => {
-        void oauth.run(provider).then((result) => {
-          if (
-            typeof window !== "undefined" &&
-            result &&
-            typeof result === "object" &&
-            "redirectUrl" in result &&
-            typeof result.redirectUrl === "string"
-          ) {
-            window.location.assign(result.redirectUrl);
-          }
-        });
-      }}
+      onConnectClaudeCli={() => void connectClaudeCli.run()}
+      onConnectCodexCli={() => void connectCodexCli.run()}
       pending={
-        addCredential.isMutating ||
+        connectClaudeCli.isMutating ||
+        connectCodexCli.isMutating ||
         revokeCredential.isMutating ||
-        refreshCredential.isMutating ||
-        oauth.isMutating
+        refreshCredential.isMutating
       }
       error={
-        addCredential.error ??
+        connectClaudeCli.error ??
+        connectCodexCli.error ??
         revokeCredential.error ??
-        refreshCredential.error ??
-        oauth.error
+        refreshCredential.error
       }
     />
   );

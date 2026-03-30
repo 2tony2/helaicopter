@@ -14,6 +14,48 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Install with Homebrew
+
+Helaicopter now ships a custom Homebrew formula at [`Formula/helaicopter.rb`](Formula/helaicopter.rb).
+
+```bash
+brew tap 2tony2/helaicopter https://github.com/2tony2/helaicopter
+brew install --HEAD 2tony2/helaicopter/helaicopter
+helaicopter serve --open
+```
+
+The formula is currently **HEAD-only** because this repository does not publish tagged Homebrew release archives yet. The repository acts as a custom tap, and `brew install --HEAD ...` installs the formula from that tap and gives you a `helaicopter` command on your `PATH`.
+
+Useful commands after install:
+
+```bash
+helaicopter bootstrap          # refresh the writable runtime and install app dependencies
+helaicopter serve              # run the FastAPI backend and Next.js frontend together
+helaicopter serve --open       # start both servers and open the browser
+helaicopter paths --pretty     # show the staged Homebrew copy and the writable runtime directory
+brew services start helaicopter
+brew services stop helaicopter
+```
+
+## How Homebrew Works Here
+
+This repository is a mixed **Next.js + FastAPI** app, not a single prebuilt binary. That matters for Homebrew:
+
+- Homebrew installs the formula, plus system-level runtime dependencies: `node`, `python@3.13`, and `uv`.
+- The formula stages the repository into Homebrew’s read-only `libexec` area and installs a `helaicopter` launcher command.
+- On first run, the launcher copies the staged source into a user-writable runtime directory, runs `npm install --omit=dev`, runs `uv sync --frozen`, and builds the frontend with `npm run build`.
+- After bootstrap, `helaicopter serve` starts the FastAPI backend on `http://127.0.0.1:30000` and the Next.js frontend on `http://127.0.0.1:3000`.
+
+The writable runtime directory defaults to:
+
+- `~/Library/Application Support/Helaicopter` on macOS
+- `$XDG_DATA_HOME/helaicopter` when `XDG_DATA_HOME` is set
+- `~/.local/share/helaicopter` everywhere else
+
+You can override that location with `HELAICOPTER_HOME=/custom/path` or `helaicopter --runtime-root /custom/path ...`.
+
+Why this design instead of a fully vendored Homebrew formula? Homebrew formula builds run in a constrained environment, and this repo spans two package ecosystems. The formula therefore handles the system prerequisites and launcher, while the launcher performs the mutable app bootstrap in a normal writable directory.
+
 ## Requirements
 
 - **Node.js** 20+ (22+ recommended)
@@ -34,7 +76,17 @@ npm run dev
 - The FastAPI backend serves on `http://127.0.0.1:30000`.
 - `npm run dev` sets `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:30000` unless you override it.
 
-Run them separately if needed:
+For local iPhone testing, use the mobile-safe dev command instead:
+
+```bash
+npm run dev:mobile
+```
+
+- `npm run dev:mobile` binds both servers to `0.0.0.0` so your iPhone can reach them over Tailscale or your local network.
+- Browser-facing API calls are routed through the Next.js proxy at `/api/backend/*`, so the phone does not need a separate FastAPI URL.
+- The command prints the checkout-local web and API ports when it starts. Use the web port for the iPhone app URL.
+
+If you want to run the processes separately:
 
 ```bash
 npm run dev:web
@@ -58,6 +110,35 @@ curl http://127.0.0.1:30000/gateway/direction
 open http://127.0.0.1:30000/openapi.json
 npm run api:openapi
 ```
+
+## Run On Your iPhone
+
+Short version:
+
+```bash
+# 1. Start phone-reachable dev servers
+npm run dev:mobile
+
+# 2. Point Capacitor at your Mac over Tailscale
+export HELA_MOBILE_SERVER_URL=http://YOUR-MAC-NAME:WEB_PORT
+
+# 3. Sync native iOS config and open Xcode
+npm run mobile:ios:sync
+npm run mobile:ios:open
+```
+
+Then in Xcode:
+
+1. Connect your iPhone by cable
+2. Select the `App` target
+3. Open `Signing & Capabilities`
+4. Choose your Apple ID personal team
+5. Pick your iPhone as the run destination
+6. Press the Run button
+
+Detailed walkthrough:
+
+- [iPhone developer mode guide](./docs/guides/iphone-dev-mode.md)
 
 ## OpenAPI Artifacts
 

@@ -28,14 +28,21 @@ export function buildCheckoutInstance(repoRoot, overrides = {}) {
 }
 
 export function buildDevChildEnv(instance, baseEnv) {
+  const apiHost = baseEnv.HELA_API_HOST || "127.0.0.1";
+  const webHost = baseEnv.HELA_WEB_HOST || "127.0.0.1";
+  const useApiProxy = baseEnv.HELA_USE_API_PROXY === "1";
+
   return {
     ...baseEnv,
     HELA_CHECKOUT_ID: instance.checkoutId,
     HELA_PROJECT_ROOT: instance.repoRoot,
     HELA_API_PORT: String(instance.apiPort),
+    HELA_API_HOST: apiHost,
     HELA_WEB_PORT: String(instance.webPort),
+    HELA_WEB_HOST: webHost,
+    HELA_USE_API_PROXY: useApiProxy ? "1" : "",
     PORT: String(instance.webPort),
-    NEXT_PUBLIC_API_BASE_URL: `http://127.0.0.1:${instance.apiPort}`,
+    NEXT_PUBLIC_API_BASE_URL: useApiProxy ? "" : `http://127.0.0.1:${instance.apiPort}`,
   };
 }
 

@@ -14,6 +14,7 @@ import { parseApiBaseUrl } from "./schemas/runtime.ts";
 const configuredBaseUrl = parseApiBaseUrl(
   typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined
 );
+const proxyBasePath = "/api/backend";
 
 /** Override to point the frontend at a different origin (e.g. FastAPI). */
 let _baseUrl = configuredBaseUrl;
@@ -31,7 +32,7 @@ function api(path: string) {
     return `${_baseUrl}${path}`;
   }
 
-  return path;
+  return `${proxyBasePath}${path}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +192,14 @@ export function authCredential(credentialId: string) {
 
 export function authCredentialRefresh(credentialId: string) {
   return api(`/auth/credentials/${enc(credentialId)}/refresh`);
+}
+
+export function authCredentialClaudeCliConnect() {
+  return api("/auth/credentials/claude-cli/connect");
+}
+
+export function authCredentialCodexCliConnect() {
+  return api("/auth/credentials/codex-cli/connect");
 }
 
 export function authCredentialOauthInitiate() {

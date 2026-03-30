@@ -3647,6 +3647,28 @@
             "type": "string",
             "title": "Status"
           },
+          "providerStatusCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providerstatuscode"
+          },
+          "providerStatusMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providerstatusmessage"
+          },
           "tokenExpiresAt": {
             "anyOf": [
               {

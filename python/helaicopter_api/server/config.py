@@ -173,6 +173,30 @@ class Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".codex",
         description="Root of the Codex CLI data directory (typically ~/.codex).",
     )
+    codex_oauth_client_id: str | None = Field(
+        default=None,
+        description="OAuth client id used for local Codex authorization flows.",
+    )
+    codex_oauth_authorize_url: str = Field(
+        default="https://auth.openai.com/oauth/authorize",
+        description="Codex OAuth authorization endpoint.",
+    )
+    codex_oauth_token_url: str = Field(
+        default="https://auth.openai.com/oauth/token",
+        description="Codex OAuth token endpoint.",
+    )
+    codex_oauth_redirect_uri: str = Field(
+        default="http://127.0.0.1:31506/auth/credentials/oauth/callback",
+        description="Local callback URI used by the Codex OAuth flow.",
+    )
+    codex_oauth_scopes: tuple[str, ...] = Field(
+        default=("openid", "profile", "email", "offline_access"),
+        description="Requested OAuth scopes for Codex authorization.",
+    )
+    claude_cli_command: str = Field(
+        default="claude",
+        description="Command used to launch the local Claude CLI.",
+    )
     openclaw_dir: Path = Field(
         default_factory=lambda: Path.home() / ".openclaw",
         description="Root of the OpenClaw data directory (typically ~/.openclaw).",

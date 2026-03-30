@@ -1218,6 +1218,8 @@ export function normalizeAuthCredential(value: AuthCredentialPayload): AuthCrede
     provider: value.provider,
     credentialType: value.credentialType,
     status: value.status,
+    providerStatusCode: value.providerStatusCode ?? null,
+    providerStatusMessage: value.providerStatusMessage ?? null,
     tokenExpiresAt: value.tokenExpiresAt ?? null,
     cliConfigPath: value.cliConfigPath ?? null,
     subscriptionId: value.subscriptionId ?? null,

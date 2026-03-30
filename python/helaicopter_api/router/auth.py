@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from helaicopter_api.application.auth import (
     complete_oauth_callback,
+    connect_claude_cli_credential,
+    connect_codex_cli_credential,
     create_credential,
     initiate_oauth,
     list_credentials,
@@ -41,6 +43,38 @@ async def credential_create(
 
 
 @auth_router.post(
+    "/credentials/claude-cli/connect",
+    response_model=CredentialResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+    summary="Connect a local Claude CLI session credential.",
+)
+async def credential_claude_cli_connect(
+    services: BackendServices = Depends(get_services),
+) -> CredentialResponse:
+    try:
+        return connect_claude_cli_credential(services.sqlite_engine, settings=services.settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@auth_router.post(
+    "/credentials/codex-cli/connect",
+    response_model=CredentialResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+    summary="Connect a local Codex CLI session credential.",
+)
+async def credential_codex_cli_connect(
+    services: BackendServices = Depends(get_services),
+) -> CredentialResponse:
+    try:
+        return connect_codex_cli_credential(services.sqlite_engine, settings=services.settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@auth_router.post(
     "/credentials/oauth/initiate",
     response_model=OAuthInitiateResponse,
     response_model_by_alias=True,
@@ -49,8 +83,12 @@ async def credential_create(
 )
 async def credential_oauth_initiate(
     body: OAuthInitiateRequest,
+    services: BackendServices = Depends(get_services),
 ) -> OAuthInitiateResponse:
-    return initiate_oauth(provider=body.provider)
+    try:
+        return initiate_oauth(provider=body.provider, settings=services.settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @auth_router.get(
@@ -66,9 +104,16 @@ async def credential_oauth_callback(
     services: BackendServices = Depends(get_services),
 ) -> CredentialResponse:
     try:
-        return complete_oauth_callback(engine=services.sqlite_engine, code=code, state=state)
+        return complete_oauth_callback(
+            engine=services.sqlite_engine,
+            code=code,
+            state=state,
+            settings=services.settings,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @auth_router.get(
@@ -124,7 +169,11 @@ async def credential_refresh(
     services: BackendServices = Depends(get_services),
 ) -> CredentialResponse:
     try:
-        refreshed = refresh_credential(services.sqlite_engine, credential_id)
+        refreshed = refresh_credential(
+            services.sqlite_engine,
+            credential_id,
+            settings=services.settings,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RuntimeError as exc:

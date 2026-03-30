@@ -56,7 +56,7 @@ test("invalid NEXT_PUBLIC_API_BASE_URL falls back to an empty configured base UR
   const endpoints = await importEndpointsWithApiBaseUrl(" not-a-url ");
 
   assert.equal(endpoints.getBaseUrl(), "");
-  assert.equal(endpoints.projects(), "/projects");
+  assert.equal(endpoints.projects(), "/api/backend/projects");
 });
 
 test("absolute NEXT_PUBLIC_API_BASE_URL values are trimmed and normalized", async () => {
@@ -106,22 +106,22 @@ test("endpoint builders stay relative when NEXT_PUBLIC_API_BASE_URL is unset", a
   });
 
   try {
-    assert.equal(projects(), "/projects");
+    assert.equal(projects(), "/api/backend/projects");
     assert.equal(
       conversation("-Users-tony-Code-helaicopter", "session-123"),
-      "/conversations/-Users-tony-Code-helaicopter/session-123"
+      "/api/backend/conversations/-Users-tony-Code-helaicopter/session-123"
     );
     assert.equal(
       conversationDags({ project: "repo", days: 7, provider: "all" }),
-      "/conversation-dags?project=repo&days=7"
+      "/api/backend/conversation-dags?project=repo&days=7"
     );
     assert.equal(
       subagent("-Users-tony-Code-helaicopter", "session-123", "agent-1"),
-      "/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
+      "/api/backend/conversations/-Users-tony-Code-helaicopter/session-123/subagents/agent-1"
     );
     assert.equal(
       conversationByRef("review-the-backend-rollout--claude-claude-session-1"),
-      "/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1"
+      "/api/backend/conversations/by-ref/review-the-backend-rollout--claude-claude-session-1"
     );
   } finally {
     Object.defineProperty(globalThis, "window", {
@@ -206,6 +206,26 @@ test("setBaseUrl continues to normalize absolute URLs for explicit overrides", a
 
   assert.equal(getBaseUrl(), "https://api.example.test");
   assert.equal(projects(), "https://api.example.test/projects");
+});
+
+test("Claude CLI auth connect endpoint targets the dedicated reuse route", async () => {
+  const { setBaseUrl, authCredentialClaudeCliConnect } = await getEndpoints();
+  setBaseUrl("https://api.example.test/");
+
+  assert.equal(
+    authCredentialClaudeCliConnect(),
+    "https://api.example.test/auth/credentials/claude-cli/connect"
+  );
+});
+
+test("Codex CLI auth connect endpoint targets the dedicated reuse route", async () => {
+  const { setBaseUrl, authCredentialCodexCliConnect } = await getEndpoints();
+  setBaseUrl("https://api.example.test/");
+
+  assert.equal(
+    authCredentialCodexCliConnect(),
+    "https://api.example.test/auth/credentials/codex-cli/connect"
+  );
 });
 
 test("normalizeProjects maps FastAPI project payloads to frontend camelCase types", async () => {

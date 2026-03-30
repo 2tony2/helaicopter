@@ -25,6 +25,7 @@ export function CredentialList({
     <div className="grid gap-3 xl:grid-cols-2">
       {credentials.map((credential) => {
         const isPending = pendingCredentialId === credential.credentialId;
+        const canRefresh = credential.credentialType === "oauth_token";
         return (
           <Card key={credential.credentialId}>
             <CardContent className="space-y-4 p-4">
@@ -66,14 +67,16 @@ export function CredentialList({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isPending}
-                  onClick={() => onRefresh?.(credential.credentialId)}
-                >
-                  Refresh auth
-                </Button>
+                {canRefresh ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isPending}
+                    onClick={() => onRefresh?.(credential.credentialId)}
+                  >
+                    Refresh auth
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"
