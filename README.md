@@ -76,6 +76,20 @@ open http://127.0.0.1:30000/openapi.json
 npm run api:openapi
 ```
 
+## External Agent MCP Surface
+
+The FastAPI backend now mounts a curated FastMCP endpoint for external agents at:
+
+```text
+http://127.0.0.1:30000/mcp
+```
+
+The MCP surface is intentionally analysis-oriented:
+
+- read access to analytics, conversations, DAGs, history, plans, projects, tasks, orchestration facts, and evaluation prompt listings
+- conversation evaluation creation so agents can run eval workflows
+- no auth credential management, worker control, database refresh, or orchestration mutation endpoints
+
 ## OpenAPI Artifacts
 
 The repo commits generated OpenAPI snapshots for the FastAPI backend under `public/openapi/`. This keeps the backend contract in a stable repo-local location that the Next.js app can serve directly from the sidebar API section.
