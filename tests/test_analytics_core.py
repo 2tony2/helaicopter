@@ -290,6 +290,9 @@ class TestPureAnalyticsAggregation:
         assert analytics.cost_breakdown_by_provider["claude"].total_cost == pytest.approx(1.0935)
         assert analytics.cost_breakdown_by_provider["codex"].total_cost == pytest.approx(0.45125)
         assert analytics.estimated_cost == pytest.approx(1.54475)
+        assert analytics.time_series.daily[0].total_tokens == 185_000
+        assert analytics.time_series.daily[1].codex_total_tokens == 220_000
+        assert analytics.time_series.daily[1].total_tokens == 220_000
 
     def test_build_analytics_keeps_openclaw_counts_costs_and_tool_breakdowns_separate(self) -> None:
         now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)

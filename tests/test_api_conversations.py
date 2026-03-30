@@ -432,6 +432,94 @@ def _seed_sources(tmp_path: Path) -> Settings:
         encoding="utf-8",
     )
     os.utime(claude_session, (1_763_287_215, 1_763_287_215))
+    claude_fragmented_session = claude_project_dir / "claude-fragmented-session.jsonl"
+    claude_fragmented_session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "claude-fragmented-user-1",
+                        "timestamp": "2026-03-18T09:10:00Z",
+                        "sessionId": "claude-fragmented-session",
+                        "message": {
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Review fragmented Claude usage"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "uuid": "claude-fragmented-assistant-1a",
+                        "timestamp": "2026-03-18T09:10:01Z",
+                        "sessionId": "claude-fragmented-session",
+                        "message": {
+                            "id": "msg-fragmented-1",
+                            "role": "assistant",
+                            "model": "claude-sonnet-4-5",
+                            "usage": {
+                                "input_tokens": 10,
+                                "output_tokens": 5,
+                                "cache_creation_input_tokens": 100,
+                                "cache_read_input_tokens": 200,
+                                "speed": "standard",
+                            },
+                            "content": [{"type": "text", "text": "Starting the fragmented response."}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "uuid": "claude-fragmented-assistant-1b",
+                        "timestamp": "2026-03-18T09:10:02Z",
+                        "sessionId": "claude-fragmented-session",
+                        "message": {
+                            "id": "msg-fragmented-1",
+                            "role": "assistant",
+                            "model": "claude-sonnet-4-5",
+                            "usage": {
+                                "input_tokens": 10,
+                                "output_tokens": 40,
+                                "cache_creation_input_tokens": 100,
+                                "cache_read_input_tokens": 200,
+                                "speed": "standard",
+                            },
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "tool-fragmented-1",
+                                    "name": "Bash",
+                                    "input": {"cmd": "pwd"},
+                                }
+                            ],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "claude-fragmented-user-2",
+                        "timestamp": "2026-03-18T09:10:03Z",
+                        "sessionId": "claude-fragmented-session",
+                        "message": {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": "tool-fragmented-1",
+                                    "content": "/Users/tony/Code/helaicopter",
+                                }
+                            ],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    os.utime(claude_fragmented_session, (1_763_287_803, 1_763_287_803))
     claude_subagents_dir.joinpath("agent-claude-agent-1.jsonl").write_text(
         "\n".join(
             [
@@ -1419,6 +1507,12 @@ class TestConversationEndpoints:
             claude_live_summary["conversation_ref"]
             == "review-the-backend-rollout--claude-claude-session-1"
         )
+        claude_fragmented_summary = by_session["claude-fragmented-session"]
+        assert claude_fragmented_summary["tool_breakdown"] == {"Bash": 1}
+        assert claude_fragmented_summary["total_input_tokens"] == 10
+        assert claude_fragmented_summary["total_output_tokens"] == 40
+        assert claude_fragmented_summary["total_cache_creation_tokens"] == 100
+        assert claude_fragmented_summary["total_cache_read_tokens"] == 200
 
         codex_subagent_summary = by_session["019cdbff-dbb7-71d0-baaf-c669c55af629"]
         assert codex_subagent_summary["thread_type"] == "subagent"
@@ -1463,6 +1557,32 @@ class TestConversationEndpoints:
             "output_tokens": 45,
             "cache_creation_tokens": 12,
             "cache_read_tokens": 6,
+        }
+        claude_fragmented_detail = conversations_client.get(
+            "/conversations/-Users-tony-Code-helaicopter/claude-fragmented-session"
+        )
+        assert claude_fragmented_detail.status_code == 200
+        claude_fragmented_payload = claude_fragmented_detail.json()
+        assert [message["id"] for message in claude_fragmented_payload["messages"]] == [
+            "claude-fragmented-user-1",
+            "msg-fragmented-1",
+        ]
+        assert claude_fragmented_payload["messages"][1]["blocks"] == [
+            {"type": "text", "text": "Starting the fragmented response."},
+            {
+                "type": "tool_call",
+                "tool_use_id": "tool-fragmented-1",
+                "tool_name": "Bash",
+                "input": {"cmd": "pwd"},
+                "result": "/Users/tony/Code/helaicopter",
+                "is_error": False,
+            },
+        ]
+        assert claude_fragmented_payload["total_usage"] == {
+            "input_tokens": 10,
+            "output_tokens": 40,
+            "cache_creation_tokens": 100,
+            "cache_read_tokens": 200,
         }
 
         codex_detail = conversations_client.get(
@@ -2711,7 +2831,7 @@ class TestConversationDagEndpoints:
             "leaf_count": 1,
             "root_subagent_count": 1,
             "total_messages": 4,
-            "total_tokens": 406,
+            "total_tokens": 390,
         }
         assert codex_payload["nodes"][1]["subagent_type"] == "explorer"
         assert [node["path"] for node in codex_payload["nodes"]] == [
@@ -2855,7 +2975,7 @@ class TestProjectsHistoryAndTasks:
         assert payload[2]["session_count"] == 2
         assert payload[3]["display_name"] == "Code/helaicopter"
         assert payload[3]["full_path"].endswith("/.claude/projects/-Users-tony-Code-helaicopter")
-        assert payload[3]["session_count"] == 2
+        assert payload[3]["session_count"] == 3
         assert (
             payload[0]["last_activity"]
             >= payload[1]["last_activity"]

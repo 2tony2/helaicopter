@@ -1319,6 +1319,8 @@ def _summarize_claude_session(
     end_timestamp = 0.0
     git_branch: str | None = None
     speed: str | None = None
+    assistant_usage_by_key: dict[str, _UsageTotals] = {}
+    assistant_tool_signatures_by_key: dict[str, set[str]] = defaultdict(set)
 
     for event in events:
         if event.type == "file-history-snapshot":
@@ -1340,19 +1342,23 @@ def _summarize_claude_session(
                 if _block_type(block) == "tool_result" and bool(block.get("is_error")):
                     failed_tool_call_count += 1
         elif event.type == "assistant" and message.get("role") == "assistant":
-            message_count += 1
+            assistant_key = _claude_assistant_message_key(event, message)
+            if assistant_key not in assistant_usage_by_key:
+                message_count += 1
+                assistant_usage_by_key[assistant_key] = _UsageTotals()
             if model is None and isinstance(message.get("model"), str):
                 model = message["model"]
             usage = _usage_from_message(message)
-            total_input_tokens += usage.input_tokens
-            total_output_tokens += usage.output_tokens
-            total_cache_creation_tokens += usage.cache_creation_tokens
-            total_cache_read_tokens += usage.cache_read_tokens
+            _merge_usage_max(assistant_usage_by_key[assistant_key], usage)
             if speed is None and usage.speed:
                 speed = usage.speed
             for block in _message_content_list(message):
                 if _block_type(block) != "tool_use":
                     continue
+                tool_signature = _claude_message_block_signature(block)
+                if tool_signature in assistant_tool_signatures_by_key[assistant_key]:
+                    continue
+                assistant_tool_signatures_by_key[assistant_key].add(tool_signature)
                 tool_use_count += 1
                 tool_name = _string_or_none(block.get("name")) or "unknown"
                 tool_breakdown[tool_name] = tool_breakdown.get(tool_name, 0) + 1
@@ -1360,6 +1366,12 @@ def _summarize_claude_session(
                     subagent_type = _string_or_none(_dict_or_none(block.get("input")).get("subagent_type"))
                     subagent_key = subagent_type or "unknown"
                     subagent_type_breakdown[subagent_key] = subagent_type_breakdown.get(subagent_key, 0) + 1
+
+    for usage in assistant_usage_by_key.values():
+        total_input_tokens += usage.input_tokens
+        total_output_tokens += usage.output_tokens
+        total_cache_creation_tokens += usage.cache_creation_tokens
+        total_cache_read_tokens += usage.cache_read_tokens
 
     if not created_at and not end_timestamp and not first_message and message_count == 0:
         return None
@@ -1656,6 +1668,7 @@ def _shape_claude_live_conversation_detail(
     created_at = 0.0
     end_time = 0.0
     next_step_index = 0
+    assistant_state_by_key: dict[str, dict[str, Any]] = {}
 
     for event in events:
         if event.type in {"file-history-snapshot", "progress"}:
@@ -1703,57 +1716,80 @@ def _shape_claude_live_conversation_detail(
         if event.type != "assistant" or message.get("role") != "assistant":
             continue
 
+        assistant_key = _claude_assistant_message_key(event, message)
+        state = assistant_state_by_key.get(assistant_key)
+        if state is None:
+            response_message = ConversationMessageResponse(
+                id=_string_or_none(message.get("id")) or event.uuid or f"assistant-{len(messages)}",
+                role="assistant",
+                timestamp=ts,
+                blocks=[],
+                usage=None,
+                model=_string_or_none(message.get("model")),
+                speed=None,
+            )
+            state = {
+                "message": response_message,
+                "usage": _UsageTotals(),
+                "tool_names": [],
+                "tool_signatures": set(),
+                "block_signatures": set(),
+                "has_thinking": False,
+            }
+            assistant_state_by_key[assistant_key] = state
+            messages.append(response_message)
+
         if model is None and isinstance(message.get("model"), str):
             model = message["model"]
         usage = _usage_from_message(message)
-        total_usage.add(usage)
+        response_message = cast(ConversationMessageResponse, state["message"])
+        aggregated_usage = cast(_UsageTotals, state["usage"])
+        _merge_usage_max(aggregated_usage, usage)
+        response_message.usage = aggregated_usage.response()
+        response_message.model = _string_or_none(message.get("model")) or response_message.model
+        response_message.speed = aggregated_usage.speed or response_message.speed
         if speed is None and usage.speed:
             speed = usage.speed
 
-        blocks: list[ConversationMessageBlockResponse] = []
-        tool_names: list[str] = []
-        has_thinking = False
         for block in _message_content_list(message):
             block_type = _block_type(block)
             if block_type == "text":
                 text = _string_or_none(block.get("text"))
-                if text:
-                    blocks.append(_text_block(text))
+                block_signature = _claude_message_block_signature(block)
+                if text and block_signature not in cast(set[str], state["block_signatures"]):
+                    cast(set[str], state["block_signatures"]).add(block_signature)
+                    response_message.blocks.append(_text_block(text))
             elif block_type == "thinking":
                 thinking = _string_or_none(block.get("thinking"))
-                if thinking:
-                    has_thinking = True
-                    blocks.append(_thinking_block(thinking))
+                block_signature = _claude_message_block_signature(block)
+                if thinking and block_signature not in cast(set[str], state["block_signatures"]):
+                    state["has_thinking"] = True
+                    cast(set[str], state["block_signatures"]).add(block_signature)
+                    response_message.blocks.append(_thinking_block(thinking))
             elif block_type == "tool_use":
+                tool_signature = _claude_message_block_signature(block)
+                if tool_signature in cast(set[str], state["tool_signatures"]):
+                    continue
+                cast(set[str], state["tool_signatures"]).add(tool_signature)
                 tool_name = _string_or_none(block.get("name")) or "unknown"
                 tool_call = _tool_call_block(
                     tool_use_id=_string_or_none(block.get("id")),
                     tool_name=tool_name,
                     input_payload=_dict_or_none(block.get("input")),
                 )
-                blocks.append(tool_call)
+                response_message.blocks.append(tool_call)
                 if tool_call.tool_use_id:
                     pending_tool_calls[tool_call.tool_use_id] = tool_call
-                tool_names.append(tool_name)
+                cast(list[str], state["tool_names"]).append(tool_name)
 
-        if not blocks:
+    for state in assistant_state_by_key.values():
+        response_message = cast(ConversationMessageResponse, state["message"])
+        usage = cast(_UsageTotals, state["usage"])
+        total_usage.add(usage)
+        if not response_message.blocks or usage.total_tokens == 0:
             continue
-
-        message_id = event.uuid or f"assistant-{len(messages)}"
-        messages.append(
-            ConversationMessageResponse(
-                id=message_id,
-                role="assistant",
-                timestamp=ts,
-                blocks=blocks,
-                usage=usage.response(),
-                model=_string_or_none(message.get("model")),
-                speed=usage.speed,
-            )
-        )
-
-        if usage.total_tokens == 0:
-            continue
+        tool_names = cast(list[str], state["tool_names"])
+        has_thinking = bool(state["has_thinking"])
         if tool_names:
             per_tool = usage.split(len(tool_names))
             for tool_name in tool_names:
@@ -1774,12 +1810,12 @@ def _shape_claude_live_conversation_detail(
             category = "conversation"
         context_steps.append(
             ConversationContextStepResponse(
-                message_id=message_id,
+                message_id=response_message.id,
                 index=next_step_index,
                 role="assistant",
                 label=label,
                 category=_context_category(category),
-                timestamp=ts,
+                timestamp=response_message.timestamp,
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
                 cache_write_tokens=usage.cache_creation_tokens,
@@ -3927,6 +3963,38 @@ def _usage_from_message(message: dict[str, Any]) -> _UsageTotals:
         cache_read_tokens=_int_value(usage.get("cache_read_input_tokens") or usage.get("cached_input_tokens")),
         speed=_string_or_none(usage.get("speed")),
     )
+
+
+def _claude_assistant_message_key(event: RawConversationEvent, message: dict[str, Any]) -> str:
+    return _string_or_none(message.get("id")) or event.uuid or f"assistant:{id(message)}"
+
+
+def _claude_message_block_signature(block: dict[str, Any]) -> str:
+    block_type = _block_type(block)
+    if block_type == "tool_use":
+        return json.dumps(
+            {
+                "type": block_type,
+                "id": _string_or_none(block.get("id")),
+                "name": _string_or_none(block.get("name")),
+                "input": _dict_or_none(block.get("input")),
+            },
+            sort_keys=True,
+        )
+    if block_type == "text":
+        return f"text:{_string_or_none(block.get('text')) or ''}"
+    if block_type == "thinking":
+        return f"thinking:{_string_or_none(block.get('thinking')) or ''}"
+    return json.dumps(block, sort_keys=True, default=str)
+
+
+def _merge_usage_max(target: _UsageTotals, source: _UsageTotals) -> None:
+    target.input_tokens = max(target.input_tokens, source.input_tokens)
+    target.output_tokens = max(target.output_tokens, source.output_tokens)
+    target.cache_creation_tokens = max(target.cache_creation_tokens, source.cache_creation_tokens)
+    target.cache_read_tokens = max(target.cache_read_tokens, source.cache_read_tokens)
+    if target.speed is None:
+        target.speed = source.speed
 
 
 class _BucketTotals(_UsageTotals):
