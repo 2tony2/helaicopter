@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 import sqlite3
@@ -295,7 +296,11 @@ def test_analytics_reads_shared_repo_artifacts_when_started_from_worktree(
 
     services = build_services(Settings())
 
-    analytics = get_analytics(services, days=7)
+    analytics = get_analytics(
+        services,
+        days=7,
+        now=datetime(2026, 3, 30, 9, tzinfo=UTC),
+    )
 
     assert analytics.total_conversations == 1
     assert analytics.total_input_tokens == 1000

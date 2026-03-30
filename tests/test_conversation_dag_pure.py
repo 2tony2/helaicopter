@@ -114,7 +114,7 @@ def test_basic_two_node_dag_and_derived_label_and_path() -> None:
 
     paths = [node.path for node in dag.nodes]
     assert paths[0] == "/conversations/by-ref/hello--claude-root"
-    assert "/conversations/by-ref/inspect--claude-child" in paths
+    assert "/conversations/by-ref/hello--claude-child" in paths
 
     # Totals include cache and output in ConversationUsageResponse
     totals = [node.total_tokens for node in dag.nodes]

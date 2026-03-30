@@ -146,6 +146,7 @@ def test_queue_snapshot_prefers_node_metadata_and_surfaces_auth_expired_reason(t
                 "model": "o3-pro",
                 "reason": "auth_expired",
                 "reasonLabel": "A matching worker exists, but its provider auth must be refreshed.",
+                "canRetry": False,
             }
         ]
 
@@ -294,6 +295,16 @@ def test_lifespan_startup_keeps_drained_worker_out_of_ready_queue(tmp_path: Path
         patch("helaicopter_api.server.lifespan.build_services", return_value=services),
         TestClient(create_app()) as client,
     ):
+        create_credential(
+            engine,
+            CreateCredentialRequest.model_validate(
+                {
+                    "provider": "claude",
+                    "credentialType": "local_cli_session",
+                    "cliConfigPath": str(tmp_path / ".claude.json"),
+                }
+            ),
+        )
         register = client.post("/workers/register", json={
             "workerType": "pi_shell",
             "provider": "claude",
@@ -337,6 +348,7 @@ def test_lifespan_startup_keeps_drained_worker_out_of_ready_queue(tmp_path: Path
                 "model": "claude-sonnet-4-6",
                 "reason": "draining",
                 "reasonLabel": "Matching workers are draining and cannot accept new tasks.",
+                "canRetry": False,
             }
         ]
 

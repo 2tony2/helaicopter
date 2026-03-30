@@ -79,7 +79,7 @@ def build_conversation_dag(
 
     visit(root_session_id, 0)
     root_node = nodes.get(root_session_id)
-    if root_node is None or not root_node.has_transcript:
+    if root_node is None or not root_node.has_transcript or root_node.message_count == 0:
         return None
 
     ordered_nodes = sorted(
