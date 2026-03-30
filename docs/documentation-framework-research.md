@@ -27,7 +27,7 @@ Sphinx is the mature Python-centric documentation system. For this repo, the rea
 
 **Pros**
 
-- Best Python ecosystem fit for `python/helaicopter_api/`, `python/oats/`, and `helaicopter_db`
+- Best Python ecosystem fit for `python/helaicopter_api/` and `helaicopter_db`
 - Strong API reference story for Python modules, especially if code docstrings become a real maintenance target
 - Excellent static output and boring, stable CI story
 - Good cross-references, versioning, PDF/epub output, and long-form technical writing support

@@ -31,9 +31,7 @@ from helaicopter_domain.vocab import (
     EvaluationStatus,
     ProviderName,
     ProviderSelection,
-    RunRuntimeStatus,
     RuntimeReadBackend,
-    TaskRuntimeStatus,
 )
 
 __all__ = [
@@ -63,11 +61,9 @@ __all__ = [
     "ProviderName",
     "ProviderSelection",
     "RunId",
-    "RunRuntimeStatus",
     "RuntimeReadBackend",
     "SessionId",
     "SubagentTypeId",
     "TaskId",
-    "TaskRuntimeStatus",
     "ToolId",
 ]

@@ -38,16 +38,11 @@ from .models import (
     DimTool,
     FactConversation,
     FactDailyUsage,
-    FactOrchestrationRun,
-    FactOrchestrationTaskAttempt,
     FactSubagentUsage,
     FactToolUsage,
     MessageBlockRecord,
-    OltpFactOrchestrationRun,
-    OltpFactOrchestrationTaskAttempt,
     RefreshRun,
 )
-from .orchestration_facts import collect_orchestration_facts
 from .schemaspy import generate_schema_docs
 from .settings import (
     get_database_settings,
@@ -267,8 +262,6 @@ def _load_latest_completed_refresh(settings: Settings | None = None) -> RefreshR
 
 def _reset_oltp_data(session: Session) -> None:
     for model in (
-        OltpFactOrchestrationTaskAttempt,
-        OltpFactOrchestrationRun,
         MessageBlockRecord,
         ConversationMessage,
         ConversationPlanRecord,
@@ -304,8 +297,6 @@ def _reset_olap_data(session: Session) -> None:
     # Use raw SQL to avoid duckdb-engine FK constraint check issues
     # with the ORM delete() path.
     for table in (
-        "fact_orchestration_task_attempts",
-        "fact_orchestration_runs",
         "fact_subagent_usage",
         "fact_tool_usage",
         "fact_daily_usage",
@@ -327,18 +318,11 @@ def _delete_olap_conversations(session: Session, conversation_ids: set[str]) -> 
 
 def _reset_olap_derived_tables(session: Session) -> None:
     for table in (
-        "fact_orchestration_task_attempts",
-        "fact_orchestration_runs",
         "fact_subagent_usage",
         "fact_tool_usage",
         "fact_daily_usage",
     ):
         session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
-
-
-def _reset_oltp_orchestration_facts(session: Session) -> None:
-    for model in (OltpFactOrchestrationTaskAttempt, OltpFactOrchestrationRun):
-        session.execute(delete(model))
 
 
 def _text_preview(blocks: list[dict[str, Any]]) -> str:
@@ -1009,7 +993,6 @@ def run_refresh(
                 _reset_olap_data(olap_session)
             else:
                 _delete_conversations(oltp_session, deleted_conversation_ids)
-                _reset_oltp_orchestration_facts(oltp_session)
                 _delete_olap_conversations(olap_session, deleted_conversation_ids | changed_conversation_ids)
                 _reset_olap_derived_tables(olap_session)
             oltp_session.commit()
@@ -1094,111 +1077,6 @@ def run_refresh(
                         subagent_type_id=row["subagent_type_id"],
                         conversation_count=row["conversation_count"],
                         subagent_count=row["subagent_count"],
-                    )
-                )
-
-            orchestration_run_facts, orchestration_task_attempt_facts = collect_orchestration_facts(
-                backend_settings.project_root
-            )
-            for fact in orchestration_run_facts:
-                oltp_session.add(
-                    OltpFactOrchestrationRun(
-                        run_fact_id=fact.run_fact_id,
-                        run_source=fact.run_source,
-                        run_id=fact.run_id,
-                        flow_run_name=fact.flow_run_name,
-                        run_title=fact.run_title,
-                        source_path=fact.source_path,
-                        repo_root=fact.repo_root,
-                        config_path=fact.config_path,
-                        artifact_root=fact.artifact_root,
-                        status=fact.status,
-                        canonical_status_source=fact.canonical_status_source,
-                        has_runtime_snapshot=fact.has_runtime_snapshot,
-                        has_terminal_record=fact.has_terminal_record,
-                        task_count=fact.task_count,
-                        completed_task_count=fact.completed_task_count,
-                        running_task_count=fact.running_task_count,
-                        failed_task_count=fact.failed_task_count,
-                        task_attempt_count=fact.task_attempt_count,
-                        started_at=fact.started_at,
-                        updated_at=fact.updated_at,
-                        finished_at=fact.finished_at,
-                    )
-                )
-                olap_session.add(
-                    FactOrchestrationRun(
-                        run_fact_id=fact.run_fact_id,
-                        run_source=fact.run_source,
-                        run_id=fact.run_id,
-                        flow_run_name=fact.flow_run_name,
-                        run_title=fact.run_title,
-                        source_path=fact.source_path,
-                        repo_root=fact.repo_root,
-                        config_path=fact.config_path,
-                        artifact_root=fact.artifact_root,
-                        status=fact.status,
-                        canonical_status_source=fact.canonical_status_source,
-                        has_runtime_snapshot=fact.has_runtime_snapshot,
-                        has_terminal_record=fact.has_terminal_record,
-                        task_count=fact.task_count,
-                        completed_task_count=fact.completed_task_count,
-                        running_task_count=fact.running_task_count,
-                        failed_task_count=fact.failed_task_count,
-                        task_attempt_count=fact.task_attempt_count,
-                        started_at=fact.started_at,
-                        updated_at=fact.updated_at,
-                        finished_at=fact.finished_at,
-                    )
-                )
-
-            for fact in orchestration_task_attempt_facts:
-                oltp_session.add(
-                    OltpFactOrchestrationTaskAttempt(
-                        task_attempt_fact_id=fact.task_attempt_fact_id,
-                        run_fact_id=fact.run_fact_id,
-                        run_source=fact.run_source,
-                        run_id=fact.run_id,
-                        task_id=fact.task_id,
-                        task_title=fact.task_title,
-                        attempt=fact.attempt,
-                        status=fact.status,
-                        upstream_task_ids_json=fact.upstream_task_ids_json,
-                        agent=fact.agent,
-                        session_id=fact.session_id,
-                        model=fact.model,
-                        reasoning_effort=fact.reasoning_effort,
-                        error=fact.error,
-                        output_text=fact.output_text,
-                        started_at=fact.started_at,
-                        updated_at=fact.updated_at,
-                        finished_at=fact.finished_at,
-                        last_heartbeat_at=fact.last_heartbeat_at,
-                        last_progress_event_at=fact.last_progress_event_at,
-                    )
-                )
-                olap_session.add(
-                    FactOrchestrationTaskAttempt(
-                        task_attempt_fact_id=fact.task_attempt_fact_id,
-                        run_fact_id=fact.run_fact_id,
-                        run_source=fact.run_source,
-                        run_id=fact.run_id,
-                        task_id=fact.task_id,
-                        task_title=fact.task_title,
-                        attempt=fact.attempt,
-                        status=fact.status,
-                        upstream_task_ids_json=fact.upstream_task_ids_json,
-                        agent=fact.agent,
-                        session_id=fact.session_id,
-                        model=fact.model,
-                        reasoning_effort=fact.reasoning_effort,
-                        error=fact.error,
-                        output_text=fact.output_text,
-                        started_at=fact.started_at,
-                        updated_at=fact.updated_at,
-                        finished_at=fact.finished_at,
-                        last_heartbeat_at=fact.last_heartbeat_at,
-                        last_progress_event_at=fact.last_progress_event_at,
                     )
                 )
 

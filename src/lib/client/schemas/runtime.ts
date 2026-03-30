@@ -21,13 +21,6 @@ export const conversationDetailTabs = [
 
 export type ConversationDetailTab = (typeof conversationDetailTabs)[number];
 
-export const orchestrationTabs = [
-  "conversation-dags",
-  "orchestration",
-] as const;
-
-export type OrchestrationTab = (typeof orchestrationTabs)[number];
-
 export const apiBaseUrlSchema = z.union([
   z.undefined().transform(() => ""),
   z.null().transform(() => ""),
@@ -36,7 +29,6 @@ export const apiBaseUrlSchema = z.union([
 ]);
 
 export const conversationDetailTabSchema = z.enum(conversationDetailTabs);
-export const orchestrationTabSchema = z.enum(orchestrationTabs);
 
 export function parseApiBaseUrl(value?: string | null): string {
   const pre = typeof value === "string" ? stripTrailingSlashes(value.trim()) : value;
@@ -47,9 +39,4 @@ export function parseApiBaseUrl(value?: string | null): string {
 export function resolveConversationDetailTab(value?: string): ConversationDetailTab {
   const result = conversationDetailTabSchema.safeParse(value);
   return result.success ? result.data : "messages";
-}
-
-export function resolveOrchestrationInitialTab(value?: string): OrchestrationTab {
-  const result = orchestrationTabSchema.safeParse(value);
-  return result.success ? result.data : "orchestration";
 }

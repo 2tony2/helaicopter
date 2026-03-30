@@ -9,10 +9,8 @@ import {
   buildConversationRoute,
   buildConversationSubagentTabRoute,
   buildConversationTabRoute,
-  buildOrchestrationRoute,
   decideConversationRoute,
   getConversationRouteState,
-  getOrchestrationRouteState,
   parseConversationRouteSegments,
   resolveConversationDetailTab,
   translateLegacyConversationRouteTarget,
@@ -386,29 +384,6 @@ test("route decisions render valid canonical nested routes and 404 invalid canon
   );
 });
 
-test("orchestration route builder produces clean paths", () => {
-  assert.equal(
-    buildOrchestrationRoute({ flowRunId: "flow-run-1" }),
-    "/orchestration?flowRunId=flow-run-1"
-  );
-  assert.equal(buildOrchestrationRoute(), "/orchestration");
-});
-
-test("orchestration route state prefers current query params over stale initial props", () => {
-  const state = getOrchestrationRouteState(
-    new URLSearchParams("tab=orchestration&flowRunId=flow-run-2"),
-    {
-      tab: "orchestration",
-      flowRunId: "flow-run-1",
-    }
-  );
-
-  assert.deepEqual(state, {
-    tab: "orchestration",
-    flowRunId: "flow-run-2",
-  });
-});
-
 test("unsupported tab values fall back to stable defaults", () => {
   assert.equal(resolveConversationDetailTab("unknown"), "messages");
 
@@ -422,20 +397,6 @@ test("unsupported tab values fall back to stable defaults", () => {
       plan: undefined,
       subagent: "agent-1",
       message: undefined,
-    }
-  );
-
-  assert.deepEqual(
-    getOrchestrationRouteState(
-      new URLSearchParams("tab=unknown"),
-      {
-        tab: "orchestration",
-        flowRunId: "flow-run-1",
-      }
-    ),
-    {
-      tab: "orchestration",
-      flowRunId: "flow-run-1",
     }
   );
 });

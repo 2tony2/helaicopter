@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 import sqlite3
 
@@ -136,9 +136,9 @@ def test_db_settings_preserve_legacy_duckdb_alias_for_transition(tmp_path) -> No
 
 
 def test_settings_parse_hela_prefixed_environment_values(monkeypatch, tmp_path) -> None:
-    runtime_dir = tmp_path / ".oats" / "custom-runtime"
+    runtime_root = tmp_path / ".helaicopter-custom"
     monkeypatch.setenv("HELA_PROJECT_ROOT", str(tmp_path))
-    monkeypatch.setenv("HELA_OATS_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setenv("HELA_CHECKOUT_RUNTIME_ROOT", str(runtime_root))
     monkeypatch.setenv("HELA_API_PORT", "31506")
     monkeypatch.setenv("HELA_WEB_PORT", "32506")
     monkeypatch.setenv("HELA_DEBUG", "true")
@@ -146,7 +146,7 @@ def test_settings_parse_hela_prefixed_environment_values(monkeypatch, tmp_path) 
     settings = Settings()
 
     assert settings.project_root == tmp_path
-    assert settings.runtime_dir == runtime_dir
+    assert settings.database.runtime_dir == runtime_root / "database-runtime"
     assert settings.api_port == 31506
     assert settings.web_port == 32506
     assert settings.debug is True

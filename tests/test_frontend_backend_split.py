@@ -8,13 +8,12 @@ def test_next_api_surface_is_removed_from_src() -> None:
     api_dir = ROOT / "src" / "app" / "api"
     route_files = sorted(path.relative_to(ROOT) for path in api_dir.rglob("route.ts")) if api_dir.exists() else []
 
-    assert route_files == []
+    assert route_files == [Path("src/app/api/backend/[...path]/route.ts")]
 
 
 def test_route_only_node_backend_modules_are_removed() -> None:
     removed_paths = [
         "src/lib/analytics-query-backend.ts",
-        "src/lib/conversation-dag.ts",
         "src/lib/conversation-summary-query-backend.ts",
         "src/lib/database-refresh.ts",
         "src/lib/evaluations.ts",

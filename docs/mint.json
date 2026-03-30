@@ -15,8 +15,7 @@
         "guides/getting-started",
         "guides/browsing-conversations",
         "guides/analytics",
-        "guides/evaluations",
-        "guides/orchestration"
+        "guides/evaluations"
       ]
     },
     {
@@ -33,13 +32,6 @@
         "api/overview",
         "api/endpoints",
         "api/openapi-artifacts"
-      ]
-    },
-    {
-      "group": "Orchestration",
-      "pages": [
-        "orchestration/overview",
-        "orchestration/oats"
       ]
     },
     {

@@ -131,44 +131,6 @@ test("endpoint builders stay relative when NEXT_PUBLIC_API_BASE_URL is unset", a
   }
 });
 
-test("normalizeWorker preserves Pi v2 session fields from worker payloads", async () => {
-  const { normalizeWorker } = await getNormalize();
-
-  const normalized = normalizeWorker({
-    workerId: "wkr_123",
-    workerType: "pi_shell",
-    provider: "claude",
-    capabilities: {
-      provider: "claude",
-      models: ["claude-sonnet-4-6"],
-      maxConcurrentTasks: 1,
-      supportsDiscovery: false,
-      supportsResume: false,
-      tags: [],
-    },
-    host: "local",
-    pid: 123,
-    worktreeRoot: "/tmp/worker",
-    registeredAt: "2026-03-26T09:00:00Z",
-    lastHeartbeatAt: "2026-03-26T09:01:00Z",
-    status: "idle",
-    readinessReason: null,
-    currentTaskId: null,
-    currentRunId: null,
-    providerSessionId: "sess_provider_1",
-    sessionStatus: "ready",
-    sessionStartedAt: "2026-03-26T09:00:00Z",
-    sessionLastUsedAt: "2026-03-26T09:01:00Z",
-    sessionFailureReason: null,
-    sessionResetAvailable: true,
-    sessionResetRequestedAt: null,
-  });
-
-  assert.equal(normalized.providerSessionId, "sess_provider_1");
-  assert.equal(normalized.sessionStatus, "ready");
-  assert.equal(normalized.sessionResetAvailable, true);
-});
-
 test("endpoint builders append parent_session_id only when the caller provides parentSessionId", async () => {
   const { setBaseUrl, conversation, conversationDag, conversationEvaluations, tasks } = await getEndpoints();
   setBaseUrl("https://api.example.test/");
@@ -213,86 +175,6 @@ test("endpoint builders append parent_session_id only when the caller provides p
   );
 });
 
-test("Claude CLI auth connect endpoint targets the dedicated reuse route", async () => {
-  const { setBaseUrl, authCredentialClaudeCliConnect } = await getEndpoints();
-  setBaseUrl("https://api.example.test/");
-
-  assert.equal(
-    authCredentialClaudeCliConnect(),
-    "https://api.example.test/auth/credentials/claude-cli/connect"
-  );
-});
-
-test("orchestration runtime endpoint builder targets the dedicated materialization route", async () => {
-  const { setBaseUrl, orchestrationRuntime } = await getEndpoints();
-  setBaseUrl("https://api.example.test/");
-
-  assert.equal(
-    orchestrationRuntime("run_abc"),
-    "https://api.example.test/orchestration/runtime/run_abc"
-  );
-});
-
-test("normalizeRuntimeMaterializedRun accepts snake_case runtime payloads", async () => {
-  const { normalizeRuntimeMaterializedRun } = await getNormalize();
-  const normalized = normalizeRuntimeMaterializedRun({
-    run_id: "run_abc",
-    source: "runtime",
-    task_attempts: [
-      {
-        task_id: "api",
-        attempt_id: "att_2",
-        worker_id: "worker_1",
-        provider_session_id: "sess_provider_1",
-        session_reused: true,
-        session_status_after_task: "ready",
-        status: "succeeded",
-        duration_seconds: 42,
-        branch_name: "oats/task/api",
-        commit_sha: "abc123",
-        error_summary: null,
-      },
-    ],
-    graph_mutations: [
-      {
-        mutation_id: "mut_1",
-        kind: "pause_run",
-        discovered_by: "operator",
-        source: "operator",
-        timestamp: "2026-03-25T00:02:00Z",
-        nodes_added: ["api"],
-      },
-    ],
-    dispatch_events: [
-      {
-        run_id: "run_abc",
-        task_id: "api",
-        worker_id: "worker_1",
-        provider: "claude",
-        model: "claude-sonnet-4-6",
-        dispatched_at: "2026-03-25T00:01:30Z",
-      },
-    ],
-    operator_actions: [
-      {
-        action: "pause",
-        actor: "operator",
-        created_at: "2026-03-25T00:02:00Z",
-        target_task_id: "api",
-        details: {},
-      },
-    ],
-  });
-
-  assert.equal(normalized.taskAttempts[0]?.attemptId, "att_2");
-  assert.equal(normalized.taskAttempts[0]?.providerSessionId, "sess_provider_1");
-  assert.equal(normalized.taskAttempts[0]?.sessionReused, true);
-  assert.equal(normalized.taskAttempts[0]?.sessionStatusAfterTask, "ready");
-  assert.equal(normalized.graphMutations[0]?.source, "operator");
-  assert.equal(normalized.dispatchEvents[0]?.workerId, "worker_1");
-  assert.equal(normalized.operatorActions[0]?.action, "pause");
-});
-
 test("normalizeConversations preserves canonical conversation refs from summary payloads", async () => {
   const { normalizeConversations } = await getNormalize();
   const normalized = normalizeConversations([
@@ -324,6 +206,26 @@ test("setBaseUrl continues to normalize absolute URLs for explicit overrides", a
 
   assert.equal(getBaseUrl(), "https://api.example.test");
   assert.equal(projects(), "https://api.example.test/projects");
+});
+
+test("Claude CLI auth connect endpoint targets the dedicated reuse route", async () => {
+  const { setBaseUrl, authCredentialClaudeCliConnect } = await getEndpoints();
+  setBaseUrl("https://api.example.test/");
+
+  assert.equal(
+    authCredentialClaudeCliConnect(),
+    "https://api.example.test/auth/credentials/claude-cli/connect"
+  );
+});
+
+test("Codex CLI auth connect endpoint targets the dedicated reuse route", async () => {
+  const { setBaseUrl, authCredentialCodexCliConnect } = await getEndpoints();
+  setBaseUrl("https://api.example.test/");
+
+  assert.equal(
+    authCredentialCodexCliConnect(),
+    "https://api.example.test/auth/credentials/codex-cli/connect"
+  );
 });
 
 test("normalizeProjects maps FastAPI project payloads to frontend camelCase types", async () => {
@@ -1620,265 +1522,6 @@ test("conversation evaluation payload schemas parse accepted API shapes and reje
   );
 });
 
-test("normalizeOvernightOatsRuns removes the frontend-only required evaluation field", async () => {
-  const { normalizeOvernightOatsRuns } = await getNormalize();
-  const runs = normalizeOvernightOatsRuns([
-    {
-      source: "overnight-oats",
-      contractVersion: "oats-runtime-v1",
-      runId: "run-1",
-      runTitle: "Full Program Authoritative Analytics Overnight",
-      repoRoot: "/Users/tony/Code/helaicopter",
-      configPath: "/Users/tony/Code/helaicopter/.oats/config.toml",
-      runSpecPath: "/Users/tony/Code/helaicopter/.oats/runs/run-1/spec.md",
-      mode: "full-program",
-      integrationBranch: "feature/full-program",
-      taskPrTarget: "main",
-      finalPrTarget: "main",
-      status: "running",
-      activeTaskId: "task-1",
-      heartbeatAt: "2026-03-19T10:15:00Z",
-      finishedAt: null,
-      planner: {
-        agent: "claude",
-        role: "planner",
-        command: ["codex"],
-        cwd: "/Users/tony/Code/helaicopter",
-        prompt: "Ship it",
-        sessionId: "planner-session",
-        startedAt: "2026-03-19T10:00:00Z",
-        finishedAt: null,
-      },
-      tasks: [
-        {
-          taskId: "task-1",
-          title: "Frontend simplification",
-          dependsOn: [],
-          status: "running",
-          attempts: 1,
-          invocation: null,
-        },
-      ],
-      createdAt: "2026-03-19T10:00:00Z",
-      lastUpdatedAt: "2026-03-19T10:15:00Z",
-      isRunning: true,
-      recordedAt: "2026-03-19T10:15:00Z",
-      recordPath: "/Users/tony/Code/helaicopter/.oats/runs/run-1.json",
-      dag: {
-        nodes: [
-          {
-            id: "task-1",
-            kind: "task",
-            label: "Frontend simplification",
-            role: "implementer",
-            agent: "codex",
-            status: "running",
-            isActive: true,
-            attempts: 1,
-            lastHeartbeatAt: "2026-03-19T10:15:00Z",
-            exitCode: null,
-            timedOut: false,
-            depth: 1,
-          },
-        ],
-        edges: [],
-        stats: {
-          totalNodes: 1,
-          totalEdges: 0,
-          maxDepth: 1,
-          maxBreadth: 1,
-          rootCount: 1,
-          providerBreakdown: { codex: 1 },
-          timedOutCount: 0,
-          activeCount: 1,
-          pendingCount: 0,
-          failedCount: 0,
-          succeededCount: 0,
-        },
-      },
-    },
-  ]);
-
-  assert.equal(runs[0].evaluation, undefined);
-  assert.equal(runs[0].tasks[0].invocation, null);
-  assert.equal(runs[0].dag.nodes[0].exitCode, undefined);
-});
-
-test("normalizeOvernightOatsRuns preserves stacked PR orchestration state", async () => {
-  const { normalizeOvernightOatsRuns } = await getNormalize();
-  const runs = normalizeOvernightOatsRuns([
-    {
-      source: "overnight-oats",
-      contract_version: "oats-runtime-v2",
-      run_id: "run-2",
-      run_title: "Stacked PR rollout",
-      repo_root: "/Users/tony/Code/helaicopter",
-      config_path: "/Users/tony/Code/helaicopter/.oats/config.toml",
-      run_spec_path: "/Users/tony/Code/helaicopter/.oats/runs/run-2/spec.md",
-      mode: "full-program",
-      integration_branch: "oats/overnight/runtime-facts",
-      task_pr_target: "oats/overnight/runtime-facts",
-      final_pr_target: "main",
-      status: "running",
-      stack_status: "awaiting_task_merge",
-      feature_branch: {
-        name: "oats/overnight/runtime-facts",
-        base_branch: "main",
-      },
-      final_pr: {
-        number: 42,
-        url: "https://github.com/example/repo/pull/42",
-        state: "open",
-        review_gate_status: "awaiting_human",
-        base_branch: "main",
-        head_branch: "oats/overnight/runtime-facts",
-        checks_summary: {
-          total: 5,
-          passing: 5,
-        },
-        snapshot_source: "github",
-        last_refreshed_at: "2026-03-20T09:15:00Z",
-        is_stale: false,
-      },
-      operation_history: [
-        {
-          kind: "refresh",
-          status: "succeeded",
-          session_id: "refresh-session",
-          started_at: "2026-03-20T09:10:00Z",
-          finished_at: "2026-03-20T09:10:30Z",
-          details: {
-            merged_prs: 1,
-          },
-        },
-      ],
-      active_task_id: "task-tests",
-      heartbeat_at: "2026-03-20T09:15:00Z",
-      finished_at: null,
-      planner: null,
-      tasks: [
-        {
-          task_id: "task-api",
-          title: "Implement route",
-          depends_on: [],
-          parent_branch: "oats/overnight/runtime-facts",
-          status: "succeeded",
-          attempts: 1,
-          task_pr: {
-            number: 11,
-            url: "https://github.com/example/repo/pull/11",
-            state: "merged",
-            merge_gate_status: "merged",
-            base_branch: "oats/overnight/runtime-facts",
-            head_branch: "oats/task/task-api",
-            mergeability: "mergeable",
-            checks_summary: {
-              total: 4,
-              passing: 4,
-            },
-            review_summary: {
-              blocking_state: "clear",
-              approvals: 1,
-              changes_requested: 0,
-            },
-            snapshot_source: "github",
-            last_refreshed_at: "2026-03-20T09:15:00Z",
-            is_stale: false,
-          },
-          operation_history: [
-            {
-              kind: "pr_merge",
-              status: "succeeded",
-              session_id: "merge-session",
-              started_at: "2026-03-20T09:00:00Z",
-              finished_at: "2026-03-20T09:01:00Z",
-              details: {
-                merge_commit_sha: "abc123",
-              },
-            },
-          ],
-          invocation: null,
-        },
-        {
-          task_id: "task-tests",
-          title: "Patch UI",
-          depends_on: ["task-api"],
-          parent_branch: "oats/task/task-api",
-          status: "blocked",
-          attempts: 2,
-          task_pr: {
-            number: 12,
-            state: "open",
-            merge_gate_status: "awaiting_checks",
-            base_branch: "oats/task/task-api",
-            head_branch: "oats/task/task-tests",
-            mergeability: "unknown",
-            checks_summary: {
-              total: 2,
-              passing: 1,
-              failing: 1,
-            },
-            review_summary: {
-              blocking_state: "commented",
-              approvals: 0,
-              changes_requested: 0,
-            },
-            snapshot_source: "github",
-            last_refreshed_at: "2026-03-20T09:15:00Z",
-            is_stale: true,
-          },
-          operation_history: [
-            {
-              kind: "conflict_resolution",
-              status: "started",
-              session_id: "resolver-session",
-              started_at: "2026-03-20T09:12:00Z",
-              finished_at: null,
-              details: {
-                attempt: 1,
-              },
-            },
-          ],
-          invocation: null,
-        },
-      ],
-      created_at: "2026-03-20T08:45:00Z",
-      last_updated_at: "2026-03-20T09:15:00Z",
-      is_running: true,
-      recorded_at: "2026-03-20T09:15:00Z",
-      record_path: "/Users/tony/Code/helaicopter/.oats/runs/run-2.json",
-      dag: {
-        nodes: [],
-        edges: [],
-        stats: {
-          total_nodes: 0,
-          total_edges: 0,
-          max_depth: 0,
-          max_breadth: 0,
-          root_count: 0,
-          provider_breakdown: {},
-          timed_out_count: 0,
-          active_count: 0,
-          pending_count: 0,
-          failed_count: 0,
-          succeeded_count: 0,
-        },
-      },
-    },
-  ]);
-
-  assert.equal(runs[0].contractVersion, "oats-runtime-v2");
-  assert.equal(runs[0].stackStatus, "awaiting_task_merge");
-  assert.equal(runs[0].featureBranch?.name, "oats/overnight/runtime-facts");
-  assert.equal(runs[0].finalPr?.reviewGateStatus, "awaiting_human");
-  assert.equal(runs[0].operationHistory[0].sessionId, "refresh-session");
-  assert.equal(runs[0].tasks[0].parentBranch, "oats/overnight/runtime-facts");
-  assert.equal(runs[0].tasks[0].taskPr?.mergeGateStatus, "merged");
-  assert.equal(runs[0].tasks[0].taskPr?.reviewSummary?.approvals, 1);
-  assert.equal(runs[0].tasks[1].taskPr?.isStale, true);
-  assert.equal(runs[0].tasks[1].operationHistory[0].kind, "conflict_resolution");
-});
-
 test("normalizeSubscriptionSettings maps provider records for analytics settings", async () => {
   const { normalizeSubscriptionSettings } = await getNormalize();
   const normalized = normalizeSubscriptionSettings({
@@ -2067,100 +1710,4 @@ test("database status schema parses current backend shapes and rejects silent fa
       }),
     /table_count|tableCount/i
   );
-});
-
-// ---------------------------------------------------------------------------
-// Graph-native v2 normalization tests
-// ---------------------------------------------------------------------------
-
-test("normalizeOvernightOatsRun maps graph-native v2 nodes and edges", async () => {
-  const { normalizeOvernightOatsRun } = await getNormalize();
-  const run = normalizeOvernightOatsRun({
-    source: "overnight-oats",
-    contract_version: "oats-runtime-v2",
-    run_id: "run_abc",
-    run_title: "Graph test",
-    repo_root: "/tmp/repo",
-    config_path: "/tmp/config.toml",
-    run_spec_path: "/tmp/spec.md",
-    mode: "writable",
-    integration_branch: "feat/x",
-    task_pr_target: "feat/x",
-    final_pr_target: "main",
-    status: "running",
-    planner: null,
-    tasks: [],
-    operation_history: [],
-    created_at: "2026-03-25T00:00:00Z",
-    last_updated_at: "2026-03-25T00:01:00Z",
-    recorded_at: "2026-03-25T00:01:00Z",
-    record_path: "/tmp/state.json",
-    dag: { nodes: [], edges: [], stats: { total_nodes: 0, total_edges: 0 } },
-    nodes: [
-      { task_id: "auth", kind: "implementation", title: "Auth", status: "succeeded", attempt_count: 1, operation_count: 0, discovered_task_count: 0 },
-      { task_id: "api", kind: "implementation", title: "API", status: "pending", attempt_count: 0, operation_count: 0, discovered_task_count: 0 },
-    ],
-    edges: [
-      { from_task: "auth", to_task: "api", predicate: "code_ready", satisfied: true },
-    ],
-    ready_queue: ["api"],
-    graph_mutation_count: 1,
-    operator_actions: [
-      {
-        action: "pause",
-        actor: "operator",
-        created_at: "2026-03-25T00:02:00Z",
-        target_task_id: "api",
-        details: {},
-      },
-    ],
-    interruption_count: 0,
-  });
-
-  assert.equal(run.nodes.length, 2);
-  assert.equal(run.edges.length, 1);
-  assert.equal(run.edges[0].predicate, "code_ready");
-  assert.equal(run.edges[0].satisfied, true);
-  assert.equal(run.readyQueue.length, 1);
-  assert.equal(run.readyQueue[0], "api");
-  assert.equal(run.graphMutationCount, 1);
-  assert.equal(run.operatorActions?.[0]?.action, "pause");
-});
-
-test("normalizeOvernightOatsRun flags discovered tasks via discoveredBy", async () => {
-  const { normalizeOvernightOatsRun } = await getNormalize();
-  const run = normalizeOvernightOatsRun({
-    source: "overnight-oats",
-    contract_version: "oats-runtime-v2",
-    run_id: "run_abc",
-    run_title: "Discovery test",
-    repo_root: "/tmp/repo",
-    config_path: "/tmp/config.toml",
-    run_spec_path: "/tmp/spec.md",
-    mode: "writable",
-    integration_branch: "feat/x",
-    task_pr_target: "feat/x",
-    final_pr_target: "main",
-    status: "running",
-    planner: null,
-    tasks: [],
-    operation_history: [],
-    created_at: "2026-03-25T00:00:00Z",
-    last_updated_at: "2026-03-25T00:01:00Z",
-    recorded_at: "2026-03-25T00:01:00Z",
-    record_path: "/tmp/state.json",
-    dag: { nodes: [], edges: [], stats: { total_nodes: 0, total_edges: 0 } },
-    nodes: [
-      { task_id: "api", kind: "implementation", title: "API", status: "succeeded", attempt_count: 1, operation_count: 0, discovered_task_count: 1 },
-      { task_id: "task_middleware", kind: "implementation", title: "Middleware", status: "pending", attempt_count: 0, operation_count: 0, discovered_task_count: 0, discovered_by: "api" },
-    ],
-    edges: [],
-    ready_queue: [],
-    graph_mutation_count: 0,
-    interruption_count: 0,
-  });
-
-  const discovered = run.nodes.filter((n) => n.discoveredBy);
-  assert.equal(discovered.length, 1);
-  assert.equal(discovered[0].discoveredBy, "api");
 });

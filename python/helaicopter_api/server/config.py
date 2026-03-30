@@ -165,10 +165,6 @@ class Settings(BaseSettings):
         validation_alias="HELA_WEB_PORT",
         description="Override for the checkout-local Next.js dev port.",
     )
-    oats_runtime_dir: Path | None = Field(
-        default=None,
-        description="Override for .oats/runtime/ directory. Defaults to <project_root>/.oats/runtime.",
-    )
     claude_dir: Path = Field(
         default_factory=lambda: Path.home() / ".claude",
         description="Root of the Claude CLI data directory (typically ~/.claude).",
@@ -266,12 +262,6 @@ class Settings(BaseSettings):
             json_url="/openapi/helaicopter-api.json",
             yaml_url="/openapi/helaicopter-api.yaml",
         )
-
-    @property
-    def runtime_dir(self) -> Path:
-        if self.oats_runtime_dir is not None:
-            return self.oats_runtime_dir
-        return self.project_root / ".oats" / "runtime"
 
     @property
     def api_port(self) -> int:

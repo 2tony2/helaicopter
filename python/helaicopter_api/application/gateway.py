@@ -27,7 +27,7 @@ _GATEWAY_SURFACES: tuple[GatewaySurfaceResponse, ...] = (
         integration_type="application-router",
         is_primary=True,
         path_prefixes=["/"],
-        note="Single backend gateway for frontend, orchestration, database, and local artifact reads.",
+        note="Single backend gateway for frontend, database, and local artifact reads.",
     ),
     GatewaySurfaceResponse(
         key="frontend",
@@ -56,15 +56,6 @@ _GATEWAY_SURFACES: tuple[GatewaySurfaceResponse, ...] = (
             "/tasks",
         ],
         note="Primary app-local metadata store for FastAPI-owned reads and settings.",
-    ),
-    GatewaySurfaceResponse(
-        key="oats",
-        owner="oats",
-        serving_class="compatibility-surface",
-        integration_type="artifact-store",
-        is_primary=False,
-        path_prefixes=["/orchestration/oats"],
-        note="Repo-local orchestration artifacts remain available for compatibility and inspection, not as the primary control plane.",
     ),
     GatewaySurfaceResponse(
         key="duckdb",
@@ -191,7 +182,7 @@ def describe_gateway_direction() -> GatewayDirectionResponse:
 
     Returns:
         A ``GatewayDirectionResponse`` listing all configured gateway surfaces
-        (FastAPI, frontend, SQLite, OATS, DuckDB, cache).
+        (FastAPI, frontend, SQLite, DuckDB, cache).
     """
     return GatewayDirectionResponse(surfaces=list(_GATEWAY_SURFACES))
 

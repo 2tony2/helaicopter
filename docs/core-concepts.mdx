@@ -57,7 +57,7 @@ A **DAG** shows how a single task decomposes into parallel and sequential work:
        └── subagent-3 (review)
 ```
 
-The DAG view is available per-conversation and in the orchestration hub for cross-session analysis. Layout is computed using `src/lib/conversation-dag-layout.ts` and rendered with `@xyflow/react`.
+The DAG view is available per-conversation and in the conversation DAG index for cross-session analysis. Layout is computed using `src/lib/conversation-dag-layout.ts` and rendered with `@xyflow/react`.
 
 ## Plans
 
@@ -84,9 +84,3 @@ Helaicopter uses multiple databases, each with a specific role:
 | Frontend cache | Browser | SWR client-side cache | In-memory |
 
 The **refresh pipeline** (`POST /databases/refresh`) re-parses conversation files and updates both SQLite and DuckDB, then invalidates all backend caches.
-
-## Orchestration
-
-The orchestration system is **OATS (Overnight Automated Task Specs)** — a repo-local CLI for defining multi-step agent workflows as markdown run specs. Tasks execute as Claude Code or Codex invocations with dependency tracking.
-
-The orchestration hub at `/orchestration` provides a unified view of run records, runtime state, and task DAGs.

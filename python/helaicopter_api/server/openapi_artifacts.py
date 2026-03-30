@@ -97,18 +97,9 @@ def generate_openapi_artifacts(*, settings: Settings | None = None) -> OpenApiAr
             title="Helaicopter Frontend App API",
             description=(
                 "Stable filtered view of the backend routes consumed by the Next.js app, "
-                "excluding internal ops and dedicated orchestration surfaces."
+                "excluding internal ops and non-app backend surfaces."
             ),
             include_path=lambda path: path in FRONTEND_APP_PATHS,
-        ),
-    )
-    _write_json_artifact(
-        artifact_settings.artifacts_dir / "helaicopter-oats-orchestration-api.json",
-        _build_surface_schema(
-            schema,
-            title="Helaicopter OATS Orchestration API",
-            description="Stable filtered view of the legacy repo-local OATS orchestration routes.",
-            include_path=lambda path: path == "/orchestration/oats",
         ),
     )
     return OpenApiArtifactOutputs(

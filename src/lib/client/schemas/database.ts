@@ -14,7 +14,6 @@ const databaseRoleSchema = z.enum([
   "cache",
   "metadata",
   "inspection",
-  "orchestration",
 ]);
 const databaseAvailabilitySchema = z.enum([
   "ready",
