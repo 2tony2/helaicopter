@@ -28,6 +28,8 @@ class TestResolvePricingCompat:
         # OpenAI family
         assert resolve_pricing("gpt5") == OPENAI_PRICING["gpt-5"]
         assert resolve_pricing("contains-gpt-5.4") == OPENAI_PRICING["gpt-5.4"]
+        assert resolve_pricing("gpt-5.4-mini") == OPENAI_PRICING["gpt-5.4-mini"]
+        assert resolve_pricing("gpt-5.4-nano") == OPENAI_PRICING["gpt-5.4-nano"]
         assert resolve_pricing("o3-2026-01-01") == OPENAI_PRICING["o3"]
         assert resolve_pricing("o4-mini-variant") == OPENAI_PRICING["o4-mini"]
 
@@ -35,6 +37,7 @@ class TestResolvePricingCompat:
         assert resolve_pricing("claude-sonnet-4-5-20250929-extra") == CLAUDE_PRICING[
             "claude-sonnet-4-5-20250929"
         ]
+        assert resolve_pricing("some-sonnet") == CLAUDE_PRICING["claude-sonnet-4-6"]
         assert resolve_pricing("some-opus-4-6-sku") == CLAUDE_PRICING["claude-opus-4-6"]
         assert resolve_pricing("some-opus-4-1-sku") == CLAUDE_PRICING["claude-opus-4"]
 
@@ -71,9 +74,9 @@ class TestCalculateCostCompat:
 
 class TestLongContextPremiumFlag:
     def test_flag_applies_only_to_supported_models(self) -> None:
-        assert supports_long_context_premium("claude-opus-4-6")
+        assert not supports_long_context_premium("claude-opus-4-6")
+        assert not supports_long_context_premium("claude-sonnet-4-6")
         assert supports_long_context_premium("claude-sonnet-4-5-20250929")
         assert not supports_long_context_premium("claude-haiku-3-5")
         assert not supports_long_context_premium("gpt-5")
         assert not supports_long_context_premium(None)
-

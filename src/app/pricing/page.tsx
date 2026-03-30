@@ -19,6 +19,8 @@ const MODEL_DISPLAY: Record<string, string> = {
 
 const OPENAI_MODEL_DISPLAY: Record<string, string> = {
   "gpt-5.4": "GPT-5.4",
+  "gpt-5.4-mini": "GPT-5.4 mini",
+  "gpt-5.4-nano": "GPT-5.4 nano",
   "gpt-5.2": "GPT-5.2",
   "gpt-5.1": "GPT-5.1",
   "gpt-5": "GPT-5",
@@ -96,17 +98,17 @@ export default function PricingPage() {
       {/* OpenAI API Pricing */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">OpenAI API Pricing</CardTitle>
+          <CardTitle className="text-base">OpenAI / Codex API Pricing</CardTitle>
           <CardDescription>
             All prices in USD per million tokens (MTok).{" "}
             Sources:{" "}
             <a
-              href="https://developers.openai.com/api/docs/pricing/"
+              href="https://openai.com/api/pricing/"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-foreground"
             >
-              developers.openai.com/api/docs/pricing
+              openai.com/api/pricing
             </a>
             {", "}
             <a
@@ -178,48 +180,43 @@ export default function PricingPage() {
         </CardContent>
       </Card>
 
-      {/* Long context premium */}
+      {/* Claude 1M context */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Long Context Premium</CardTitle>
+          <CardTitle className="text-base">Claude 1M Context</CardTitle>
           <CardDescription>
-            Requests exceeding 200K input tokens (including cache) are billed at premium rates
+            Opus 4.6 and Sonnet 4.6 now use standard pricing across the full 1M context window
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
                 <th className="pb-2 pr-4 font-medium">Model</th>
-                <th className="pb-2 pr-4 font-medium text-right">Standard Input</th>
-                <th className="pb-2 pr-4 font-medium text-right">Long Input (&gt;200K)</th>
-                <th className="pb-2 pr-4 font-medium text-right">Standard Output</th>
-                <th className="pb-2 font-medium text-right">Long Output (&gt;200K)</th>
+                <th className="pb-2 pr-4 font-medium text-right">Input</th>
+                <th className="pb-2 pr-4 font-medium text-right">Output</th>
+                <th className="pb-2 font-medium text-right">Long-Context Policy</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-b border-border/50">
                 <td className="py-2 pr-4 font-medium">Opus 4.6</td>
                 <td className="py-2 pr-4 text-right font-mono">$5/MTok</td>
-                <td className="py-2 pr-4 text-right font-mono text-amber-600">$10/MTok (2x)</td>
                 <td className="py-2 pr-4 text-right font-mono">$25/MTok</td>
-                <td className="py-2 text-right font-mono text-amber-600">$37.50/MTok (1.5x)</td>
+                <td className="py-2 text-right text-muted-foreground">Standard pricing through 1M tokens</td>
               </tr>
               <tr className="border-b border-border/50">
-                <td className="py-2 pr-4 font-medium">Sonnet 4.6 / 4.5 / 4</td>
+                <td className="py-2 pr-4 font-medium">Sonnet 4.6</td>
                 <td className="py-2 pr-4 text-right font-mono">$3/MTok</td>
-                <td className="py-2 pr-4 text-right font-mono text-amber-600">$6/MTok (2x)</td>
                 <td className="py-2 pr-4 text-right font-mono">$15/MTok</td>
-                <td className="py-2 text-right font-mono text-amber-600">$22.50/MTok (1.5x)</td>
+                <td className="py-2 text-right text-muted-foreground">Standard pricing through 1M tokens</td>
               </tr>
             </tbody>
           </table>
           </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            The 200K threshold is based on <strong>active (non-cached) input tokens</strong> only &mdash; cached tokens
-            (cache writes and reads) do not count toward the threshold.
-            When exceeded, the <em>entire</em> request is billed at premium rates.
+          <p className="text-xs text-muted-foreground">
+            Anthropic announced on March 13, 2026 that Opus 4.6 and Sonnet 4.6 use one price across the full 1M window with no long-context premium. This viewer still preserves legacy Sonnet 4 / 4.5 premium handling for historical runs whose model IDs predate the 4.6 rollout.
           </p>
         </CardContent>
       </Card>
@@ -296,7 +293,7 @@ export default function PricingPage() {
           <div className="flex items-start gap-3">
             <Badge variant="outline" className="shrink-0 mt-0.5">Batch API</Badge>
             <p className="text-muted-foreground">
-              50% discount on both input and output tokens for asynchronous batch processing. Stacks with prompt caching and long context pricing.
+              50% discount on both input and output tokens for asynchronous batch processing. Stacks with prompt caching and standard or legacy long-context pricing as applicable.
             </p>
           </div>
           <div className="flex items-start gap-3">
@@ -322,11 +319,13 @@ export default function PricingPage() {
             <li><strong>5-minute</strong> prompt cache write rates (the default for Claude Code)</li>
             <li>Standard cache read rates (0.1x base input)</li>
             <li>Global routing pricing (no data residency or fast mode premium)</li>
-            <li>Standard context rates (no long-context premium detection yet)</li>
+            <li>Standard 1M context pricing for Claude 4.6 and standard context pricing for OpenAI/Codex models</li>
+            <li>Legacy Sonnet 4 / 4.5 long-context premium only when the model ID indicates it</li>
           </ul>
           <p>
-            Actual costs may differ due to: long-context premium (&gt;200K input tokens), fast mode usage,
-            data residency settings, web search charges, or batch API discounts.
+            Actual costs may differ due to: fast mode usage, data residency settings, web search charges,
+            batch API discounts, or historical Sonnet 4 / 4.5 conversations that crossed the legacy
+            long-context threshold.
           </p>
         </CardContent>
       </Card>

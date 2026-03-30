@@ -6,7 +6,7 @@ export interface ModelPricing {
   cacheRead: number;
 }
 
-// Token pricing per 1M tokens (USD) - from platform.claude.com/docs/en/about-claude/pricing
+// Token pricing per 1M tokens (USD) - refreshed from Anthropic sources on 2026-03-30.
 export const PRICING: Record<string, ModelPricing> = {
   // Opus family
   "claude-opus-4-6": {
@@ -93,6 +93,20 @@ export const OPENAI_PRICING: Record<string, ModelPricing> = {
     cacheWrite5m: 0,
     cacheWrite1h: 0,
     cacheRead: 0.25,
+  },
+  "gpt-5.4-mini": {
+    input: 0.75,
+    output: 4.5,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
+    cacheRead: 0.075,
+  },
+  "gpt-5.4-nano": {
+    input: 0.2,
+    output: 1.25,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
+    cacheRead: 0.02,
   },
   "gpt-5.2": {
     input: 1.75,
