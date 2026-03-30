@@ -5,10 +5,11 @@ description = "Database refresh pipeline for Helaicopter"
 requires-python = ">=3.13"
 dependencies = [
   "alembic>=1.14.1",
-  "cryptography>=44.0.0",
+  "cryptography>=46.0.3",
   "duckdb>=1.4.0",
   "duckdb-engine>=0.17.0",
   "fastapi>=0.115.0",
+  "fastmcp>=2.13,<3",
   "pydantic>=2.7.0",
   "pydantic-settings>=2.6.0",
   "pyyaml>=6.0.0",
