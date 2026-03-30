@@ -52,6 +52,16 @@ npm run dev
 - `npm run dev` starts both servers, kills stale repo-local `next dev` and `uvicorn` processes, and sets `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:30000` unless you override it yourself.
 - If you want the frontend to use a different backend origin, set `NEXT_PUBLIC_API_BASE_URL` before starting `npm run dev`.
 
+For local iPhone testing, use the mobile-safe dev command instead:
+
+```bash
+npm run dev:mobile
+```
+
+- `npm run dev:mobile` binds both servers to `0.0.0.0` so your iPhone can reach them over Tailscale or your local network.
+- Browser-facing API calls are routed through the Next.js proxy at `/api/backend/*`, so the phone does not need a separate FastAPI URL.
+- The command prints the checkout-local web and API ports when it starts. Use the web port for the iPhone app URL.
+
 If you want to run the processes separately:
 
 ```bash
@@ -75,6 +85,35 @@ curl http://127.0.0.1:30000/gateway/direction
 open http://127.0.0.1:30000/openapi.json
 npm run api:openapi
 ```
+
+## Run On Your iPhone
+
+Short version:
+
+```bash
+# 1. Start phone-reachable dev servers
+npm run dev:mobile
+
+# 2. Point Capacitor at your Mac over Tailscale
+export HELA_MOBILE_SERVER_URL=http://YOUR-MAC-NAME:WEB_PORT
+
+# 3. Sync native iOS config and open Xcode
+npm run mobile:ios:sync
+npm run mobile:ios:open
+```
+
+Then in Xcode:
+
+1. Connect your iPhone by cable
+2. Select the `App` target
+3. Open `Signing & Capabilities`
+4. Choose your Apple ID personal team
+5. Pick your iPhone as the run destination
+6. Press the Run button
+
+Detailed walkthrough:
+
+- [iPhone developer mode guide](./docs/guides/iphone-dev-mode.md)
 
 ## OpenAPI Artifacts
 

@@ -4,6 +4,9 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 
 const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, "");
+const liveSchemaUrl = configuredApiBaseUrl
+  ? `${configuredApiBaseUrl}/openapi.json`
+  : "/api/backend/openapi.json";
 
 const artifactLinks = [
   {
@@ -17,11 +20,11 @@ const artifactLinks = [
     description: "Generated YAML variant for inspection, copy/paste, and downstream tooling.",
   },
   {
-    href: configuredApiBaseUrl ? `${configuredApiBaseUrl}/openapi.json` : "/openapi/helaicopter-api.json",
+    href: liveSchemaUrl,
     label: "Live backend schema",
     description: configuredApiBaseUrl
       ? "Runtime schema served by the configured backend origin."
-      : "Set NEXT_PUBLIC_API_BASE_URL to expose the runtime schema from the active backend.",
+      : "Runtime schema served through the local Next.js backend proxy.",
   },
 ];
 

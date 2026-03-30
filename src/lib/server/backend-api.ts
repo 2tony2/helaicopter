@@ -3,7 +3,7 @@ type BackendJsonResponse<T> = {
   data: T | null;
 };
 
-function getBackendBaseUrl(): string {
+export function getBackendBaseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configured) {
     return configured.replace(/\/+$/, "");

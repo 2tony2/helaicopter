@@ -37,6 +37,19 @@ test("buildDevChildEnv stamps checkout ownership metadata", () => {
   assert.equal(env.NEXT_PUBLIC_API_BASE_URL, `http://127.0.0.1:${instance.apiPort}`);
 });
 
+test("buildDevChildEnv supports mobile proxy mode with exposed hosts", () => {
+  const instance = buildCheckoutInstance("/Users/tony/Code/helaicopter");
+  const env = buildDevChildEnv(instance, {
+    HELA_API_HOST: "0.0.0.0",
+    HELA_WEB_HOST: "0.0.0.0",
+    HELA_USE_API_PROXY: "1",
+  });
+
+  assert.equal(env.HELA_API_HOST, "0.0.0.0");
+  assert.equal(env.HELA_WEB_HOST, "0.0.0.0");
+  assert.equal(env.NEXT_PUBLIC_API_BASE_URL, "");
+});
+
 test("cleanup ignores a process owned by another checkout", () => {
   const current = buildCheckoutInstance("/repo/a");
   const foreign = buildCheckoutInstance("/repo/b");
