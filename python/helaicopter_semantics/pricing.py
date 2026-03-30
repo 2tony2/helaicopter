@@ -50,7 +50,7 @@ class CostBreakdown:
 
 
 # Canonical Claude model pricing table
-# Updated 2025-01-15 from Anthropic pricing page
+# Updated 2026-03-30 from current Anthropic pricing and model announcements
 CLAUDE_PRICING: dict[str, ModelPricing] = {
     "claude-opus-4-6": ModelPricing(5.0, 25.0, 6.25, 10.0, 0.5),
     "claude-opus-4-5-20251101": ModelPricing(5.0, 25.0, 6.25, 10.0, 0.5),
@@ -65,9 +65,12 @@ CLAUDE_PRICING: dict[str, ModelPricing] = {
 }
 
 # Canonical OpenAI/Codex model pricing table
-# OpenAI cache pricing: cache writes are free, cache reads are discounted input tokens
+# Updated 2026-03-30 from current OpenAI API pricing.
+# OpenAI cache pricing: cache writes are free, cache reads are discounted input tokens.
 OPENAI_PRICING: dict[str, ModelPricing] = {
     "gpt-5.4": ModelPricing(2.5, 15.0, 0.0, 0.0, 0.25),
+    "gpt-5.4-mini": ModelPricing(0.75, 4.5, 0.0, 0.0, 0.075),
+    "gpt-5.4-nano": ModelPricing(0.2, 1.25, 0.0, 0.0, 0.02),
     "gpt-5.2": ModelPricing(1.75, 14.0, 0.0, 0.0, 0.175),
     "gpt-5.1": ModelPricing(1.25, 10.0, 0.0, 0.0, 0.125),
     "gpt-5": ModelPricing(1.25, 10.0, 0.0, 0.0, 0.125),
@@ -113,6 +116,10 @@ def resolve_pricing(model: str | None) -> ModelPricing:
             return pricing
 
     # Fuzzy match on known model tokens
+    if "gpt-5.4-mini" in model or "gpt5.4-mini" in model:
+        return OPENAI_PRICING["gpt-5.4-mini"]
+    if "gpt-5.4-nano" in model or "gpt5.4-nano" in model:
+        return OPENAI_PRICING["gpt-5.4-nano"]
     if "gpt-5.4" in model or "gpt5.4" in model:
         return OPENAI_PRICING["gpt-5.4"]
     if "gpt-5.2" in model or "gpt5.2" in model:
@@ -132,7 +139,7 @@ def resolve_pricing(model: str | None) -> ModelPricing:
     if "opus-4-1" in model or "opus-4" in model:
         return CLAUDE_PRICING["claude-opus-4"]
     if "sonnet" in model:
-        return CLAUDE_PRICING["claude-sonnet-4-5-20250929"]
+        return CLAUDE_PRICING["claude-sonnet-4-6"]
     if "haiku" in model:
         return CLAUDE_PRICING["claude-haiku-4-5-20251001"]
 
@@ -142,9 +149,9 @@ def resolve_pricing(model: str | None) -> ModelPricing:
 def supports_long_context_premium(model: str | None) -> bool:
     """Check if a model supports long-context premium pricing.
 
-    Claude Opus 4.x and Sonnet 4.x models charge a premium for conversations
-    exceeding 200K input tokens. This function defines which models trigger
-    that premium calculation.
+    Current Claude 4.6 models no longer charge a premium for full-window 1M
+    context. Historical Sonnet 4/4.5 model IDs still trigger the legacy
+    premium calculation for stored analytics that predate the 4.6 rollout.
 
     Args:
         model: Model identifier string or None
@@ -154,10 +161,9 @@ def supports_long_context_premium(model: str | None) -> bool:
     """
     if not model:
         return False
-    return any(
-        token in model
-        for token in ("opus-4-6", "opus-4-5", "sonnet-4-6", "sonnet-4-5", "sonnet-4")
-    )
+    if any(token in model for token in ("opus-4-6", "opus-4-5", "sonnet-4-6")):
+        return False
+    return any(token in model for token in ("sonnet-4-5", "sonnet-4"))
 
 
 def calculate_cost(

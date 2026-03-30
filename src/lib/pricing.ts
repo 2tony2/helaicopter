@@ -17,6 +17,10 @@ export function getPricing(model?: string): ModelPricing {
     if (model.startsWith(key)) return OPENAI_PRICING[key];
   }
   // OpenAI model family match (order matters: check more specific patterns first)
+  if (model.includes("gpt-5.4-mini") || model.includes("gpt5.4-mini"))
+    return OPENAI_PRICING["gpt-5.4-mini"];
+  if (model.includes("gpt-5.4-nano") || model.includes("gpt5.4-nano"))
+    return OPENAI_PRICING["gpt-5.4-nano"];
   if (model.includes("gpt-5.4") || model.includes("gpt5.4"))
     return OPENAI_PRICING["gpt-5.4"];
   if (model.includes("gpt-5.2") || model.includes("gpt5.2"))
@@ -37,7 +41,7 @@ export function getPricing(model?: string): ModelPricing {
   if (model.includes("opus-4-1") || model.includes("opus-4"))
     return PRICING["claude-opus-4"];
   if (model.includes("sonnet"))
-    return PRICING["claude-sonnet-4-5-20250929"];
+    return PRICING["claude-sonnet-4-6"];
   if (model.includes("haiku"))
     return PRICING["claude-haiku-4-5-20251001"];
   return DEFAULT_PRICING;
@@ -90,9 +94,9 @@ export function calculateCost(
 }
 
 /**
- * Calculate cost with long-context premium (>200K active input tokens).
+ * Calculate cost with legacy long-context premium (>200K active input tokens).
  * The 200K threshold is based on active (non-cached) input tokens only.
- * Opus 4.6: input 2x, output 1.5x. Sonnet: input 2x, output 1.5x.
+ * Current Claude 4.6 models use standard pricing across the full 1M window.
  */
 export function calculateCostWithLongContext(
   usage: TokenUsage,
@@ -103,14 +107,11 @@ export function calculateCostWithLongContext(
 
   if (activeInput <= 200_000) return base;
 
-  // Long context premium applies to the entire request
-  const isOpus = model?.includes("opus-4-6") || model?.includes("opus-4-5");
-  const isSonnet =
-    model?.includes("sonnet-4-6") ||
-    model?.includes("sonnet-4-5") ||
-    model?.includes("sonnet-4");
+  const hasLegacySonnetPremium =
+    Boolean(model?.includes("sonnet-4")) &&
+    !model?.includes("sonnet-4-6");
 
-  if (isOpus || isSonnet) {
+  if (hasLegacySonnetPremium) {
     // Input doubles, output 1.5x
     return {
       inputCost: base.inputCost * 2,

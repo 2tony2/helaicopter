@@ -13,7 +13,7 @@ No other layer should maintain independent copies of pricing, model matching, to
 - **Canonical pricing tables** for Claude and OpenAI/Codex models
 - **Model matching rules** with exact match, prefix match, and fuzzy fallback
 - **Cost calculation** logic with per-token-type itemization
-- **Long-context premium** rules for Opus 4.x and Sonnet 4.x models
+- **Legacy long-context premium** rules for historical Sonnet 4.x model IDs, while current Claude 4.6 runs use standard pricing across the full 1M context window
 
 **Key APIs:**
 - `resolve_pricing(model: str | None) -> ModelPricing`
@@ -85,7 +85,7 @@ cost = calculate_cost(
     model="claude-sonnet-4-5-20250929",
 )
 
-# Check long-context premium eligibility
+# Check legacy long-context premium eligibility for historical Sonnet 4.x runs
 if conversation.total_input_tokens > 200_000 and supports_long_context_premium(model):
     premium = cost.input_cost + (cost.output_cost * 0.5) + ...
 ```
@@ -120,12 +120,12 @@ See `tests/test_semantics.py` for comprehensive test coverage:
 - Pricing table accuracy
 - Model matching rules (exact, prefix, fuzzy)
 - Cost calculation correctness
-- Long-context premium rules
+- Legacy long-context premium rules
 - Token alias normalization
 - Provider resolution heuristics
 - Contract drift removal verification
 
-All 25 tests pass and provide golden test coverage for semantic correctness.
+The targeted pricing tests pass and provide golden test coverage for semantic correctness.
 
 ## Future Work
 

@@ -45,6 +45,8 @@ CLAUDE_PRICING: dict[str, ModelPricing] = {
 
 OPENAI_PRICING: dict[str, ModelPricing] = {
     "gpt-5.4": ModelPricing(2.5, 15.0, 0.0, 0.0, 0.25),
+    "gpt-5.4-mini": ModelPricing(0.75, 4.5, 0.0, 0.0, 0.075),
+    "gpt-5.4-nano": ModelPricing(0.2, 1.25, 0.0, 0.0, 0.02),
     "gpt-5.2": ModelPricing(1.75, 14.0, 0.0, 0.0, 0.175),
     "gpt-5.1": ModelPricing(1.25, 10.0, 0.0, 0.0, 0.125),
     "gpt-5": ModelPricing(1.25, 10.0, 0.0, 0.0, 0.125),
@@ -70,6 +72,10 @@ def resolve_pricing(model: str | None) -> ModelPricing:
     for key, pricing in OPENAI_PRICING.items():
         if model.startswith(key):
             return pricing
+    if "gpt-5.4-mini" in model or "gpt5.4-mini" in model:
+        return OPENAI_PRICING["gpt-5.4-mini"]
+    if "gpt-5.4-nano" in model or "gpt5.4-nano" in model:
+        return OPENAI_PRICING["gpt-5.4-nano"]
     if "gpt-5.4" in model or "gpt5.4" in model:
         return OPENAI_PRICING["gpt-5.4"]
     if "gpt-5.2" in model or "gpt5.2" in model:
@@ -89,7 +95,7 @@ def resolve_pricing(model: str | None) -> ModelPricing:
     if "opus-4-1" in model or "opus-4" in model:
         return CLAUDE_PRICING["claude-opus-4"]
     if "sonnet" in model:
-        return CLAUDE_PRICING["claude-sonnet-4-5-20250929"]
+        return CLAUDE_PRICING["claude-sonnet-4-6"]
     if "haiku" in model:
         return CLAUDE_PRICING["claude-haiku-4-5-20251001"]
     return DEFAULT_PRICING
@@ -121,7 +127,6 @@ def calculate_cost(
 def supports_long_context_premium(model: str | None) -> bool:
     if not model:
         return False
-    return any(
-        token in model
-        for token in ("opus-4-6", "opus-4-5", "sonnet-4-6", "sonnet-4-5", "sonnet-4")
-    )
+    if any(token in model for token in ("opus-4-6", "opus-4-5", "sonnet-4-6")):
+        return False
+    return any(token in model for token in ("sonnet-4-5", "sonnet-4"))

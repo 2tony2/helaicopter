@@ -50,7 +50,9 @@ class TestCanonicalPricing:
     def test_fuzzy_match_handles_common_variants(self) -> None:
         assert resolve_pricing("gpt5") == OPENAI_PRICING["gpt-5"]
         assert resolve_pricing("model-contains-gpt-5.4-somewhere") == OPENAI_PRICING["gpt-5.4"]
-        assert resolve_pricing("sonnet-something") == CLAUDE_PRICING["claude-sonnet-4-5-20250929"]
+        assert resolve_pricing("gpt-5.4-mini") == OPENAI_PRICING["gpt-5.4-mini"]
+        assert resolve_pricing("gpt-5.4-nano") == OPENAI_PRICING["gpt-5.4-nano"]
+        assert resolve_pricing("sonnet-something") == CLAUDE_PRICING["claude-sonnet-4-6"]
         assert resolve_pricing("haiku-model") == CLAUDE_PRICING["claude-haiku-4-5-20251001"]
 
     def test_missing_model_returns_default_pricing(self) -> None:
@@ -105,13 +107,15 @@ class TestCostCalculation:
 class TestLongContextPremium:
     """Tests for long-context premium rules."""
 
-    def test_opus_4_models_support_long_context_premium(self) -> None:
-        assert supports_long_context_premium("claude-opus-4-6")
-        assert supports_long_context_premium("claude-opus-4-5-20251101")
-        assert supports_long_context_premium("opus-4-6-variant")
+    def test_opus_4_6_models_use_standard_pricing_across_full_context(self) -> None:
+        assert not supports_long_context_premium("claude-opus-4-6")
+        assert not supports_long_context_premium("claude-opus-4-5-20251101")
+        assert not supports_long_context_premium("opus-4-6-variant")
 
-    def test_sonnet_4_models_support_long_context_premium(self) -> None:
-        assert supports_long_context_premium("claude-sonnet-4-6")
+    def test_sonnet_4_6_models_use_standard_pricing_across_full_context(self) -> None:
+        assert not supports_long_context_premium("claude-sonnet-4-6")
+
+    def test_legacy_sonnet_4_models_keep_long_context_premium(self) -> None:
         assert supports_long_context_premium("claude-sonnet-4-5-20250929")
         assert supports_long_context_premium("sonnet-4-custom")
 
