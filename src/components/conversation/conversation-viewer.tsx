@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,6 +22,7 @@ import { Bot, Database, Gauge, Download, Brain, FileText, AlertTriangle } from "
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type {
+  ConversationPlan,
   DisplayToolCallBlock,
   FrontendProvider,
   ProcessedMessage,
@@ -34,12 +35,16 @@ import { ToolCallBlock } from "./tool-call-block";
 import { EvaluationDialog } from "./evaluation-dialog";
 import { EvaluationsTab } from "./evaluations-tab";
 import { ConversationDagView } from "./conversation-dag-view";
+import { ConversationTaskDagView } from "./conversation-task-dag-view";
 import { OpenClawTab } from "./openclaw-tab";
 import {
   buildCanonicalConversationRoute,
   buildConversationTabRoute,
   type ConversationDetailTab,
 } from "@/lib/routes";
+import { buildConversationTaskDag } from "@/lib/conversation-task-dag";
+
+const EMPTY_PLANS: ConversationPlan[] = [];
 
 export function providerLabel(provider: FrontendProvider): string {
   if (provider === "claude") return "Claude";
@@ -322,7 +327,18 @@ export function ConversationViewer({
   );
   const { data: tasks } = useTasks(sessionId, parentSessionId);
   const [showEvaluationToast, setShowEvaluationToast] = useState(false);
-  const plans = conversation?.plans || [];
+  const plans = conversation?.plans ?? EMPTY_PLANS;
+  const provider = resolveConversationProvider(projectPath, conversation?.provider);
+  const taskDag = useMemo(
+    () =>
+      buildConversationTaskDag({
+        provider,
+        tasks: tasks ?? [],
+        plans,
+      }),
+    [plans, provider, tasks]
+  );
+  const taskCount = taskDag.stats.totalNodes;
   const routeState = {
     tab: initialTab,
     plan: initialPlanId,
@@ -391,7 +407,6 @@ export function ConversationViewer({
   const selectedPlanId = routeState.plan ?? null;
   const selectedSubagentId = routeState.subagent ?? null;
   const selectedMessageId = routeState.message ?? null;
-  const provider = resolveConversationProvider(projectPath, conversation.provider);
   const openclawDetail =
     provider === "openclaw" && conversation.providerDetail?.kind === "openclaw"
       ? conversation.providerDetail.openclaw
@@ -498,9 +513,9 @@ export function ConversationViewer({
               {plans.length} plans
             </span>
           )}
-          {tasks && tasks.length > 0 && (
+          {taskCount > 0 && (
             <span className="text-sm text-muted-foreground">
-              {tasks.length} tasks
+              {taskCount} tasks
             </span>
           )}
           {failedToolCalls.length > 0 && (
@@ -566,7 +581,7 @@ export function ConversationViewer({
             {subagents.length > 0 ? `(${subagents.length})` : ""}
           </TabsTrigger>
           <TabsTrigger value="tasks">
-            Tasks {tasks && tasks.length > 0 ? `(${tasks.length})` : ""}
+            Tasks {taskCount > 0 ? `(${taskCount})` : ""}
           </TabsTrigger>
           {openclawDetail ? <TabsTrigger value="openclaw">OpenClaw</TabsTrigger> : null}
           <TabsTrigger value="raw">Raw</TabsTrigger>
@@ -744,13 +759,28 @@ export function ConversationViewer({
         </TabsContent>
 
         <TabsContent value="tasks">
-          <div className="mt-4">
-            {tasks && tasks.length > 0 ? (
-              <ScrollArea className="max-h-[600px]">
-                <pre className="text-sm bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-x-auto">
-                  {JSON.stringify(tasks, null, 2)}
-                </pre>
-              </ScrollArea>
+          <div className="mt-4 space-y-4">
+            {taskDag.nodes.length > 0 ? (
+              <>
+                <ConversationTaskDagView dag={taskDag} />
+                {tasks && tasks.length > 0 ? (
+                  <Card>
+                    <CardContent className="p-4 space-y-3">
+                      <div>
+                        <div className="text-sm font-medium">Raw task payload</div>
+                        <div className="text-xs text-muted-foreground">
+                          Kept for debugging in case the parser misses a field.
+                        </div>
+                      </div>
+                      <ScrollArea className="max-h-[320px]">
+                        <pre className="text-sm bg-muted rounded-lg p-4 font-mono whitespace-pre-wrap overflow-x-auto">
+                          {JSON.stringify(tasks, null, 2)}
+                        </pre>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </>
             ) : (
               <p className="text-muted-foreground text-sm">No tasks for this session.</p>
             )}
