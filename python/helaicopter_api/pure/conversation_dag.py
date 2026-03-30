@@ -161,6 +161,8 @@ def _conversation_total_tokens(conversation: ConversationDetailResponse | None) 
     if conversation is None:
         return 0
     usage = conversation.total_usage
+    if conversation.provider == "codex":
+        return usage.input_tokens + usage.output_tokens
     return (
         usage.input_tokens
         + usage.output_tokens

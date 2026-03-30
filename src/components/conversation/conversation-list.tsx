@@ -11,21 +11,19 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ProviderFilter, type Provider } from "@/components/ui/provider-filter";
 import { formatDistanceToNow } from "date-fns";
 import { MessageSquare, Wrench, Bot, ListChecks, Database, DollarSign } from "lucide-react";
+import {
+  inferConversationProvider,
+  totalTokensForConversationSummary,
+} from "@/lib/conversation-tokens";
 import { getModelBadgeClasses, formatModelName } from "@/lib/utils";
 import { calculateCost, formatCost } from "@/lib/pricing";
 import { buildConversationTabRoute, buildConversationRoute } from "@/lib/routes";
-import type { ConversationSummary, FrontendProvider } from "@/lib/types";
+import type { ConversationSummary } from "@/lib/types";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
-}
-
-function inferProviderFromProjectPath(projectPath: string): FrontendProvider {
-  if (projectPath.startsWith("codex:")) return "codex";
-  if (projectPath.startsWith("openclaw:")) return "openclaw";
-  return "claude";
 }
 
 export function matchesConversationProvider(
@@ -36,7 +34,7 @@ export function matchesConversationProvider(
     return true;
   }
 
-  return (conversation.provider ?? inferProviderFromProjectPath(conversation.projectPath)) === provider;
+  return (conversation.provider ?? inferConversationProvider(conversation.projectPath)) === provider;
 }
 
 export function ConversationList() {
@@ -215,13 +213,13 @@ export function ConversationList() {
                         <span
                           className="flex items-center gap-1 font-mono"
                           title={
-                            (conv.provider ?? inferProviderFromProjectPath(conv.projectPath)) === "codex"
+                            (conv.provider ?? inferConversationProvider(conv.projectPath)) === "codex"
                               ? `Input: ${conv.totalInputTokens.toLocaleString()} / Output: ${conv.totalOutputTokens.toLocaleString()} / Cached input: ${conv.totalCacheReadTokens.toLocaleString()}`
                               : `Input: ${conv.totalInputTokens.toLocaleString()} / Output: ${conv.totalOutputTokens.toLocaleString()} / Cache write: ${conv.totalCacheCreationTokens.toLocaleString()} / Cache read: ${conv.totalCacheReadTokens.toLocaleString()}`
                           }
                         >
                           <Database className="h-3 w-3" />
-                          {formatTokens(conv.totalInputTokens + conv.totalOutputTokens + conv.totalCacheCreationTokens + conv.totalCacheReadTokens)}
+                          {formatTokens(totalTokensForConversationSummary(conv))}
                         </span>
                         <span className="flex items-center gap-1 font-mono text-amber-600 dark:text-amber-400" title="Estimated cost">
                           <DollarSign className="h-3 w-3" />

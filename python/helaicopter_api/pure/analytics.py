@@ -253,18 +253,14 @@ def build_analytics(
         key: {} for key in TIME_SERIES_KEYS
     }
     total_subagents = 0
+    total_tokens_accumulator = 0
 
     for conversation in conversations:
         provider = provider_for_summary(conversation)
         reasoning_tokens = conversation.total_reasoning_tokens or 0
         conversation_cost = _conversation_cost_breakdown(conversation, provider=provider)
-        total_tokens = (
-            conversation.total_input_tokens
-            + conversation.total_output_tokens
-            + conversation.total_cache_write_tokens
-            + conversation.total_cache_read_tokens
-            + reasoning_tokens
-        )
+        total_tokens = _analytics_total_tokens(conversation, provider=provider)
+        total_tokens_accumulator += total_tokens
 
         data.total_conversations += 1
         data.total_input_tokens += conversation.total_input_tokens
@@ -393,13 +389,7 @@ def build_analytics(
                 bucket.openclaw_failed_tool_calls += conversation.failed_tool_call_count
                 bucket.openclaw_subagents += conversation.subagent_count
 
-    total_tokens = (
-        data.total_input_tokens
-        + data.total_output_tokens
-        + data.total_cache_creation_tokens
-        + data.total_cache_read_tokens
-        + data.total_reasoning_tokens
-    )
+    total_tokens = total_tokens_accumulator
     data.estimated_cost = data.cost_breakdown.total_cost
     data.daily_usage = [daily_usage_map[key] for key in sorted(daily_usage_map)]
     data.rates = _build_rates(
@@ -431,6 +421,22 @@ def provider_for_summary(conversation: HistoricalConversationSummary) -> Analyti
         model=conversation.model,
         provider=conversation.provider,
         project_path=conversation.project_path,
+    )
+
+
+def _analytics_total_tokens(
+    conversation: HistoricalConversationSummary,
+    *,
+    provider: AnalyticsProvider,
+) -> int:
+    if provider == "codex":
+        return conversation.total_input_tokens + conversation.total_output_tokens
+    return (
+        conversation.total_input_tokens
+        + conversation.total_output_tokens
+        + conversation.total_cache_write_tokens
+        + conversation.total_cache_read_tokens
+        + (conversation.total_reasoning_tokens or 0)
     )
 
 
