@@ -1,4 +1,4 @@
-"""Application-layer analytics orchestration."""
+"""Application-layer analytics logic."""
 
 from __future__ import annotations
 

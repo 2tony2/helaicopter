@@ -25,7 +25,6 @@ Scope: Next.js app under `src/app/*` and shared UI primitives under `src/compone
   - `src/app/conversations/page.tsx` → `PageHeader` and `space-y-8`.
   - `src/app/plans/page.tsx` → `PageHeader` and `space-y-8`.
   - `src/app/prompts/page.tsx` → `PageHeader` and `space-y-8`.
-  - `src/components/orchestration/orchestration-hub.tsx` → `PageHeader` and `space-y-8`.
   - `src/app/plans/[slug]/page.tsx` and `src/app/conversations/[projectPath]/[sessionId]/page.tsx` → standardized `Breadcrumbs`.
   - `src/app/schema/page.tsx` → replaced custom `<main>`+gradient with `PageHeader` + `Container` + `Card`.
 

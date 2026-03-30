@@ -18,13 +18,10 @@ from helaicopter_semantics import (
     CLAUDE_PRICING,
     CostBreakdown,
     OPENAI_PRICING,
-    RunRuntimeStatus,
-    TaskRuntimeStatus,
     calculate_cost,
     normalize_token_fields,
     resolve_pricing,
     resolve_provider,
-    status_tone,
     supports_long_context_premium,
 )
 
@@ -306,60 +303,3 @@ class TestContractDriftRemoval:
         # Verify cost is calculated correctly from normalized fields
         assert cost.total_cost == pytest.approx(1.089)
 
-
-class TestOrchestrationStatusVocabulary:
-    """Tests for canonical orchestration status vocabulary and display mapping."""
-
-    def test_run_status_vocabulary_is_complete(self) -> None:
-        """Verify all run statuses are defined."""
-        # This test ensures the canonical vocabulary is accessible
-        run_statuses: list[RunRuntimeStatus] = [
-            "pending",
-            "planning",
-            "running",
-            "completed",
-            "failed",
-            "timed_out",
-        ]
-        for status in run_statuses:
-            tone = status_tone(status)
-            assert tone is not None
-
-    def test_task_status_vocabulary_is_complete(self) -> None:
-        """Verify all task statuses are defined."""
-        task_statuses: list[TaskRuntimeStatus] = [
-            "pending",
-            "running",
-            "succeeded",
-            "failed",
-            "timed_out",
-            "skipped",
-            "blocked",
-        ]
-        for status in task_statuses:
-            tone = status_tone(status)
-            assert tone is not None
-
-    def test_status_tone_maps_success_states(self) -> None:
-        """Success states map to success tone."""
-        assert status_tone("succeeded") == "success"
-        assert status_tone("completed") == "success"
-
-    def test_status_tone_maps_error_states(self) -> None:
-        """Error states map to error tone."""
-        assert status_tone("failed") == "error"
-        assert status_tone("timed_out") == "error"
-
-    def test_status_tone_maps_warning_states(self) -> None:
-        """Warning states map to warning tone."""
-        assert status_tone("blocked") == "warning"
-        assert status_tone("skipped") == "warning"
-
-    def test_status_tone_maps_in_progress_states(self) -> None:
-        """In-progress states map to in_progress tone."""
-        assert status_tone("running") == "in_progress"
-        assert status_tone("planning") == "in_progress"
-
-    def test_status_tone_maps_pending_state(self) -> None:
-        """Pending state maps to info tone."""
-        assert status_tone("pending") == "info"

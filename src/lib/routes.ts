@@ -1,19 +1,14 @@
 import {
   conversationDetailTabs,
-  orchestrationTabs,
   resolveConversationDetailTab,
-  resolveOrchestrationInitialTab,
   type ConversationDetailTab,
-  type OrchestrationTab,
 } from "./client/schemas/runtime.ts";
 
 export {
   conversationDetailTabs,
-  orchestrationTabs,
   resolveConversationDetailTab,
-  resolveOrchestrationInitialTab,
 };
-export type { ConversationDetailTab, OrchestrationTab };
+export type { ConversationDetailTab };
 
 export type ConversationRouteProvider = "claude" | "codex" | "openclaw";
 
@@ -575,37 +570,4 @@ export function buildConversationSubagentRoute(
   agentId: string
 ): string {
   return `/conversations/${projectPath}/${sessionId}/subagents/${agentId}`;
-}
-
-export function buildOrchestrationRoute(opts?: {
-  tab?: OrchestrationTab;
-  flowRunId?: string;
-}): string {
-  const params = new URLSearchParams();
-  if (opts?.tab && opts.tab !== "orchestration") {
-    params.set("tab", opts.tab);
-  }
-  if (opts?.flowRunId) {
-    params.set("flowRunId", opts.flowRunId);
-  }
-  const query = params.toString();
-  return query ? `/orchestration?${query}` : "/orchestration";
-}
-
-export function getOrchestrationRouteState(
-  searchParams: URLSearchParams,
-  initial?: {
-    tab?: string;
-    flowRunId?: string;
-  }
-): {
-  tab: OrchestrationTab;
-  flowRunId?: string;
-} {
-  const flowRunId = searchParams.get("flowRunId") ?? initial?.flowRunId;
-
-  return {
-    tab: resolveOrchestrationInitialTab(searchParams.get("tab") ?? initial?.tab),
-    flowRunId: flowRunId ?? undefined,
-  };
 }

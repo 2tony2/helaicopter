@@ -15,13 +15,12 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "databases", "description": "Database refresh state and artifact inspection."},
     {"name": "evaluations", "description": "Evaluation prompt management and conversation review workflows."},
-    {"name": "gateway", "description": "Backend-owned API gateway direction across frontend, stores, cache, and orchestration surfaces."},
+    {"name": "gateway", "description": "Backend-owned API gateway direction across frontend, stores, cache, and database surfaces."},
     {"name": "history", "description": "Merged CLI history from Claude and Codex."},
     {"name": "plans", "description": "Saved plan listings and detail views."},
     {"name": "projects", "description": "Project lists derived from conversation data."},
     {"name": "subscriptions", "description": "Provider subscription settings and monthly cost controls."},
     {"name": "tasks", "description": "Task payloads associated with Claude sessions."},
-    {"name": "orchestration", "description": "Repo-local OATS orchestration and runtime inspection surfaces."},
 ]
 
 TITLE = "Helaicopter API"

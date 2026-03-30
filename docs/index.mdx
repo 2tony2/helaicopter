@@ -1,6 +1,6 @@
 ---
 title: Helaicopter
-description: A local-first platform for browsing, analyzing, and orchestrating Claude Code and OpenAI Codex conversations.
+description: A local-first platform for browsing and analyzing Claude Code and OpenAI Codex conversations.
 ---
 
 Helaicopter is a self-hosted analytics and operations platform that reads your AI coding conversations directly from `~/.claude/` and `~/.codex/`. Nothing leaves your machine.
@@ -12,7 +12,6 @@ Helaicopter is a self-hosted analytics and operations platform that reads your A
 - **Conversation DAGs** — visualize parent/subagent relationships as directed acyclic graphs
 - **Plan viewer** — browse saved implementation plans from `~/.claude/plans/`
 - **Evaluation system** — run LLM-as-judge evaluations against conversation transcripts
-- **Orchestration hub** — monitor repo-local OATS run specs and runtime execution
 - **Database inspector** — view schema, table inventories, and refresh status for all backing stores
 
 ## Architecture at a glance
@@ -30,8 +29,8 @@ Helaicopter is a self-hosted analytics and operations platform that reads your A
 │   Hexagonal architecture        │
 └────┬───────┬───────┬────────────┘
      │       │       │
-  ~/.claude  SQLite  OATS runtime
-  ~/.codex   DuckDB  Backend cache
+  ~/.claude  SQLite  DuckDB
+  ~/.codex   Backend cache
 ```
 
 The frontend never touches the filesystem directly — all data flows through the FastAPI backend, which owns the conversation parser, analytics aggregation, and database refresh pipeline.
@@ -63,9 +62,6 @@ npm run db:refresh
   </Card>
   <Card title="How-To Guides" icon="wrench" href="/guides/getting-started">
     Step-by-step guides for common tasks
-  </Card>
-  <Card title="Orchestration" icon="diagram-project" href="/orchestration/overview">
-    OATS run specs and workflow monitoring
   </Card>
   <Card title="Data Layer" icon="database" href="/data/databases-and-caches">
     SQLite, DuckDB, refresh pipeline, and caching strategy

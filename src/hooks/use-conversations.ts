@@ -12,7 +12,6 @@ import type {
   ConversationRouteResolution,
   DatabaseStatus,
   EvaluationPrompt,
-  OvernightOatsRunRecord,
   SubscriptionSettings,
 } from "@/lib/types";
 import * as endpoints from "@/lib/client/endpoints";
@@ -27,7 +26,6 @@ import {
   normalizeConversations,
   normalizeDatabaseStatus,
   normalizeEvaluationPrompts,
-  normalizeOvernightOatsRuns,
   normalizeProjects,
   normalizeSubscriptionSettings,
   normalizeTasks,
@@ -124,14 +122,6 @@ export function useConversationDagSummaries(
   return useSWR<ConversationDagSummary[]>(
     endpoints.conversationDags({ project, days, provider }),
     (url: string) => requestJson(url, undefined, normalizeConversationDagSummaries),
-    liveConversationSwrOptions
-  );
-}
-
-export function useOvernightOatsRuns() {
-  return useSWR<OvernightOatsRunRecord[]>(
-    endpoints.orchestrationOats(),
-    (url: string) => requestJson(url, undefined, normalizeOvernightOatsRuns),
     liveConversationSwrOptions
   );
 }

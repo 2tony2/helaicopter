@@ -24,3 +24,6 @@ def test_openapi_schema_available() -> None:
     schema = response.json()
     assert schema["info"]["title"] == "Helaicopter API"
     assert "/health" in schema["paths"]
+    assert "/orchestration/oats" not in schema["paths"]
+    assert "/dispatch/queue" not in schema["paths"]
+    assert "/workers" not in schema["paths"]

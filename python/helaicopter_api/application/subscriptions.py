@@ -1,4 +1,4 @@
-"""Application-layer subscription settings orchestration."""
+"""Application-layer subscription settings logic."""
 
 from __future__ import annotations
 

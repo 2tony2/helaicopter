@@ -109,15 +109,6 @@ function makeChildResolution(overrides: Partial<Record<string, unknown>> = {}) {
   });
 }
 
-function makeChildConversationDetail(overrides: Partial<Record<string, unknown>> = {}) {
-  return makeConversationDetail({
-    session_id: "claude-agent-1",
-    conversation_ref: "agent-thread--claude-claude-agent-1",
-    thread_type: "subagent",
-    ...overrides,
-  });
-}
-
 function createTestDependencies(
   handlers: Record<string, { status?: number; body?: unknown }>
 ): ConversationPageDependencies & { fetchCalls: FetchCall[] } {

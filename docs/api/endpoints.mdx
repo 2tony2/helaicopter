@@ -101,11 +101,3 @@ The refresh endpoint re-parses all conversation files, updates both SQLite and D
 | Method | Path | Query params | Description |
 |--------|------|-------------|-------------|
 | `GET` | `/history` | `limit` | Merged Claude + Codex CLI command histories |
-
-## Orchestration — OATS
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/orchestration/oats` | OATS run records with DAGs and task status |
-
-Returns both live runtime state and persisted records, preferring live state when available.

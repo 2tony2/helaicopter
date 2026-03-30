@@ -1,8 +1,7 @@
-"""Focused OAuth flow and resolver credential lifecycle tests."""
+"""Focused OAuth flow credential lifecycle tests."""
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -13,17 +12,14 @@ from fastapi.testclient import TestClient
 import pytest
 import httpx
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from helaicopter_api.application import auth as auth_application
-from helaicopter_api.application.dispatch import InMemoryWorkerRegistry
-from helaicopter_api.application.resolver import ResolverLoop
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
-from helaicopter_db.models.oltp import OltpBase, WorkerRegistryRecord
+from helaicopter_db.models.oltp import OltpBase
 
 
 def _services_stub(**attrs: object) -> BackendServices:
@@ -100,11 +96,6 @@ class _StubOAuthClient:
 class _FailingRefreshOAuthClient(_StubOAuthClient):
     def refresh_access_token(self, *, refresh_token: str) -> _StubOAuthTokens:
         raise RuntimeError(f"refresh failed for {refresh_token}")
-
-
-def _run(coro):  # noqa: ANN001, ANN202
-    return asyncio.run(coro)
-
 
 def test_initiate_oauth_returns_redirect_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HELA_CODEX_OAUTH_CLIENT_ID", "test-codex-client")
@@ -299,146 +290,3 @@ def test_refresh_transient_failure_does_not_mark_credential_expired() -> None:
         listing = client.get("/auth/credentials")
         credential = next(item for item in listing.json() if item["credentialId"] == credential_id)
         assert credential["status"] == "active"
-
-
-def test_resolver_auto_refreshes_expiring_token() -> None:
-    @dataclass
-    class Credential:
-        credential_id: str
-        provider: str
-        credential_type: str
-        status: str
-        token_expires_at: datetime | None
-        last_refreshed_at: datetime | None = None
-
-    class InMemoryAuthStore:
-        def __init__(self) -> None:
-            self._credentials: dict[str, Credential] = {}
-
-        def create(self, *, provider: str, credential_type: str, token_expires_at: datetime) -> Credential:
-            credential = Credential(
-                credential_id="cred_1",
-                provider=provider,
-                credential_type=credential_type,
-                status="active",
-                token_expires_at=token_expires_at,
-            )
-            self._credentials[credential.credential_id] = credential
-            return credential
-
-        def get(self, credential_id: str) -> Credential | None:
-            return self._credentials.get(credential_id)
-
-        def refresh_credential(self, credential_id: str) -> Credential:
-            credential = self._credentials[credential_id]
-            credential.last_refreshed_at = datetime.now(UTC)
-            credential.token_expires_at = credential.last_refreshed_at + timedelta(hours=1)
-            credential.status = "active"
-            return credential
-
-    auth_store = InMemoryAuthStore()
-    credential = auth_store.create(
-        provider="claude",
-        credential_type="oauth_token",
-        token_expires_at=datetime.now(UTC) + timedelta(minutes=3),
-    )
-    registry = InMemoryWorkerRegistry()
-    registry.register(
-        provider="claude",
-        models=["claude-sonnet-4-6"],
-        auth_credential_id=credential.credential_id,
-    )
-
-    resolver = ResolverLoop(
-        registry=registry,
-        auth_store=auth_store,
-        graphs={},
-        token_refresh_threshold=timedelta(minutes=5),
-    )
-
-    _run(resolver.tick())
-
-    updated = auth_store.get(credential.credential_id)
-    assert updated is not None
-    assert updated.last_refreshed_at is not None
-
-
-def test_resolver_marks_worker_auth_expired_when_refresh_fails() -> None:
-    @dataclass
-    class Credential:
-        credential_id: str
-        provider: str
-        credential_type: str
-        status: str
-        token_expires_at: datetime | None
-
-    class InMemoryAuthStore:
-        def __init__(self) -> None:
-            self._credentials = {
-                "cred_1": Credential(
-                    credential_id="cred_1",
-                    provider="claude",
-                    credential_type="oauth_token",
-                    status="active",
-                    token_expires_at=datetime.now(UTC) + timedelta(minutes=1),
-                ),
-            }
-
-        def get(self, credential_id: str) -> Credential | None:
-            return self._credentials.get(credential_id)
-
-        def refresh_credential(self, credential_id: str) -> Credential:
-            credential = self._credentials[credential_id]
-            credential.status = "expired"
-            raise RuntimeError("refresh failed")
-
-    registry = InMemoryWorkerRegistry()
-    worker = registry.register(
-        provider="claude",
-        models=["claude-sonnet-4-6"],
-        auth_credential_id="cred_1",
-    )
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    OltpBase.metadata.create_all(engine)
-    with Session(engine) as session:
-        session.add(
-            WorkerRegistryRecord(
-                worker_id=worker.worker_id,
-                worker_type="pi_shell",
-                provider="claude",
-                capabilities_json='{"provider":"claude","models":["claude-sonnet-4-6"]}',
-                auth_credential_id="cred_1",
-                host="local",
-                pid=123,
-                worktree_root=None,
-                registered_at=datetime.now(UTC),
-                last_heartbeat_at=datetime.now(UTC),
-                status="idle",
-                current_task_id=None,
-                current_run_id=None,
-                metadata_json=None,
-            )
-        )
-        session.commit()
-
-    resolver = ResolverLoop(
-        registry=registry,
-        auth_store=InMemoryAuthStore(),
-        graphs={},
-        token_refresh_threshold=timedelta(minutes=5),
-        sqlite_engine=engine,
-    )
-
-    _run(resolver.tick())
-
-    assert worker.status == "auth_expired"
-    assert worker.auth_status == "expired"
-    with Session(engine) as session:
-        row = session.get(WorkerRegistryRecord, worker.worker_id)
-        assert row is not None
-        assert row.status == "auth_expired"
-    engine.dispose()

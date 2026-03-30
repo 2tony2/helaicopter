@@ -179,74 +179,6 @@ export function evaluationPrompt(promptId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Orchestration
-// ---------------------------------------------------------------------------
-
-export function orchestrationOats() {
-  return api("/orchestration/oats");
-}
-
-export function orchestrationRuntime(runId: string) {
-  return api(`/orchestration/runtime/${enc(runId)}`);
-}
-
-export function orchestrationOatsRefresh(runId: string) {
-  return api(`/orchestration/oats/${enc(runId)}/refresh`);
-}
-
-export function orchestrationOatsResume(runId: string) {
-  return api(`/orchestration/oats/${enc(runId)}/resume`);
-}
-
-export function orchestrationOatsPause(runId: string) {
-  return api(`/orchestration/oats/${enc(runId)}/pause`);
-}
-
-export function orchestrationOatsCancelTask(runId: string, taskId: string) {
-  return api(`/orchestration/oats/${enc(runId)}/tasks/${enc(taskId)}/cancel`);
-}
-
-export function orchestrationOatsForceRetryTask(runId: string, taskId: string) {
-  return api(`/orchestration/oats/${enc(runId)}/tasks/${enc(taskId)}/force-retry`);
-}
-
-export function orchestrationOatsRerouteTask(runId: string, taskId: string) {
-  return api(`/orchestration/oats/${enc(runId)}/tasks/${enc(taskId)}/reroute`);
-}
-
-export function orchestrationOatsInsertTask(runId: string) {
-  return api(`/orchestration/oats/${enc(runId)}/tasks`);
-}
-
-export function operatorBootstrap() {
-  return api("/operator/bootstrap");
-}
-
-// ---------------------------------------------------------------------------
-// Workers
-// ---------------------------------------------------------------------------
-
-export function workers(opts?: { provider?: string }) {
-  return api(`/workers${qs({ provider: opts?.provider })}`);
-}
-
-export function workerProviders() {
-  return api("/workers/providers");
-}
-
-export function worker(workerId: string) {
-  return api(`/workers/${enc(workerId)}`);
-}
-
-export function workerDrain(workerId: string) {
-  return api(`/workers/${enc(workerId)}/drain`);
-}
-
-export function workerResetSession(workerId: string) {
-  return api(`/workers/${enc(workerId)}/reset-session`);
-}
-
-// ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
@@ -270,16 +202,8 @@ export function authCredentialCodexCliConnect() {
   return api("/auth/credentials/codex-cli/connect");
 }
 
-// ---------------------------------------------------------------------------
-// Dispatch
-// ---------------------------------------------------------------------------
-
-export function dispatchQueue() {
-  return api("/dispatch/queue");
-}
-
-export function dispatchHistory(opts?: { limit?: number }) {
-  return api(`/dispatch/history${qs({ limit: opts?.limit })}`);
+export function authCredentialOauthInitiate() {
+  return api("/auth/credentials/oauth/initiate");
 }
 
 // ---------------------------------------------------------------------------

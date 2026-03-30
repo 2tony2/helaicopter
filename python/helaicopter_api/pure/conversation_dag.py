@@ -121,7 +121,7 @@ def _to_node(
         nickname=subagent.nickname if subagent is not None else None,
         subagent_type=subagent.subagent_type if subagent is not None else None,
         thread_type="main" if is_root else "subagent",
-        has_transcript=conversation is not None,
+        has_transcript=conversation is not None and len(conversation.messages) > 0,
         model=conversation.model if conversation is not None else None,
         message_count=len(conversation.messages) if conversation is not None else 0,
         total_tokens=_conversation_total_tokens(conversation),
@@ -129,9 +129,9 @@ def _to_node(
         depth=depth,
         path=_conversation_node_path(
             conversation_ref=(
-                conversation.conversation_ref
-                if conversation is not None
-                else subagent.conversation_ref if subagent is not None else None
+                subagent.conversation_ref
+                if subagent is not None and subagent.conversation_ref
+                else conversation.conversation_ref if conversation is not None else None
             ),
         ),
         is_root=is_root,

@@ -26,13 +26,11 @@ from ..adapters.claude_fs import (
 )
 from ..adapters.codex_sqlite import FileCodexStore
 from ..adapters.evaluation_jobs import LocalCliEvaluationRunner, SupportsSubprocessRun
-from ..adapters.oats_artifacts import FileOatsRunStore
 from ..adapters.openclaw_fs.store import FileOpenClawStore
 from ..ports.app_sqlite import AppSqliteStore
 from ..ports.claude_fs import ConversationReader, HistoryReader, PlanReader, TaskReader
 from ..ports.codex_sqlite import CodexStore
 from ..ports.evaluations import EvaluationJobRunner
-from ..ports.orchestration import OatsRunStore
 from ..ports.openclaw_fs import OpenClawStore
 from ..server.config import Settings
 
@@ -127,7 +125,6 @@ class BackendServices:
     claude_task_reader: TaskReader
     codex_store: CodexStore
     openclaw_store: OpenClawStore
-    oats_run_store: OatsRunStore
     cache: LocalCache = field(default_factory=LocalCache)
     subprocess_runner: SubprocessRunner = field(default_factory=SubprocessRunner)
     evaluation_job_runner: EvaluationJobRunner | None = None
@@ -215,10 +212,6 @@ def build_services(settings: Settings) -> BackendServices:
         agents_dir=settings.openclaw_agents_dir,
         memory_sqlite_path=settings.openclaw_memory_sqlite_path,
     )
-    oats_run_store = FileOatsRunStore(
-        project_root=settings.project_root,
-        runtime_dir=settings.runtime_dir,
-    )
     subprocess_runner = SubprocessRunner()
     evaluation_subprocess_runner = cast(SupportsSubprocessRun, subprocess_runner)
     return BackendServices(
@@ -231,7 +224,6 @@ def build_services(settings: Settings) -> BackendServices:
         claude_task_reader=FileTaskReader(claude_artifacts),
         codex_store=codex_store,
         openclaw_store=openclaw_store,
-        oats_run_store=oats_run_store,
         subprocess_runner=subprocess_runner,
         evaluation_job_runner=LocalCliEvaluationRunner(
             subprocess_runner=evaluation_subprocess_runner

@@ -19,7 +19,6 @@ from helaicopter_api.ports.claude_fs import (
 )
 from helaicopter_api.ports.codex_sqlite import CodexStore
 from helaicopter_api.ports.evaluations import EvaluationJobRunner
-from helaicopter_api.ports.orchestration import OatsRunStore
 from helaicopter_api.server.config import Settings
 from helaicopter_api.server.main import app, create_app
 from helaicopter_api.server.middleware import REQUEST_ID_HEADER
@@ -74,7 +73,6 @@ class TestBuildServices:
         assert isinstance(svc.claude_task_reader, TaskReader)
         assert isinstance(svc.app_sqlite_store, AppSqliteStore)
         assert isinstance(svc.codex_store, CodexStore)
-        assert isinstance(svc.oats_run_store, OatsRunStore)
         assert isinstance(svc.evaluation_job_runner, EvaluationJobRunner)
         svc.sqlite_engine.dispose()
 
@@ -197,7 +195,6 @@ class TestAppFactory:
             "helaicopter-api.json",
             "helaicopter-api.yaml",
             "helaicopter-frontend-app-api.json",
-            "helaicopter-oats-orchestration-api.json",
         ]
         assert "/orchestration/prefect/flow-runs:" not in yaml_text
 
@@ -224,8 +221,7 @@ class TestGatewayDirection:
 
         surfaces = {surface["key"]: surface for surface in body["surfaces"]}
         assert surfaces["fastapi"]["isPrimary"] is True
-        assert set(surfaces) == {"fastapi", "frontend", "sqlite", "oats", "duckdb", "cache"}
-        assert surfaces["oats"]["isPrimary"] is False
+        assert set(surfaces) == {"fastapi", "frontend", "sqlite", "duckdb", "cache"}
         assert surfaces["cache"]["servingClass"] == "internal-only"
 
 

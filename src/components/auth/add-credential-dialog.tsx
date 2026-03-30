@@ -9,7 +9,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { AuthCredential } from "@/lib/types";
 
 export function CredentialProviderActions({
   onConnectClaudeCli,
@@ -72,7 +71,6 @@ export function AddCredentialDialog({
           onConnectCodexCli={onConnectCodexCli}
           pending={pending}
         />
-
       </DialogContent>
     </Dialog>
   );

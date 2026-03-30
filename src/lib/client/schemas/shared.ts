@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  conversationDetailTabs,
-  orchestrationTabs,
-} from "../../routes.ts";
+import { conversationDetailTabs } from "../../routes.ts";
 
 function enumSchema<const Values extends readonly [string, ...string[]]>(values: Values) {
   return z.enum(values);
@@ -35,5 +32,3 @@ export const providerFilters = ["all", ...providers] as const;
 export const providerFilterSchema = enumSchema(providerFilters);
 
 export const conversationDetailTabSchema = enumSchema(conversationDetailTabs);
-
-export const orchestrationTabSchema = enumSchema(orchestrationTabs);

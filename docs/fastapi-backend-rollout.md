@@ -54,7 +54,7 @@ Useful backend environment overrides:
 HELA_PROJECT_ROOT=/path/to/helaicopter
 HELA_CLAUDE_DIR=/path/to/.claude
 HELA_CODEX_DIR=/path/to/.codex
-HELA_OATS_RUNTIME_DIR=/path/to/.oats/runtime
+HELA_OPENCLAW_DIR=/path/to/.openclaw
 ```
 
 Quick sanity checks:
@@ -70,7 +70,6 @@ open http://127.0.0.1:30000/openapi.json
 FastAPI is the single backend gateway for the runtime platform:
 
 - The Next.js frontend calls FastAPI directly rather than talking to DuckDB or repo-local artifacts on its own.
-- The legacy repo-local Oats runtime remains available under `/orchestration/oats` as a compatibility and inspection surface.
 - SQLite-backed app metadata remains the primary backend read/write store.
 - DuckDB remains inspection-only and is intentionally surfaced through the Databases API rather than treated as a peer application backend.
 

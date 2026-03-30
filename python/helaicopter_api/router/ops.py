@@ -34,7 +34,7 @@ async def ops_ready(
         ``checks`` mapping of individual dependency names to their pass/fail status.
     """
     checks: dict[str, bool] = {
-        "runtime_dir_exists": settings.runtime_dir.exists(),
+        "database_runtime_dir_exists": settings.database.runtime_dir.exists(),
     }
     all_ok = all(checks.values())
     return {"ready": all_ok, "checks": checks}
