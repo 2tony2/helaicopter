@@ -12,16 +12,15 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const checkoutInstance = buildCheckoutInstance(repoRoot, {
-  apiPort:
-    process.env.HELA_API_PORT === undefined
-      ? undefined
-      : Number.parseInt(process.env.HELA_API_PORT, 10),
   webPort:
     process.env.HELA_WEB_PORT === undefined
       ? undefined
       : Number.parseInt(process.env.HELA_WEB_PORT, 10),
+  apiPort:
+    process.env.HELA_API_PORT === undefined
+      ? undefined
+      : Number.parseInt(process.env.HELA_API_PORT, 10),
 });
-const apiPort = String(checkoutInstance.apiPort);
 const nextLockPath = path.join(repoRoot, ".next", "dev", "lock");
 
 function runOutput(command, args) {
@@ -194,13 +193,19 @@ function main() {
   process.on("SIGTERM", () => shutdown(0));
 
   const childEnv = buildDevChildEnv(checkoutInstance, process.env);
+  const apiHost = childEnv.HELA_API_HOST || "127.0.0.1";
+  const webHost = childEnv.HELA_WEB_HOST || "127.0.0.1";
+  const usesProxy = childEnv.HELA_USE_API_PROXY === "1";
 
   console.log(`[dev] checkout ${checkoutInstance.checkoutId}`);
-  console.log(`[dev] starting FastAPI on http://127.0.0.1:${checkoutInstance.apiPort}`);
+  console.log(`[dev] starting FastAPI on http://${apiHost}:${checkoutInstance.apiPort}`);
   const api = spawnChild("api", "npm", ["run", "api:dev"], childEnv);
   children.push(api);
 
-  console.log(`[dev] starting Next.js frontend on http://127.0.0.1:${checkoutInstance.webPort}`);
+  console.log(`[dev] starting Next.js frontend on http://${webHost}:${checkoutInstance.webPort}`);
+  if (usesProxy) {
+    console.log("[dev] browser clients will use the Next.js backend proxy at /api/backend/*");
+  }
   const web = spawnChild("web", "npm", ["run", "dev:web"], childEnv);
   children.push(web);
 

@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:web": "sh -c 'next dev --port \"${PORT:-3000}\"'",
-    "api:dev": "sh -c 'uv run uvicorn helaicopter_api.server.main:app --host 127.0.0.1 --port \"${HELA_API_PORT:-30000}\"'",
+    "dev:mobile": "HELA_WEB_HOST=0.0.0.0 HELA_API_HOST=0.0.0.0 HELA_USE_API_PROXY=1 node scripts/dev.mjs",
+    "dev:web": "sh -c 'next dev --hostname \"${HELA_WEB_HOST:-127.0.0.1}\" --port \"${PORT:-3000}\"'",
+    "api:dev": "sh -c 'uv run uvicorn helaicopter_api.server.main:app --host \"${HELA_API_HOST:-127.0.0.1}\" --port \"${HELA_API_PORT:-30000}\"'",
     "api:openapi": "uv run python scripts/generate-openapi-artifacts.py",
     "build": "next build",
     "start": "next start",
@@ -17,7 +18,10 @@
     "db:export": "tsx scripts/export-parsed-data.ts",
     "cap:sync": "cap sync ios",
     "cap:open": "cap open ios",
-    "cap:run": "cap run ios"
+    "cap:run": "cap run ios",
+    "mobile:ios:sync": "sh -c ': \"${HELA_MOBILE_SERVER_URL:?Set HELA_MOBILE_SERVER_URL to http://your-mac-hostname:PORT}\"; cap sync ios'",
+    "mobile:ios:open": "sh -c ': \"${HELA_MOBILE_SERVER_URL:?Set HELA_MOBILE_SERVER_URL to http://your-mac-hostname:PORT}\"; cap open ios'",
+    "mobile:ios:run": "sh -c ': \"${HELA_MOBILE_SERVER_URL:?Set HELA_MOBILE_SERVER_URL to http://your-mac-hostname:PORT}\"; cap run ios'"
   },
   "dependencies": {
     "@capacitor/app": "^8.0.1",
