@@ -83,6 +83,13 @@ export function resolveConversationProvider(
   return "claude";
 }
 
+export function hasFatalConversationLoadError<T>(
+  conversation: T | null | undefined,
+  _error: unknown
+): boolean {
+  return conversation === undefined || conversation === null;
+}
+
 interface FailedToolCallEntry {
   message: ProcessedMessage;
   block: DisplayToolCallBlock;
@@ -225,7 +232,7 @@ function SubagentTranscriptCard({
                 <Skeleton key={i} className="h-24 w-full" />
               ))}
             </div>
-          ) : error || !conversation ? (
+          ) : hasFatalConversationLoadError(conversation, error) ? (
             <p className="text-sm text-muted-foreground">
               Could not load sub-agent conversation.
             </p>
@@ -388,7 +395,7 @@ export function ConversationViewer({
     );
   }
 
-  if (error || !conversation) {
+  if (hasFatalConversationLoadError(conversation, error)) {
     return (
       <div className="text-center text-muted-foreground py-12">
         Failed to load conversation

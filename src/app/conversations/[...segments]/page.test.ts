@@ -13,6 +13,7 @@ import {
 } from "../../../components/ui/provider-filter.tsx";
 import {
   providerLabel as conversationProviderLabel,
+  hasFatalConversationLoadError,
   resolveConversationProvider,
 } from "../../../components/conversation/conversation-viewer.tsx";
 import { matchesConversationProvider } from "../../../components/conversation/conversation-list.tsx";
@@ -452,6 +453,22 @@ test("OpenClaw conversation payloads are not mislabeled as Claude or Codex", () 
   assert.equal(resolveConversationProvider("openclaw:agent:main"), "openclaw");
   assert.equal(resolveConversationProvider("openclaw:agent:main", "openclaw"), "openclaw");
   assert.equal(conversationProviderLabel("openclaw"), "OpenClaw");
+});
+
+test("conversation load errors are only fatal when no conversation data is available", () => {
+  assert.equal(hasFatalConversationLoadError(undefined, undefined), true);
+  assert.equal(hasFatalConversationLoadError(undefined, new Error("boom")), true);
+  assert.equal(
+    hasFatalConversationLoadError({ sessionId: "session-1" } as { sessionId: string }, undefined),
+    false
+  );
+  assert.equal(
+    hasFatalConversationLoadError(
+      { sessionId: "session-1" } as { sessionId: string },
+      new Error("transient poll failure")
+    ),
+    false
+  );
 });
 
 test("project provider filtering does not treat every non-codex namespace as Claude", () => {
