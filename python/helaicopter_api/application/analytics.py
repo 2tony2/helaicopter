@@ -9,16 +9,25 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from pydantic import ConfigDict, InstanceOf, validate_call
 
+from helaicopter_api.application.conversations import list_conversations
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.pure.analytics import build_analytics, filter_analytics_conversations
 from helaicopter_api.schema.analytics import AnalyticsDataResponse
+from helaicopter_api.schema.conversations import ConversationSummaryResponse
 from helaicopter_db.db import create_olap_engine
 from helaicopter_domain.vocab import ProviderName
 
 
 RECENT_SUPPLEMENT_HOURS = 6
+_LIVE_CONVERSATION_SERVICE_ATTRS = (
+    "cache",
+    "settings",
+    "claude_conversation_reader",
+    "codex_store",
+    "openclaw_store",
+)
 
 
 @validate_call(config=ConfigDict(strict=True), validate_return=True)
@@ -88,20 +97,37 @@ def _load_authoritative_analytics_conversations(
 ) -> list[HistoricalConversationSummary]:
     warehouse_rows = list_warehouse_historical_conversations(services)
     sqlite_rows = services.app_sqlite_store.list_historical_conversations()
-    if not warehouse_rows:
-        return sqlite_rows
-
     supplement_cutoff = now - timedelta(hours=RECENT_SUPPLEMENT_HOURS)
-    combined: dict[str, HistoricalConversationSummary] = {
-        row.conversation_id: row for row in warehouse_rows
-    }
-    for row in sqlite_rows:
-        if _ended_at_or_none(row) is None:
-            combined[row.conversation_id] = row
-            continue
-        if _ended_at_or_none(row) >= supplement_cutoff:
-            combined[row.conversation_id] = row
+    combined: dict[tuple[str, str, str | None], HistoricalConversationSummary]
+
+    if warehouse_rows:
+        combined = {_analytics_identity_key(row): row for row in warehouse_rows}
+        for row in sqlite_rows:
+            ended_at = _ended_at_or_none(row)
+            if ended_at is None or ended_at >= supplement_cutoff:
+                combined[_analytics_identity_key(row)] = row
+    else:
+        combined = {_analytics_identity_key(row): row for row in sqlite_rows}
+
+    for summary in _list_live_analytics_conversations(services):
+        live_row = _historical_summary_from_live_summary(summary)
+        existing = combined.get(_analytics_identity_key(live_row))
+        if existing is None or _should_replace_analytics_summary(existing, live_row):
+            combined[_analytics_identity_key(live_row)] = live_row
+
     return list(combined.values())
+
+
+def _list_live_analytics_conversations(
+    services: BackendServices,
+) -> list[ConversationSummaryResponse]:
+    if not _supports_live_conversation_supplement(services):
+        return []
+    return list_conversations(services)
+
+
+def _supports_live_conversation_supplement(services: BackendServices) -> bool:
+    return all(hasattr(services, attribute) for attribute in _LIVE_CONVERSATION_SERVICE_ATTRS)
 
 
 def list_warehouse_historical_conversations(
@@ -206,3 +232,77 @@ def _serialize_datetime(value: object) -> str:
             return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
         return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return str(value)
+
+
+def _analytics_identity_key(row: HistoricalConversationSummary) -> tuple[str, str, str | None]:
+    provider = row.provider
+    return (
+        row.project_path if provider == "openclaw" else provider,
+        row.session_id,
+        row.project_path if provider == "openclaw" else None,
+    )
+
+
+def _historical_summary_from_live_summary(
+    summary: ConversationSummaryResponse,
+) -> HistoricalConversationSummary:
+    provider = summary.provider or _provider_from_project_path(summary.project_path)
+    return HistoricalConversationSummary(
+        conversation_id=_live_conversation_id(summary, provider=provider),
+        provider=provider,
+        session_id=summary.session_id,
+        project_path=summary.project_path,
+        project_name=summary.project_name,
+        thread_type=summary.thread_type,
+        first_message=summary.first_message,
+        route_slug=summary.route_slug,
+        started_at=_epoch_ms_to_iso(summary.created_at),
+        ended_at=_epoch_ms_to_iso(summary.last_updated_at),
+        message_count=summary.message_count,
+        model=summary.model,
+        git_branch=summary.git_branch,
+        reasoning_effort=summary.reasoning_effort,
+        speed=summary.speed,
+        total_input_tokens=summary.total_input_tokens,
+        total_output_tokens=summary.total_output_tokens,
+        total_cache_write_tokens=summary.total_cache_creation_tokens,
+        total_cache_read_tokens=summary.total_cache_read_tokens,
+        total_reasoning_tokens=summary.total_reasoning_tokens or 0,
+        tool_use_count=summary.tool_use_count,
+        failed_tool_call_count=summary.failed_tool_call_count,
+        tool_breakdown=dict(summary.tool_breakdown),
+        subagent_count=summary.subagent_count,
+        subagent_type_breakdown=dict(summary.subagent_type_breakdown),
+        task_count=summary.task_count,
+    )
+
+
+def _should_replace_analytics_summary(
+    existing: HistoricalConversationSummary,
+    candidate: HistoricalConversationSummary,
+) -> bool:
+    existing_ended_at = _ended_at_or_none(existing)
+    candidate_ended_at = _ended_at_or_none(candidate)
+    if existing_ended_at is None:
+        return False
+    if candidate_ended_at is None:
+        return True
+    return candidate_ended_at >= existing_ended_at
+
+
+def _epoch_ms_to_iso(value: float) -> str:
+    return datetime.fromtimestamp(value / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
+
+
+def _live_conversation_id(summary: ConversationSummaryResponse, *, provider: str) -> str:
+    if provider == "openclaw":
+        return f"{summary.project_path}::{summary.session_id}"
+    return f"{provider}:{summary.session_id}"
+
+
+def _provider_from_project_path(project_path: str) -> str:
+    if project_path.startswith("openclaw:"):
+        return "openclaw"
+    if project_path.startswith("codex:"):
+        return "codex"
+    return "claude"

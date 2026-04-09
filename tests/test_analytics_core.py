@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +18,7 @@ from helaicopter_api.pure.analytics import (
     build_time_window,
     filter_analytics_conversations,
 )
+from helaicopter_api.schema.conversations import ConversationSummaryResponse
 
 
 def _services_stub(**attrs: object) -> BackendServices:
@@ -657,3 +658,98 @@ class TestApplicationAnalytics:
 
         with pytest.raises(ValueError, match="Unsupported analytics provider"):
             get_analytics(services, provider="openai")
+
+    def test_application_layer_supplements_live_conversation_summaries_when_persisted_history_is_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
+
+        class EmptyStore:
+            def list_historical_conversations(self, **_kwargs: object) -> list[HistoricalConversationSummary]:
+                return []
+
+        monkeypatch.setattr(
+            analytics_application,
+            "list_warehouse_historical_conversations",
+            lambda _services: [],
+        )
+        monkeypatch.setattr(
+            analytics_application,
+            "list_conversations",
+            lambda _services: [
+                analytics_application.ConversationSummaryResponse(
+                    session_id="live-codex-session",
+                    provider="codex",
+                    project_path="codex:-Users-tony-Code-helaicopter",
+                    project_name="Code/helaicopter",
+                    route_slug="fix-live-analytics",
+                    conversation_ref="fix-live-analytics--codex-live-codex-session",
+                    thread_type="main",
+                    first_message="Fix live analytics",
+                    timestamp=(now - timedelta(hours=2)).timestamp() * 1000,
+                    created_at=(now - timedelta(hours=2)).timestamp() * 1000,
+                    last_updated_at=(now - timedelta(hours=1)).timestamp() * 1000,
+                    is_running=True,
+                    message_count=12,
+                    model="gpt-5",
+                    total_input_tokens=24_000,
+                    total_output_tokens=6_000,
+                    total_cache_creation_tokens=1_000,
+                    total_cache_read_tokens=2_000,
+                    tool_use_count=9,
+                    failed_tool_call_count=2,
+                    tool_breakdown={"Shell": 6, "Read": 3},
+                    subagent_count=2,
+                    subagent_type_breakdown={"worker": 2},
+                    task_count=1,
+                    total_reasoning_tokens=800,
+                )
+            ],
+        )
+
+        services = _services_stub(
+            app_sqlite_store=EmptyStore(),
+            cache=object(),
+            settings=object(),
+            claude_conversation_reader=object(),
+            codex_store=object(),
+            openclaw_store=object(),
+        )
+        response = get_analytics(services, days=1, provider="codex", now=now)
+
+        assert response.total_conversations == 1
+        assert response.total_input_tokens == 24_000
+        assert response.total_output_tokens == 6_000
+        assert response.total_cache_creation_tokens == 1_000
+        assert response.total_cache_read_tokens == 2_000
+        assert response.total_tool_calls == 9
+        assert response.total_failed_tool_calls == 2
+        assert response.total_reasoning_tokens == 800
+        assert response.subagent_type_breakdown == {"worker": 2}
+        assert response.tool_breakdown == {"Shell": 6, "Read": 3}
+        assert response.cost_breakdown_by_provider["codex"].total_cost > 0
+
+    def test_application_layer_skips_live_supplement_when_live_services_are_unavailable(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        now = datetime(2026, 3, 17, 12, 0, tzinfo=UTC)
+        called = False
+
+        class EmptyStore:
+            def list_historical_conversations(self, **_kwargs: object) -> list[HistoricalConversationSummary]:
+                return []
+
+        def _unexpected_list_conversations(_services: BackendServices) -> list[ConversationSummaryResponse]:
+            nonlocal called
+            called = True
+            return []
+
+        monkeypatch.setattr(analytics_application, "list_conversations", _unexpected_list_conversations)
+
+        services = _services_stub(app_sqlite_store=EmptyStore())
+        response = get_analytics(services, days=1, now=now)
+
+        assert called is False
+        assert response.total_conversations == 0
