@@ -1424,6 +1424,78 @@ def _seed_openclaw_memory_store(
         connection.close()
 
 
+def _seed_openclaw_memory_store_current_schema(
+    path: Path,
+    *,
+    workspace_root: str = "/Users/tony/Code/helaicopter",
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.unlink()
+
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE files (
+              path TEXT PRIMARY KEY,
+              source TEXT,
+              hash TEXT,
+              mtime INTEGER,
+              size INTEGER
+            );
+
+            CREATE TABLE chunks (
+              id TEXT PRIMARY KEY,
+              path TEXT,
+              source TEXT,
+              start_line INTEGER,
+              end_line INTEGER,
+              hash TEXT,
+              model TEXT,
+              text TEXT,
+              embedding TEXT,
+              updated_at INTEGER
+            );
+
+            CREATE TABLE embedding_cache (
+              id TEXT PRIMARY KEY,
+              cache_key TEXT NOT NULL
+            );
+            """
+        )
+        workspace_hook = f"{workspace_root}/src/hooks/use-conversations.ts"
+        workspace_api = f"{workspace_root}/python/helaicopter_api/application/conversations.py"
+        external = "/Users/tony/Code/other-project/README.md"
+        connection.executemany(
+            "INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)",
+            [
+                (workspace_hook, "workspace", "h1", 1_763_719_100, 100),
+                (workspace_api, "workspace", "h2", 1_763_719_101, 200),
+                (external, "external", "h3", 1_763_719_102, 300),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO chunks (id, path, source, start_line, end_line) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("c1", workspace_hook, "workspace", 1, 10),
+                ("c2", workspace_hook, "workspace", 11, 20),
+                ("c3", workspace_api, "workspace", 1, 10),
+                ("c4", external, "external", 1, 10),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO embedding_cache (id, cache_key) VALUES (?, ?)",
+            [
+                ("e1", "workspace:1"),
+                ("e2", "workspace:2"),
+            ],
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 @pytest.fixture()
 def conversations_client(tmp_path: Path):
     settings = _seed_sources(tmp_path)
@@ -2304,6 +2376,49 @@ class TestConversationEndpoints:
             "embedding_cache": 2,
         }
         assert memory_store.get("workspace_link") is None
+
+    def test_openclaw_memory_store_supports_current_path_key_schema(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _seed_sources(tmp_path)
+        _seed_openclaw_archive_family(settings)
+        _seed_openclaw_memory_store_current_schema(settings.openclaw_memory_sqlite_path)
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                detail_response = client.get("/conversations/openclaw:agent:main/primary")
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert detail_response.status_code == 200
+        memory_store = detail_response.json()["provider_detail"]["openclaw"]["memory_store"]
+        assert memory_store["counts"] == {
+            "files": 3,
+            "chunks": 4,
+            "embedding_cache": 2,
+        }
+        assert memory_store["coverage"]["file_sources"] == {
+            "external": 1,
+            "workspace": 2,
+        }
+        assert memory_store["coverage"]["chunk_sources"] == {
+            "external": 1,
+            "workspace": 3,
+        }
+        assert memory_store["workspace_link"] == {
+            "workspace_dir": "/Users/tony/Code/helaicopter",
+            "matched_prefix": "/Users/tony/Code/helaicopter",
+            "confidence": "exact",
+            "counts": {
+                "files": 2,
+                "chunks": 3,
+            },
+        }
 
     def test_openclaw_provider_detail_system_prompt_falls_back_to_header_workspace_dir(
         self,

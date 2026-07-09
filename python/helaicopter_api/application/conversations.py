@@ -2957,13 +2957,22 @@ def _openclaw_table_row_count(connection: sqlite3.Connection, table_name: str) -
     return _int_value(value)
 
 
+def _openclaw_table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        str(row["name"])
+        for row in connection.execute(f'PRAGMA table_info("{table_name}")').fetchall()
+    }
+
+
 def _openclaw_memory_file_rows(
     connection: sqlite3.Connection,
     tables: list[str],
 ) -> list[dict[str, str]]:
     if "files" not in tables:
         return []
-    rows = connection.execute("SELECT path, source FROM files ORDER BY id").fetchall()
+    columns = _openclaw_table_columns(connection, "files")
+    order_column = "id" if "id" in columns else "path"
+    rows = connection.execute(f'SELECT path, source FROM files ORDER BY "{order_column}"').fetchall()
     return [
         {
             "path": _string_or_none(row["path"]) or "",
@@ -2980,14 +2989,11 @@ def _openclaw_memory_chunk_rows(
 ) -> list[dict[str, str]]:
     if "chunks" not in tables:
         return []
-    if "files" in tables:
+    chunk_columns = _openclaw_table_columns(connection, "chunks")
+    if "path" in chunk_columns:
+        order_column = "id" if "id" in chunk_columns else "path"
         rows = connection.execute(
-            """
-            SELECT files.path AS path, COALESCE(chunks.source, files.source, 'unknown') AS source
-            FROM chunks
-            LEFT JOIN files ON files.id = chunks.file_id
-            ORDER BY chunks.id
-            """
+            f'SELECT path, source FROM chunks ORDER BY "{order_column}"'
         ).fetchall()
         return [
             {
@@ -2997,6 +3003,25 @@ def _openclaw_memory_chunk_rows(
             for row in rows
             if _string_or_none(row["path"])
         ]
+    if "files" in tables:
+        file_columns = _openclaw_table_columns(connection, "files")
+        if "id" in file_columns and "file_id" in chunk_columns:
+            rows = connection.execute(
+                """
+                SELECT files.path AS path, COALESCE(chunks.source, files.source, 'unknown') AS source
+                FROM chunks
+                LEFT JOIN files ON files.id = chunks.file_id
+                ORDER BY chunks.id
+                """
+            ).fetchall()
+            return [
+                {
+                    "path": _string_or_none(row["path"]) or "",
+                    "source": _string_or_none(row["source"]) or "unknown",
+                }
+                for row in rows
+                if _string_or_none(row["path"])
+            ]
     rows = connection.execute("SELECT source FROM chunks ORDER BY id").fetchall()
     return [
         {
