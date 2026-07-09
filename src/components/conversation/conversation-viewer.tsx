@@ -49,12 +49,14 @@ const EMPTY_PLANS: ConversationPlan[] = [];
 export function providerLabel(provider: FrontendProvider): string {
   if (provider === "claude") return "Claude";
   if (provider === "codex") return "Codex";
+  if (provider === "hermes") return "Hermes";
   return "OpenClaw";
 }
 
 function providerDotClass(provider: FrontendProvider): string {
   if (provider === "claude") return "bg-emerald-500";
   if (provider === "codex") return "bg-sky-500";
+  if (provider === "hermes") return "bg-violet-500";
   return "bg-amber-500";
 }
 
@@ -80,6 +82,7 @@ export function resolveConversationProvider(
   if (provider) return provider;
   if (projectPath.startsWith("codex:")) return "codex";
   if (projectPath.startsWith("openclaw:")) return "openclaw";
+  if (projectPath.startsWith("hermes:")) return "hermes";
   return "claude";
 }
 

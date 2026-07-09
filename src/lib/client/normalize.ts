@@ -660,6 +660,7 @@ function normalizeProviderBreakdown(value: unknown): ProviderBreakdown {
     claude: numberOr(field(item, "claude")),
     codex: numberOr(field(item, "codex")),
     openclaw: numberOr(field(item, "openclaw")),
+    hermes: numberOr(field(item, "hermes")),
   };
 }
 
@@ -704,6 +705,9 @@ function normalizeTimeSeriesPoint(value: unknown): AnalyticsTimeSeriesPoint {
     codexEstimatedCost: numberOr(field(item, "codexEstimatedCost", "codex_estimated_cost")),
     openclawEstimatedCost: numberOr(
       field(item, "openclawEstimatedCost", "openclaw_estimated_cost")
+    ),
+    hermesEstimatedCost: numberOr(
+      field(item, "hermesEstimatedCost", "hermes_estimated_cost")
     ),
     inputTokens: numberOr(field(item, "inputTokens", "input_tokens")),
     outputTokens: numberOr(field(item, "outputTokens", "output_tokens")),
@@ -770,6 +774,27 @@ function normalizeTimeSeriesPoint(value: unknown): AnalyticsTimeSeriesPoint {
       field(item, "openclawToolErrorRatePct", "openclaw_tool_error_rate_pct")
     ),
     openclawSubagents: numberOr(field(item, "openclawSubagents", "openclaw_subagents")),
+    hermesInputTokens: numberOr(field(item, "hermesInputTokens", "hermes_input_tokens")),
+    hermesOutputTokens: numberOr(field(item, "hermesOutputTokens", "hermes_output_tokens")),
+    hermesCacheWriteTokens: numberOr(
+      field(item, "hermesCacheWriteTokens", "hermes_cache_write_tokens")
+    ),
+    hermesCacheReadTokens: numberOr(
+      field(item, "hermesCacheReadTokens", "hermes_cache_read_tokens")
+    ),
+    hermesReasoningTokens: numberOr(
+      field(item, "hermesReasoningTokens", "hermes_reasoning_tokens")
+    ),
+    hermesTotalTokens: numberOr(field(item, "hermesTotalTokens", "hermes_total_tokens")),
+    hermesConversations: numberOr(field(item, "hermesConversations", "hermes_conversations")),
+    hermesToolCalls: numberOr(field(item, "hermesToolCalls", "hermes_tool_calls")),
+    hermesFailedToolCalls: numberOr(
+      field(item, "hermesFailedToolCalls", "hermes_failed_tool_calls")
+    ),
+    hermesToolErrorRatePct: numberOr(
+      field(item, "hermesToolErrorRatePct", "hermes_tool_error_rate_pct")
+    ),
+    hermesSubagents: numberOr(field(item, "hermesSubagents", "hermes_subagents")),
     codexInputTokens: numberOr(field(item, "codexInputTokens", "codex_input_tokens")),
     codexOutputTokens: numberOr(field(item, "codexOutputTokens", "codex_output_tokens")),
     codexCacheWriteTokens: numberOr(
@@ -854,6 +879,16 @@ function normalizeDailyUsage(value: unknown): DailyUsage {
       field(item, "openclawConversations", "openclaw_conversations")
     ),
     openclawSubagents: numberOr(field(item, "openclawSubagents", "openclaw_subagents")),
+    hermesInputTokens: numberOr(field(item, "hermesInputTokens", "hermes_input_tokens")),
+    hermesOutputTokens: numberOr(field(item, "hermesOutputTokens", "hermes_output_tokens")),
+    hermesCacheWriteTokens: numberOr(
+      field(item, "hermesCacheWriteTokens", "hermes_cache_write_tokens")
+    ),
+    hermesCacheReadTokens: numberOr(
+      field(item, "hermesCacheReadTokens", "hermes_cache_read_tokens")
+    ),
+    hermesConversations: numberOr(field(item, "hermesConversations", "hermes_conversations")),
+    hermesSubagents: numberOr(field(item, "hermesSubagents", "hermes_subagents")),
   };
 }
 

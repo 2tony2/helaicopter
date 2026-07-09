@@ -433,10 +433,10 @@ test("child-thread canonical routes use the resolved parent session for detail f
   );
 });
 
-test("provider filters render an OpenClaw option", () => {
+test("provider filters render OpenClaw and Hermes options", () => {
   const markup = renderToStaticMarkup(
     React.createElement(ProviderFilter, {
-      value: "openclaw",
+      value: "hermes",
       onChange: () => {},
     })
   );
@@ -445,13 +445,21 @@ test("provider filters render an OpenClaw option", () => {
     providerFilterOptions.some((option) => option.value === "openclaw"),
     true
   );
+  assert.equal(
+    providerFilterOptions.some((option) => option.value === "hermes"),
+    true
+  );
   assert.match(markup, /OpenClaw/);
+  assert.match(markup, /Hermes/);
 });
 
-test("OpenClaw conversation payloads are not mislabeled as Claude or Codex", () => {
+test("namespaced conversation payloads are not mislabeled as Claude or Codex", () => {
   assert.equal(resolveConversationProvider("openclaw:agent:main"), "openclaw");
   assert.equal(resolveConversationProvider("openclaw:agent:main", "openclaw"), "openclaw");
   assert.equal(conversationProviderLabel("openclaw"), "OpenClaw");
+  assert.equal(resolveConversationProvider("hermes:discord"), "hermes");
+  assert.equal(resolveConversationProvider("hermes:discord", "hermes"), "hermes");
+  assert.equal(conversationProviderLabel("hermes"), "Hermes");
 });
 
 test("project provider filtering does not treat every non-codex namespace as Claude", () => {
@@ -464,6 +472,16 @@ test("project provider filtering does not treat every non-codex namespace as Cla
   assert.equal(matchesConversationProvider(openClawConversation, "openclaw"), true);
   assert.equal(matchesConversationProvider(openClawConversation, "claude"), false);
   assert.equal(matchesConversationProvider(openClawConversation, "codex"), false);
+
+  const hermesConversation = {
+    projectPath: "hermes:discord",
+    provider: "hermes" as const,
+  };
+
+  assert.equal(matchesConversationProvider(hermesConversation, "all"), true);
+  assert.equal(matchesConversationProvider(hermesConversation, "hermes"), true);
+  assert.equal(matchesConversationProvider(hermesConversation, "claude"), false);
+  assert.equal(matchesConversationProvider(hermesConversation, "codex"), false);
 });
 
 test("route parsing accepts the OpenClaw provider detail tab", () => {

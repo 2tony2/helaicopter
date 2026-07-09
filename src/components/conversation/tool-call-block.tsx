@@ -11,6 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { DisplayToolCallBlock } from "@/lib/types";
 
+type ToolResultSection = {
+  label: string;
+  value: string;
+  multiline: boolean;
+};
+
 function inputPreview(input: Record<string, unknown>): string {
   const keys = Object.keys(input);
   if (keys.length === 0) return "";
@@ -22,6 +28,87 @@ function inputPreview(input: Record<string, unknown>): string {
   const val = input[previewKey];
   const str = typeof val === "string" ? val : JSON.stringify(val);
   return str.slice(0, 80) + (str.length > 80 ? "..." : "");
+}
+
+function titleize(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function stringifyResultValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null) return "null";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value, null, 2);
+}
+
+function parseResultJson(result: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(result);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function formatToolResultSections(result: string): ToolResultSection[] {
+  const parsed = parseResultJson(result);
+  if (!parsed) {
+    return [{ label: "Result", value: result, multiline: result.includes("\n") || result.length > 120 }];
+  }
+
+  const keys = Object.keys(parsed).filter((key) => {
+    const value = parsed[key];
+    return value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0);
+  });
+  const preferred = ["success", "name", "description", "path", "readiness_status", "setup_needed"];
+  const contentKeys = ["content", "stdout", "stderr", "output", "result"];
+  const ordered = [
+    ...preferred.filter((key) => keys.includes(key)),
+    ...keys.filter((key) => !preferred.includes(key) && !contentKeys.includes(key)),
+    ...contentKeys.filter((key) => keys.includes(key)),
+  ];
+
+  return ordered.map((key) => {
+    const value = stringifyResultValue(parsed[key]);
+    return {
+      label: key === "success" ? "Status" : titleize(key),
+      value: key === "success" && parsed[key] === true ? "success" : value,
+      multiline: value.includes("\n") || value.length > 120 || typeof parsed[key] === "object",
+    };
+  });
+}
+
+function ToolResultSections({ result, isError }: { result: string; isError?: boolean | null }) {
+  const sections = formatToolResultSections(result);
+  return (
+    <div className="space-y-2">
+      {sections.map((section) => (
+        <div key={section.label} className="rounded-md border bg-muted/30">
+          <div className="border-b px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {section.label}
+          </div>
+          {section.multiline ? (
+            <pre
+              className={`p-3 text-xs leading-5 whitespace-pre-wrap overflow-x-auto ${
+                isError ? "text-destructive" : ""
+              }`}
+            >
+              {section.value}
+            </pre>
+          ) : (
+            <div className={`px-3 py-2 text-sm ${isError ? "text-destructive" : ""}`}>
+              {section.value}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function ToolCallBlock({ block }: { block: DisplayToolCallBlock }) {
@@ -45,7 +132,7 @@ export function ToolCallBlock({ block }: { block: DisplayToolCallBlock }) {
           {preview}
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent forceMount>
         <div className="ml-6 mt-1 space-y-2">
           <div>
             <div className="text-xs font-medium text-muted-foreground mb-1">Input</div>
@@ -61,15 +148,7 @@ export function ToolCallBlock({ block }: { block: DisplayToolCallBlock }) {
                 Result {block.isError && <span className="text-destructive">(error)</span>}
               </div>
               <ScrollArea className="max-h-64">
-                <pre
-                  className={`text-xs rounded-md p-3 font-mono whitespace-pre-wrap overflow-x-auto ${
-                    block.isError
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-muted/50"
-                  }`}
-                >
-                  {block.result}
-                </pre>
+                <ToolResultSections result={block.result} isError={block.isError} />
               </ScrollArea>
             </div>
           )}

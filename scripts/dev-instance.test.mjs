@@ -34,6 +34,15 @@ test("buildDevChildEnv stamps checkout ownership metadata", () => {
   assert.equal(env.HELA_PROJECT_ROOT, "/Users/tony/Code/helaicopter");
   assert.equal(env.HELA_API_PORT, String(instance.apiPort));
   assert.equal(env.PORT, String(instance.webPort));
+  assert.equal(env.NEXT_PUBLIC_API_BASE_URL, "");
+  assert.equal(env.HELA_USE_API_PROXY, "1");
+});
+
+test("buildDevChildEnv can opt out of the backend proxy for local-only direct API debugging", () => {
+  const instance = buildCheckoutInstance("/Users/tony/Code/helaicopter");
+  const env = buildDevChildEnv(instance, { HELA_USE_API_PROXY: "0" });
+
+  assert.equal(env.HELA_USE_API_PROXY, "");
   assert.equal(env.NEXT_PUBLIC_API_BASE_URL, `http://127.0.0.1:${instance.apiPort}`);
 });
 

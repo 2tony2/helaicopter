@@ -21,6 +21,7 @@ async function proxyRequest(request: Request, context: RouteContext) {
   const headers = new Headers(request.headers);
 
   headers.delete("host");
+  headers.delete("accept-encoding");
 
   const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
@@ -38,6 +39,8 @@ async function proxyRequest(request: Request, context: RouteContext) {
   const responseHeaders = new Headers(response.headers);
 
   responseHeaders.delete("transfer-encoding");
+  responseHeaders.delete("content-encoding");
+  responseHeaders.delete("content-length");
 
   return new Response(response.body, {
     status: response.status,

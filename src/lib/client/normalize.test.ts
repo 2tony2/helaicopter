@@ -377,10 +377,12 @@ test("conversation summary payload schemas parse accepted API shapes and reject 
   );
 });
 
-test("provider schemas accept openclaw", async () => {
+test("provider schemas accept openclaw and hermes", async () => {
   const shared = await import(new URL("./schemas/shared.ts", import.meta.url).href);
   assert.equal(shared.providerSchema.parse("openclaw"), "openclaw");
   assert.equal(shared.providerFilterSchema.parse("openclaw"), "openclaw");
+  assert.equal(shared.providerSchema.parse("hermes"), "hermes");
+  assert.equal(shared.providerFilterSchema.parse("hermes"), "hermes");
 });
 
 test("normalizeConversations preserves openclaw providers from summary payloads", async () => {

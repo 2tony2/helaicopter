@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
@@ -148,6 +148,10 @@ def list_conversations(
         for shaped in _list_openclaw_live_summaries(services, project=project, days=days):
             _merge_summary(summaries_by_key, shaped)
 
+    if project is None or project.startswith("hermes:"):
+        for shaped in _list_hermes_live_summaries(services, project=project, days=days):
+            _merge_summary(summaries_by_key, shaped)
+
     if project is None or project.startswith("codex:"):
         for shaped in _list_codex_live_summaries(services, project=project, days=days):
             _merge_summary(summaries_by_key, shaped)
@@ -203,6 +207,12 @@ def get_conversation(
         conversation = _shape_historical_detail(historical, services=services)
     elif project_path.startswith("openclaw:"):
         conversation = _get_openclaw_live_conversation(
+            services,
+            session_id=session_id,
+            project_path=project_path,
+        )
+    elif project_path.startswith("hermes:"):
+        conversation = _get_hermes_live_conversation(
             services,
             session_id=session_id,
             project_path=project_path,
@@ -539,6 +549,8 @@ def get_tasks(
 def _provider_for_project_path(project_path: str) -> str:
     if project_path.startswith("openclaw:"):
         return "openclaw"
+    if project_path.startswith("hermes:"):
+        return "hermes"
     return "codex" if project_path.startswith("codex:") else "claude"
 
 
@@ -625,6 +637,8 @@ def _resolve_conversation_identity(
             route_slug=route_slug,
             project_path_hint=project_path_hint,
         )
+    if provider == "hermes":
+        return _resolve_live_hermes_conversation_identity(services, session_id=resolved_session_id)
     return _resolve_live_claude_conversation_identity(services, session_id=resolved_session_id)
 
 
@@ -1170,6 +1184,399 @@ def _list_openclaw_live_summaries(
             continue
         summaries.append(summary)
     return summaries
+
+
+def _connect_hermes_state_db(services: BackendServices) -> sqlite3.Connection | None:
+    db_path = services.settings.hermes_state_db_path
+    if not db_path.exists():
+        return None
+    try:
+        connection = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _list_hermes_live_summaries(
+    services: BackendServices,
+    *,
+    project: str | None,
+    days: int | None,
+) -> list[ConversationSummaryResponse]:
+    connection = _connect_hermes_state_db(services)
+    if connection is None:
+        return []
+
+    cutoff_ms = _cutoff_ms(days)
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+              id,
+              source,
+              model,
+              started_at,
+              ended_at,
+              message_count,
+              tool_call_count,
+              input_tokens,
+              output_tokens,
+              cache_read_tokens,
+              cache_write_tokens,
+              reasoning_tokens,
+              title
+            FROM sessions
+            ORDER BY started_at ASC, id ASC
+            """
+        ).fetchall()
+        summaries: list[ConversationSummaryResponse] = []
+        for session in rows:
+            source = _hermes_source(session)
+            project_path = f"hermes:{source}"
+            if project is not None and project_path != project:
+                continue
+            messages = _hermes_messages_for_session(connection, str(session["id"]))
+            summary = _summarize_hermes_session(
+                services,
+                session=session,
+                messages=messages,
+            )
+            if cutoff_ms and summary.last_updated_at < cutoff_ms:
+                continue
+            summaries.append(summary)
+        return summaries
+    except sqlite3.Error:
+        return []
+    finally:
+        connection.close()
+
+
+def _get_hermes_live_conversation(
+    services: BackendServices,
+    *,
+    session_id: str,
+    project_path: str,
+) -> ConversationDetailResponse | None:
+    connection = _connect_hermes_state_db(services)
+    if connection is None:
+        return None
+
+    try:
+        session = connection.execute(
+            """
+            SELECT
+              id,
+              source,
+              model,
+              started_at,
+              ended_at,
+              message_count,
+              tool_call_count,
+              input_tokens,
+              output_tokens,
+              cache_read_tokens,
+              cache_write_tokens,
+              reasoning_tokens,
+              title
+            FROM sessions
+            WHERE id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+        if session is None or f"hermes:{_hermes_source(session)}" != project_path:
+            return None
+        messages = _hermes_messages_for_session(connection, session_id)
+        return _shape_hermes_detail(services, session=session, messages=messages)
+    except sqlite3.Error:
+        return None
+    finally:
+        connection.close()
+
+
+def _resolve_live_hermes_conversation_identity(
+    services: BackendServices,
+    *,
+    session_id: str,
+) -> ConversationRefResolutionResponse | None:
+    connection = _connect_hermes_state_db(services)
+    if connection is None:
+        return None
+
+    try:
+        session = connection.execute(
+            "SELECT id, source, title FROM sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        if session is None:
+            return None
+        project_path = f"hermes:{_hermes_source(session)}"
+        first_message = str(session["title"] or session_id)
+        route_target = _conversation_route_target_from_first_message(
+            session_id=session_id,
+            first_message=first_message,
+            project_path=project_path,
+        )
+        return _conversation_ref_resolution(
+            route_target=route_target,
+            project_path=project_path,
+            thread_type="main",
+        )
+    except sqlite3.Error:
+        return None
+    finally:
+        connection.close()
+
+
+def _hermes_messages_for_session(connection: sqlite3.Connection, session_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT
+          id,
+          role,
+          content,
+          tool_call_id,
+          tool_calls,
+          tool_name,
+          timestamp,
+          token_count,
+          reasoning,
+          reasoning_content
+        FROM messages
+        WHERE session_id = ?
+        ORDER BY timestamp ASC, id ASC
+        """,
+        (session_id,),
+    ).fetchall()
+
+
+def _summarize_hermes_session(
+    services: BackendServices,
+    *,
+    session: sqlite3.Row,
+    messages: list[sqlite3.Row],
+) -> ConversationSummaryResponse:
+    source = _hermes_source(session)
+    project_path = f"hermes:{source}"
+    first_message = _hermes_first_message(session, messages)
+    started_at = _hermes_seconds_to_ms(session["started_at"])
+    ended_at = _hermes_session_end_ms(session, messages)
+    route_target = _conversation_route_target_from_first_message(
+        session_id=str(session["id"]),
+        first_message=first_message,
+        project_path=project_path,
+    )
+    tool_breakdown = _hermes_tool_breakdown(messages)
+    return ConversationSummaryResponse(
+        session_id=_session_id(str(session["id"])),
+        provider="hermes",
+        project_path=project_path,
+        project_name=_project_display_name(project_path),
+        route_slug=route_target.route_slug,
+        conversation_ref=route_target.conversation_ref,
+        thread_type="main",
+        first_message=first_message,
+        timestamp=started_at,
+        created_at=started_at,
+        last_updated_at=ended_at,
+        is_running=_is_likely_active(ended_at),
+        message_count=int(session["message_count"] or len(_hermes_display_messages(messages))),
+        model=str(session["model"]) if session["model"] else None,
+        total_input_tokens=int(session["input_tokens"] or 0),
+        total_output_tokens=int(session["output_tokens"] or 0),
+        total_cache_creation_tokens=int(session["cache_write_tokens"] or 0),
+        total_cache_read_tokens=int(session["cache_read_tokens"] or 0),
+        tool_use_count=int(session["tool_call_count"] or sum(tool_breakdown.values())),
+        failed_tool_call_count=0,
+        tool_breakdown=dict(sorted(tool_breakdown.items())),
+        subagent_count=0,
+        subagent_type_breakdown={},
+        task_count=0,
+        total_reasoning_tokens=int(session["reasoning_tokens"] or 0) or None,
+    )
+
+
+def _shape_hermes_detail(
+    services: BackendServices,
+    *,
+    session: sqlite3.Row,
+    messages: list[sqlite3.Row],
+) -> ConversationDetailResponse:
+    summary = _summarize_hermes_session(services, session=session, messages=messages)
+    total_usage = ConversationUsageResponse(
+        input_tokens=summary.total_input_tokens,
+        output_tokens=summary.total_output_tokens,
+        cache_creation_tokens=summary.total_cache_creation_tokens,
+        cache_read_tokens=summary.total_cache_read_tokens,
+    )
+    return ConversationDetailResponse(
+        session_id=summary.session_id,
+        provider="hermes",
+        project_path=summary.project_path,
+        route_slug=summary.route_slug,
+        conversation_ref=summary.conversation_ref,
+        thread_type="main",
+        created_at=summary.created_at,
+        last_updated_at=summary.last_updated_at,
+        is_running=summary.is_running,
+        messages=[_shape_hermes_message(message, model=summary.model) for message in _hermes_display_messages(messages)],
+        plans=[],
+        total_usage=total_usage,
+        model=summary.model,
+        start_time=summary.created_at,
+        end_time=summary.last_updated_at,
+        subagents=[],
+        context_analytics=ConversationContextAnalyticsResponse(),
+        context_window=ConversationContextWindowResponse(
+            peak_context_window=total_usage.input_tokens + total_usage.cache_creation_tokens + total_usage.cache_read_tokens,
+            api_calls=int(session["api_call_count"] or 0) if "api_call_count" in session.keys() else 0,
+            cumulative_tokens=(
+                total_usage.input_tokens
+                + total_usage.output_tokens
+                + total_usage.cache_creation_tokens
+                + total_usage.cache_read_tokens
+            ),
+        ),
+        total_reasoning_tokens=summary.total_reasoning_tokens,
+    )
+
+
+def _shape_hermes_message(message: sqlite3.Row, *, model: str | None) -> ConversationMessageResponse:
+    role = str(message["role"])
+    token_count = int(message["token_count"] or 0)
+    return ConversationMessageResponse(
+        id=f"hermes-{message['id']}",
+        role=role,
+        timestamp=_hermes_seconds_to_ms(message["timestamp"]),
+        blocks=_hermes_message_blocks(message),
+        usage=ConversationUsageResponse(
+            input_tokens=token_count if role == "user" else 0,
+            output_tokens=token_count if role == "assistant" else 0,
+            cache_creation_tokens=0,
+            cache_read_tokens=0,
+        ),
+        model=model if role == "assistant" else None,
+    )
+
+
+def _hermes_message_blocks(message: sqlite3.Row) -> list[ConversationMessageBlockResponse]:
+    if message["tool_name"]:
+        return [
+            _tool_call_block(
+                tool_use_id=_string_or_none(message["tool_call_id"]),
+                tool_name=_string_or_none(message["tool_name"]),
+                result=_string_or_none(message["content"]),
+            )
+        ]
+
+    blocks: list[ConversationMessageBlockResponse] = []
+    reasoning = _string_or_none(message["reasoning"]) or _string_or_none(message["reasoning_content"])
+    if reasoning:
+        blocks.append(_thinking_block(reasoning))
+    content = _string_or_none(message["content"])
+    if content:
+        blocks.append(_text_block(content))
+    blocks.extend(_hermes_tool_call_blocks(message["tool_calls"]))
+    return blocks
+
+
+def _hermes_tool_call_blocks(raw_tool_calls: object) -> list[ConversationToolCallBlockResponse]:
+    parsed = _parse_json_value(raw_tool_calls)
+    if parsed is None:
+        return []
+    calls = parsed if isinstance(parsed, list) else [parsed]
+    blocks: list[ConversationToolCallBlockResponse] = []
+    for call in calls:
+        block = _hermes_tool_call_block(call)
+        if block is not None:
+            blocks.append(block)
+    return blocks
+
+
+def _hermes_tool_call_block(call: object) -> ConversationToolCallBlockResponse | None:
+    if not isinstance(call, dict):
+        return None
+    function = call.get("function")
+    function_payload = function if isinstance(function, dict) else {}
+    tool_name = call.get("name") or function_payload.get("name") or call.get("tool_name")
+    if not isinstance(tool_name, str) or not tool_name:
+        return None
+    raw_input = call.get("input")
+    if raw_input is None:
+        raw_input = call.get("arguments")
+    if raw_input is None:
+        raw_input = function_payload.get("arguments")
+    return _tool_call_block(
+        tool_use_id=_string_or_none(call.get("id") or call.get("tool_call_id")),
+        tool_name=tool_name,
+        input_payload=_hermes_tool_input(raw_input),
+    )
+
+
+def _hermes_tool_input(value: object) -> dict[str, object]:
+    parsed = _parse_json_value(value)
+    if isinstance(parsed, dict):
+        return _object_dict(parsed)
+    if parsed is not None:
+        return {"value": parsed}
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return _object_dict(value)
+    return {"value": value}
+
+
+def _hermes_tool_breakdown(messages: list[sqlite3.Row]) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for message in messages:
+        if message["tool_name"]:
+            counts[str(message["tool_name"])] += 1
+        for block in _hermes_tool_call_blocks(message["tool_calls"]):
+            if block.tool_name:
+                counts[block.tool_name] += 1
+    return counts
+
+
+def _hermes_display_messages(messages: list[sqlite3.Row]) -> list[sqlite3.Row]:
+    return [message for message in messages if message["role"] in {"user", "assistant", "tool"}]
+
+
+def _hermes_first_message(session: sqlite3.Row, messages: list[sqlite3.Row]) -> str:
+    title = _string_or_none(session["title"])
+    if title:
+        return title
+    for message in messages:
+        if message["role"] == "user":
+            content = _string_or_none(message["content"])
+            if content:
+                return content[:400]
+    return str(session["id"])
+
+
+def _hermes_session_end_ms(session: sqlite3.Row, messages: list[sqlite3.Row]) -> float:
+    if session["ended_at"] is not None:
+        return _hermes_seconds_to_ms(session["ended_at"])
+    return max((_hermes_seconds_to_ms(message["timestamp"]) for message in messages), default=_hermes_seconds_to_ms(session["started_at"]))
+
+
+def _hermes_seconds_to_ms(value: object) -> float:
+    return float(value or 0) * 1000
+
+
+def _hermes_source(session: sqlite3.Row) -> str:
+    source = str(session["source"] or "unknown").strip()
+    return source or "unknown"
+
+
+def _parse_json_value(value: object) -> Any | None:
+    if not isinstance(value, str):
+        return value
+    if not value.strip():
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return None
 
 
 def _summarize_openclaw_artifact(
@@ -3618,6 +4025,9 @@ def _tool_category(tool_name: str) -> ContextCategory:
 
 
 def _project_display_name(project_path: str) -> str:
+    if project_path.startswith("hermes:"):
+        source = project_path[len("hermes:") :] or "unknown"
+        return f"Hermes {source.replace('_', ' ').replace('-', ' ').title()}"
     if project_path.startswith("openclaw:"):
         return project_path
     if project_path.startswith("codex:"):
@@ -3638,7 +4048,7 @@ def _project_display_name(project_path: str) -> str:
 
 
 def _project_full_path(services: BackendServices, project_path: str) -> str:
-    if project_path.startswith("codex:") or project_path.startswith("openclaw:"):
+    if project_path.startswith(("codex:", "openclaw:", "hermes:")):
         return project_path
     return str(services.settings.claude_projects_dir / project_path)
 

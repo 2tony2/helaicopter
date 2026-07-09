@@ -232,7 +232,7 @@ def _write_incremental_state(state: dict[str, str], settings: Settings | None = 
 
 def _conversation_refresh_key(envelope: dict[str, Any]) -> str:
     summary = envelope["summary"]
-    provider = provider_for_project_path(summary["projectPath"])
+    provider = _summary_provider(summary)
     return conversation_id(provider, summary["sessionId"])
 
 
@@ -294,13 +294,20 @@ def _delete_conversations(session: Session, conversation_ids: set[str]) -> None:
 
 
 def _reset_olap_data(session: Session) -> None:
-    # Use raw SQL to avoid duckdb-engine FK constraint check issues
-    # with the ORM delete() path.
+    # DuckDB checks foreign key references against committed state for some
+    # DELETE paths. Clear and commit fact rows before deleting referenced
+    # dimensions, otherwise deleting e.g. dim_tools can fail even after
+    # DELETE FROM fact_tool_usage in the same transaction.
     for table in (
         "fact_subagent_usage",
         "fact_tool_usage",
         "fact_daily_usage",
         "fact_conversations",
+    ):
+        session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
+    session.commit()
+
+    for table in (
         "dim_subagent_types",
         "dim_tools",
         "dim_models",
@@ -359,6 +366,13 @@ def _record_source(summary: dict[str, Any]) -> str | None:
         if isinstance(value, str) and value.strip():
             return value
     return None
+
+
+def _summary_provider(summary: dict[str, Any]) -> str:
+    provider = summary.get("provider")
+    if isinstance(provider, str) and provider:
+        return provider
+    return provider_for_project_path(summary["projectPath"])
 
 
 def _provenance_fields(
@@ -446,7 +460,7 @@ def _load_conversation(
     tasks = envelope.get("tasks") or []
     cost = envelope.get("cost") or {}
 
-    provider = provider_for_project_path(summary["projectPath"])
+    provider = _summary_provider(summary)
     conv_id = conversation_id(provider, SessionId(summary["sessionId"]))
     started_at = parse_timestamp_ms(summary["timestamp"])
     ended_at = parse_timestamp_ms(detail.get("endTime", summary["timestamp"]))
@@ -863,7 +877,7 @@ def _accumulate_usage(
 ) -> None:
     summary = envelope["summary"]
     cost = envelope.get("cost") or {}
-    provider = provider_for_project_path(summary["projectPath"])
+    provider = _summary_provider(summary)
     started_at = parse_timestamp_ms(summary["timestamp"])
     started_date_key = date_key(started_at.date())
     project_id = project_dim_id(provider, summary["projectPath"])

@@ -228,7 +228,7 @@ export interface ContextWindowStats {
   cumulativeTokens: number;
 }
 
-export type FrontendProvider = "claude" | "codex" | "openclaw";
+export type FrontendProvider = "claude" | "codex" | "openclaw" | "hermes";
 
 export type PlanProvider = FrontendProvider;
 
@@ -462,6 +462,7 @@ export interface ProviderBreakdown {
   claude: number;
   codex: number;
   openclaw?: number;
+  hermes?: number;
 }
 
 export interface AnalyticsRateValue {
@@ -516,6 +517,7 @@ export interface AnalyticsTimeSeriesPoint {
   claudeToolErrorRatePct: number;
   claudeSubagents: number;
   openclawEstimatedCost?: number;
+  hermesEstimatedCost?: number;
   openclawInputTokens?: number;
   openclawOutputTokens?: number;
   openclawCacheWriteTokens?: number;
@@ -527,6 +529,17 @@ export interface AnalyticsTimeSeriesPoint {
   openclawFailedToolCalls?: number;
   openclawToolErrorRatePct?: number;
   openclawSubagents?: number;
+  hermesInputTokens?: number;
+  hermesOutputTokens?: number;
+  hermesCacheWriteTokens?: number;
+  hermesCacheReadTokens?: number;
+  hermesReasoningTokens?: number;
+  hermesTotalTokens?: number;
+  hermesConversations?: number;
+  hermesToolCalls?: number;
+  hermesFailedToolCalls?: number;
+  hermesToolErrorRatePct?: number;
+  hermesSubagents?: number;
   codexInputTokens: number;
   codexOutputTokens: number;
   codexCacheWriteTokens: number;
@@ -611,6 +624,12 @@ export interface DailyUsage {
   openclawCacheReadTokens?: number;
   openclawConversations?: number;
   openclawSubagents?: number;
+  hermesInputTokens?: number;
+  hermesOutputTokens?: number;
+  hermesCacheWriteTokens?: number;
+  hermesCacheReadTokens?: number;
+  hermesConversations?: number;
+  hermesSubagents?: number;
 }
 
 export interface DatabaseColumnSchema {

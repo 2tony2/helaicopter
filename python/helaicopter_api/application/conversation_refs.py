@@ -7,7 +7,7 @@ from dataclasses import dataclass
 _ROUTE_SLUG_MAX_LENGTH = 80
 _ROUTE_SLUG_FALLBACK = "conversation"
 _ROUTE_SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
-_KNOWN_CONVERSATION_REF_PROVIDERS = ("claude", "codex", "openclaw")
+_KNOWN_CONVERSATION_REF_PROVIDERS = ("claude", "codex", "openclaw", "hermes")
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ def parse_conversation_ref(conversation_ref: str) -> ConversationRouteTarget | N
     """Parse a conversation reference string into its constituent parts.
 
     Expects the format ``<route_slug>--<provider>-<session_id>`` where
-    ``provider`` is one of the known values (``"claude"``, ``"codex"``).
+    ``provider`` is one of the known values (``"claude"``, ``"codex"``, ``"openclaw"``, ``"hermes"``).
 
     Args:
         conversation_ref: A fully assembled conversation reference string as

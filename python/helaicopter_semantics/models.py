@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-ProviderIdentifier = Literal["claude", "codex", "openclaw"]
+ProviderIdentifier = Literal["claude", "codex", "openclaw", "hermes"]
 
 
 def resolve_provider(
@@ -40,11 +40,15 @@ def resolve_provider(
             return "codex"
         if provider_lower == "openclaw":
             return "openclaw"
+        if provider_lower == "hermes":
+            return "hermes"
 
     # Project path prefix is authoritative when provenance is encoded there.
     if project_path:
         if project_path.startswith("openclaw:"):
             return "openclaw"
+        if project_path.startswith("hermes:"):
+            return "hermes"
         if project_path.startswith("codex:"):
             return "codex"
 

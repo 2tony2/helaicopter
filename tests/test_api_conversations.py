@@ -114,6 +114,115 @@ def _write_codex_thread_db(path: Path, rows: list[tuple[object, ...]]) -> None:
         connection.close()
 
 
+def _write_hermes_state_db(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE sessions (
+              id TEXT PRIMARY KEY,
+              source TEXT NOT NULL,
+              user_id TEXT,
+              model TEXT,
+              model_config TEXT,
+              system_prompt TEXT,
+              parent_session_id TEXT,
+              started_at REAL NOT NULL,
+              ended_at REAL,
+              end_reason TEXT,
+              message_count INTEGER DEFAULT 0,
+              tool_call_count INTEGER DEFAULT 0,
+              input_tokens INTEGER DEFAULT 0,
+              output_tokens INTEGER DEFAULT 0,
+              cache_read_tokens INTEGER DEFAULT 0,
+              cache_write_tokens INTEGER DEFAULT 0,
+              reasoning_tokens INTEGER DEFAULT 0,
+              billing_provider TEXT,
+              billing_base_url TEXT,
+              billing_mode TEXT,
+              estimated_cost_usd REAL,
+              actual_cost_usd REAL,
+              cost_status TEXT,
+              cost_source TEXT,
+              pricing_version TEXT,
+              title TEXT,
+              api_call_count INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE messages (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id TEXT NOT NULL REFERENCES sessions(id),
+              role TEXT NOT NULL,
+              content TEXT,
+              tool_call_id TEXT,
+              tool_calls TEXT,
+              tool_name TEXT,
+              timestamp REAL NOT NULL,
+              token_count INTEGER,
+              finish_reason TEXT,
+              reasoning TEXT,
+              reasoning_content TEXT,
+              reasoning_details TEXT,
+              codex_reasoning_items TEXT,
+              codex_message_items TEXT
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO sessions (
+              id, source, model, started_at, ended_at, message_count,
+              tool_call_count, input_tokens, output_tokens, cache_read_tokens,
+              cache_write_tokens, reasoning_tokens, title
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "hermes-session-1",
+                "discord",
+                "gpt-5.5",
+                1_783_000_000.0,
+                1_783_000_090.0,
+                3,
+                2,
+                120,
+                45,
+                7,
+                3,
+                11,
+                "Hermes regression title",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO messages (session_id, role, content, timestamp, token_count) VALUES (?, ?, ?, ?, ?)",
+            ("hermes-session-1", "user", "turn on the lab lights", 1_783_000_001.0, 12),
+        )
+        connection.execute(
+            """
+            INSERT INTO messages (session_id, role, content, tool_calls, timestamp, token_count)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "hermes-session-1",
+                "assistant",
+                "I'll call Home Assistant.",
+                json.dumps([{"id": "call-1", "name": "home_assistant", "input": {"entity": "light.lab"}}]),
+                1_783_000_030.0,
+                20,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO messages (session_id, role, content, tool_call_id, tool_name, timestamp, token_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("hermes-session-1", "tool", "light.lab on", "call-1", "home_assistant", 1_783_000_040.0, 8),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def _write_app_db(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
@@ -1145,6 +1254,7 @@ def _seed_sources(tmp_path: Path) -> Settings:
         claude_dir=claude_dir,
         codex_dir=codex_dir,
         openclaw_dir=openclaw_dir,
+        hermes_dir=tmp_path / ".hermes",
     )
 
 
@@ -1551,6 +1661,56 @@ class TestConversationEndpoints:
             "title": "Hot path",
             "status": "running",
         }
+
+    def test_list_detail_and_ref_include_live_hermes_state_db(self, tmp_path: Path) -> None:
+        hermes_dir = tmp_path / ".hermes"
+        _write_hermes_state_db(hermes_dir / "state.db")
+        settings = Settings(project_root=tmp_path, hermes_dir=hermes_dir)
+        services = build_services(settings)
+        application = create_app()
+        application.dependency_overrides[get_services] = lambda: services
+
+        try:
+            with TestClient(application) as client:
+                list_response = client.get("/conversations", params={"project": "hermes:discord"})
+                detail_response = client.get("/conversations/hermes:discord/hermes-session-1")
+                ref_response = client.get(
+                    "/conversations/by-ref/hermes-regression-title--hermes-hermes-session-1"
+                )
+        finally:
+            application.dependency_overrides.clear()
+            services.sqlite_engine.dispose()
+
+        assert list_response.status_code == 200
+        summaries = list_response.json()
+        assert len(summaries) == 1
+        summary = summaries[0]
+        assert summary["provider"] == "hermes"
+        assert summary["project_path"] == "hermes:discord"
+        assert summary["project_name"] == "Hermes Discord"
+        assert summary["conversation_ref"] == "hermes-regression-title--hermes-hermes-session-1"
+        assert summary["total_input_tokens"] == 120
+        assert summary["total_output_tokens"] == 45
+        assert summary["total_cache_creation_tokens"] == 3
+        assert summary["total_cache_read_tokens"] == 7
+        assert summary["total_reasoning_tokens"] == 11
+        assert summary["tool_breakdown"] == {"home_assistant": 2}
+
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["provider"] == "hermes"
+        assert detail["total_usage"] == {
+            "input_tokens": 120,
+            "output_tokens": 45,
+            "cache_creation_tokens": 3,
+            "cache_read_tokens": 7,
+        }
+        assert [message["role"] for message in detail["messages"]] == ["user", "assistant", "tool"]
+        assert detail["messages"][1]["blocks"][1]["tool_name"] == "home_assistant"
+        assert detail["messages"][2]["blocks"][0]["result"] == "light.lab on"
+
+        assert ref_response.status_code == 200
+        assert ref_response.json()["project_path"] == "hermes:discord"
 
     def test_list_and_detail_cover_claude_and_codex(self, conversations_client: TestClient) -> None:
         response = conversations_client.get("/conversations")

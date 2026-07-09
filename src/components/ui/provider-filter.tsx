@@ -10,6 +10,7 @@ export const providerFilterOptions: { value: Provider; label: string }[] = [
   { value: "claude", label: "Claude" },
   { value: "codex", label: "Codex" },
   { value: "openclaw", label: "OpenClaw" },
+  { value: "hermes", label: "Hermes" },
 ];
 
 export function ProviderFilter({

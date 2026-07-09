@@ -50,6 +50,7 @@ class CliSettings(BaseModel):
     claude_dir: Path
     codex_dir: Path
     openclaw_dir: Path
+    hermes_dir: Path
 
     @property
     def claude_projects_dir(self) -> Path:
@@ -90,6 +91,10 @@ class CliSettings(BaseModel):
     @property
     def openclaw_memory_sqlite_path(self) -> Path:
         return self.openclaw_dir / "memory" / "main.sqlite"
+
+    @property
+    def hermes_state_db_path(self) -> Path:
+        return self.hermes_dir / "state.db"
 
 
 class DatabaseArtifactSettings(BaseModel):
@@ -201,6 +206,10 @@ class Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".openclaw",
         description="Root of the OpenClaw data directory (typically ~/.openclaw).",
     )
+    hermes_dir: Path = Field(
+        default_factory=lambda: Path.home() / ".hermes",
+        description="Root of the Hermes Agent data directory (typically ~/.hermes).",
+    )
     debug: bool = False
 
     @cached_property
@@ -213,6 +222,7 @@ class Settings(BaseSettings):
             claude_dir=self.claude_dir,
             codex_dir=self.codex_dir,
             openclaw_dir=self.openclaw_dir,
+            hermes_dir=self.hermes_dir,
         )
 
     @cached_property
@@ -310,6 +320,10 @@ class Settings(BaseSettings):
     @property
     def openclaw_memory_sqlite_path(self) -> Path:
         return self.cli.openclaw_memory_sqlite_path
+
+    @property
+    def hermes_state_db_path(self) -> Path:
+        return self.cli.hermes_state_db_path
 
     @property
     def app_sqlite_path(self) -> Path:

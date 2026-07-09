@@ -6,7 +6,7 @@ import importlib
 import importlib.util
 import sqlite3
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 import json
 from pathlib import Path
 from typing import Callable, Iterator
@@ -25,7 +25,16 @@ from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 from helaicopter_db import refresh as refresh_module
 from helaicopter_db.export_pipeline import ExportMeta
-from helaicopter_db.models import ConversationRecord, FactConversation, OlapBase, OltpBase
+from helaicopter_db.models import (
+    ConversationRecord,
+    DimDate,
+    DimProject,
+    DimTool,
+    FactConversation,
+    FactToolUsage,
+    OlapBase,
+    OltpBase,
+)
 
 
 EXPECTED_INVALIDATED_CACHE_KEYS = [
@@ -865,6 +874,62 @@ class TestRefreshOperationalStore:
         assert message_count == 1
         assert removed == 0
 
+    def test_reset_olap_data_handles_duckdb_foreign_key_delete_limitations(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _test_settings(tmp_path)
+        settings.database.duckdb.path.parent.mkdir(parents=True, exist_ok=True)
+        engine = refresh_module.create_olap_engine(settings)
+        OlapBase.metadata.create_all(engine)
+        try:
+            with Session(engine) as session:
+                session.add_all(
+                    [
+                        DimDate(
+                            date_key=20260317,
+                            calendar_date=date(2026, 3, 17),
+                            year=2026,
+                            month=3,
+                            day=17,
+                            iso_week=12,
+                            weekday=2,
+                        ),
+                        DimProject(
+                            project_id="claude:/repo",
+                            provider="claude",
+                            project_path="/repo",
+                            project_name="repo",
+                        ),
+                        DimTool(
+                            tool_id="claude:Bash",
+                            provider="claude",
+                            tool_name="Bash",
+                        ),
+                    ]
+                )
+                session.commit()
+                session.add(
+                    FactToolUsage(
+                        tool_usage_id="usage-1",
+                        provider="claude",
+                        date_key=20260317,
+                        project_id="claude:/repo",
+                        tool_id="claude:Bash",
+                        conversation_count=1,
+                        tool_calls=1,
+                    )
+                )
+                session.commit()
+
+                refresh_module._reset_olap_data(session)
+                session.commit()
+
+                assert session.query(FactToolUsage).count() == 0
+                assert session.query(DimTool).count() == 0
+        finally:
+            engine.dispose()
+
 
 def _export_envelope(
     session_id: str,
@@ -923,6 +988,41 @@ def _export_envelope(
             "totalCost": 0.0,
         },
     }
+
+
+def _hermes_export_envelope(session_id: str = "hermes-session-a") -> dict[str, object]:
+    envelope = _export_envelope(
+        session_id,
+        timestamp_ms=1_710_000_000_000,
+        total_input_tokens=100,
+    )
+    envelope["summary"].update(
+        {
+            "provider": "hermes",
+            "projectPath": "hermes:cli",
+            "projectName": "Hermes CLI",
+            "firstMessage": "Hermes synthetic session",
+            "model": "gpt-5.1",
+            "totalOutputTokens": 25,
+            "toolUseCount": 2,
+            "toolBreakdown": {"terminal": 2},
+        }
+    )
+    envelope["detail"]["messages"][0].update(
+        {
+            "model": "gpt-5.1",
+            "blocks": [
+                {"type": "text", "text": "Hermes synthetic response"},
+                {
+                    "type": "tool_call",
+                    "toolUseId": "call-1",
+                    "toolName": "terminal",
+                    "input": {"cmd": "true"},
+                },
+            ],
+        }
+    )
+    return envelope
 
 
 @pytest.fixture
@@ -1072,6 +1172,38 @@ class TestRefreshPipeline:
             "claude:session-a": refresh_module._conversation_refresh_hash(refresh_runtime["envelopes"][0]),
             "claude:session-b": refresh_module._conversation_refresh_hash(refresh_runtime["envelopes"][1]),
         }
+
+    def test_run_refresh_persists_hermes_provider_rows_and_facts(self, refresh_runtime) -> None:
+        settings = refresh_runtime["settings"]
+        refresh_runtime["meta"].conversation_count = 1
+        refresh_runtime["envelopes"][:] = [_hermes_export_envelope()]
+
+        refresh_module.run_refresh(
+            force=True,
+            trigger="manual",
+            stale_after_seconds=0,
+            settings=settings,
+        )
+
+        with Session(refresh_runtime["oltp_engine"]) as session:
+            conversation = session.get(ConversationRecord, "hermes:hermes-session-a")
+
+        with Session(refresh_runtime["olap_engine"]) as session:
+            fact = session.get(FactConversation, "hermes:hermes-session-a")
+            tool = session.get(DimTool, "hermes:terminal")
+            tool_usage = session.scalars(select(FactToolUsage)).one()
+
+        assert conversation is not None
+        assert conversation.provider == "hermes"
+        assert conversation.project_path == "hermes:cli"
+        assert conversation.tool_use_count == 2
+        assert fact is not None
+        assert fact.provider == "hermes"
+        assert fact.tool_use_count == 2
+        assert tool is not None
+        assert tool.provider == "hermes"
+        assert tool_usage.provider == "hermes"
+        assert tool_usage.tool_calls == 2
 
     def test_run_refresh_force_rebuild_reloads_all_rows(self, refresh_runtime, monkeypatch: pytest.MonkeyPatch) -> None:
         settings = refresh_runtime["settings"]

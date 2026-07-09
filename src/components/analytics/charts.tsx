@@ -34,7 +34,9 @@ function providerBreakdownToChartData(data: Record<string, ProviderBreakdown>) {
       name: name.replace(/^mcp__[^_]+__/, "mcp:").replace("claude-", ""),
       claude: counts.claude,
       codex: counts.codex,
-      total: counts.claude + counts.codex,
+      openclaw: counts.openclaw ?? 0,
+      hermes: counts.hermes ?? 0,
+      total: counts.claude + counts.codex + (counts.openclaw ?? 0) + (counts.hermes ?? 0),
     }))
     .sort((a, b) => b.total - a.total);
 }
@@ -78,6 +80,12 @@ export function DailyUsageChart({ data }: { data: DailyUsage[] }) {
             <Bar dataKey="codexOutputTokens" fill="#6ee7b7" name="Codex output" stackId="a" />
             <Bar dataKey="codexCacheWriteTokens" fill="#fcd34d" name="Codex cache write" stackId="a" />
             <Bar dataKey="codexCacheReadTokens" fill="#c4b5fd" name="Codex cache read" stackId="a" />
+            <Bar dataKey="openclawInputTokens" fill="#f59e0b" name="OpenClaw input" stackId="a" />
+            <Bar dataKey="openclawOutputTokens" fill="#fbbf24" name="OpenClaw output" stackId="a" />
+            <Bar dataKey="hermesInputTokens" fill="#8b5cf6" name="Hermes input" stackId="a" />
+            <Bar dataKey="hermesOutputTokens" fill="#a78bfa" name="Hermes output" stackId="a" />
+            <Bar dataKey="hermesCacheWriteTokens" fill="#c084fc" name="Hermes cache write" stackId="a" />
+            <Bar dataKey="hermesCacheReadTokens" fill="#ddd6fe" name="Hermes cache read" stackId="a" />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
@@ -126,6 +134,22 @@ export function ConversationsPerDayChart({ data }: { data: DailyUsage[] }) {
             />
             <Line
               type="monotone"
+              dataKey="openclawConversations"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              dot={false}
+              name="OpenClaw conversations"
+            />
+            <Line
+              type="monotone"
+              dataKey="hermesConversations"
+              stroke="#8b5cf6"
+              strokeWidth={2}
+              dot={false}
+              name="Hermes conversations"
+            />
+            <Line
+              type="monotone"
               dataKey="claudeSubagents"
               stroke="#d97706"
               strokeWidth={2}
@@ -139,6 +163,22 @@ export function ConversationsPerDayChart({ data }: { data: DailyUsage[] }) {
               strokeWidth={2}
               dot={false}
               name="Codex sub-agents"
+            />
+            <Line
+              type="monotone"
+              dataKey="openclawSubagents"
+              stroke="#fbbf24"
+              strokeWidth={2}
+              dot={false}
+              name="OpenClaw sub-agents"
+            />
+            <Line
+              type="monotone"
+              dataKey="hermesSubagents"
+              stroke="#a78bfa"
+              strokeWidth={2}
+              dot={false}
+              name="Hermes sub-agents"
             />
           </LineChart>
         </ResponsiveContainer>
@@ -187,7 +227,9 @@ export function SubagentTypeChart({
               }}
             />
             <Bar dataKey="claude" name="Claude" stackId="a" fill="#2563eb" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="codex" name="Codex" stackId="a" fill="#93c5fd" radius={[0, 4, 4, 0]} />
+            <Bar dataKey="codex" name="Codex" stackId="a" fill="#93c5fd" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="openclaw" name="OpenClaw" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="hermes" name="Hermes" stackId="a" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
@@ -241,7 +283,9 @@ export function ToolUsageChart({
               }}
             />
             <Bar dataKey="claude" fill="#2563eb" name="Claude" stackId="a" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="codex" fill="#93c5fd" name="Codex" stackId="a" radius={[0, 4, 4, 0]} />
+            <Bar dataKey="codex" fill="#93c5fd" name="Codex" stackId="a" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="openclaw" fill="#f59e0b" name="OpenClaw" stackId="a" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="hermes" fill="#8b5cf6" name="Hermes" stackId="a" radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
@@ -285,7 +329,9 @@ export function ModelBreakdownChart({
               }}
             />
             <Bar dataKey="claude" fill="#2563eb" name="Claude" stackId="a" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="codex" fill="#93c5fd" name="Codex" stackId="a" radius={[0, 4, 4, 0]} />
+            <Bar dataKey="codex" fill="#93c5fd" name="Codex" stackId="a" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="openclaw" fill="#f59e0b" name="OpenClaw" stackId="a" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="hermes" fill="#8b5cf6" name="Hermes" stackId="a" radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
@@ -348,6 +394,22 @@ export function SpendTrendChart({
               strokeWidth={2}
               dot={false}
               name="Codex spend"
+            />
+            <Line
+              type="monotone"
+              dataKey="openclawEstimatedCost"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              dot={false}
+              name="OpenClaw spend"
+            />
+            <Line
+              type="monotone"
+              dataKey="hermesEstimatedCost"
+              stroke="#8b5cf6"
+              strokeWidth={2}
+              dot={false}
+              name="Hermes spend"
             />
           </LineChart>
         </ResponsiveContainer>
@@ -533,6 +595,18 @@ export function ToolErrorRateChart({
                     `${payload.claudeFailedToolCalls}/${payload.claudeToolCalls} failed`,
                   ];
                 }
+                if (name === "OpenClaw error rate") {
+                  return [
+                    `${value.toFixed(2)}%`,
+                    `${payload.openclawFailedToolCalls ?? 0}/${payload.openclawToolCalls ?? 0} failed`,
+                  ];
+                }
+                if (name === "Hermes error rate") {
+                  return [
+                    `${value.toFixed(2)}%`,
+                    `${payload.hermesFailedToolCalls ?? 0}/${payload.hermesToolCalls ?? 0} failed`,
+                  ];
+                }
                 return [
                   `${value.toFixed(2)}%`,
                   `${payload.codexFailedToolCalls}/${payload.codexToolCalls} failed`,
@@ -568,6 +642,22 @@ export function ToolErrorRateChart({
               strokeWidth={2}
               dot={false}
               name="Codex error rate"
+            />
+            <Line
+              type="monotone"
+              dataKey="openclawToolErrorRatePct"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              dot={false}
+              name="OpenClaw error rate"
+            />
+            <Line
+              type="monotone"
+              dataKey="hermesToolErrorRatePct"
+              stroke="#8b5cf6"
+              strokeWidth={2}
+              dot={false}
+              name="Hermes error rate"
             />
           </LineChart>
         </ResponsiveContainer>

@@ -15,7 +15,7 @@ from helaicopter_semantics import (
     supports_long_context_premium,
 )
 
-AnalyticsProvider = Literal["claude", "codex", "openclaw"]
+AnalyticsProvider = Literal["claude", "codex", "openclaw", "hermes"]
 TimeSeriesKey = Literal["hourly", "daily", "weekly", "monthly"]
 TIME_SERIES_KEYS: tuple[TimeSeriesKey, TimeSeriesKey, TimeSeriesKey, TimeSeriesKey] = (
     "hourly",
@@ -30,6 +30,7 @@ class ProviderBreakdown:
     claude: int = 0
     codex: int = 0
     openclaw: int = 0
+    hermes: int = 0
 
 
 @dataclass(slots=True)
@@ -60,6 +61,7 @@ class AnalyticsTimeSeriesPoint:
     estimated_cost: float = 0.0
     claude_estimated_cost: float = 0.0
     codex_estimated_cost: float = 0.0
+    hermes_estimated_cost: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
     cache_write_tokens: int = 0
@@ -105,6 +107,17 @@ class AnalyticsTimeSeriesPoint:
     codex_failed_tool_calls: int = 0
     codex_tool_error_rate_pct: float = 0.0
     codex_subagents: int = 0
+    hermes_input_tokens: int = 0
+    hermes_output_tokens: int = 0
+    hermes_cache_write_tokens: int = 0
+    hermes_cache_read_tokens: int = 0
+    hermes_reasoning_tokens: int = 0
+    hermes_total_tokens: int = 0
+    hermes_conversations: int = 0
+    hermes_tool_calls: int = 0
+    hermes_failed_tool_calls: int = 0
+    hermes_tool_error_rate_pct: float = 0.0
+    hermes_subagents: int = 0
 
 
 @dataclass(slots=True)
@@ -139,9 +152,15 @@ class DailyUsage:
     openclaw_cache_write_tokens: int = 0
     openclaw_cache_read_tokens: int = 0
     openclaw_conversations: int = 0
+    hermes_input_tokens: int = 0
+    hermes_output_tokens: int = 0
+    hermes_cache_write_tokens: int = 0
+    hermes_cache_read_tokens: int = 0
+    hermes_conversations: int = 0
     claude_subagents: int = 0
     codex_subagents: int = 0
     openclaw_subagents: int = 0
+    hermes_subagents: int = 0
 
 
 @dataclass(slots=True)
@@ -329,13 +348,20 @@ def build_analytics(
             daily_usage.codex_cache_read_tokens += conversation.total_cache_read_tokens
             daily_usage.codex_conversations += 1
             daily_usage.codex_subagents += conversation.subagent_count
-        else:
+        elif provider == "openclaw":
             daily_usage.openclaw_input_tokens += conversation.total_input_tokens
             daily_usage.openclaw_output_tokens += conversation.total_output_tokens
             daily_usage.openclaw_cache_write_tokens += conversation.total_cache_write_tokens
             daily_usage.openclaw_cache_read_tokens += conversation.total_cache_read_tokens
             daily_usage.openclaw_conversations += 1
             daily_usage.openclaw_subagents += conversation.subagent_count
+        else:
+            daily_usage.hermes_input_tokens += conversation.total_input_tokens
+            daily_usage.hermes_output_tokens += conversation.total_output_tokens
+            daily_usage.hermes_cache_write_tokens += conversation.total_cache_write_tokens
+            daily_usage.hermes_cache_read_tokens += conversation.total_cache_read_tokens
+            daily_usage.hermes_conversations += 1
+            daily_usage.hermes_subagents += conversation.subagent_count
 
         for key in TIME_SERIES_KEYS:
             bucket_start = _bucket_start(started_at, key)
@@ -376,7 +402,7 @@ def build_analytics(
                 bucket.codex_tool_calls += conversation.tool_use_count
                 bucket.codex_failed_tool_calls += conversation.failed_tool_call_count
                 bucket.codex_subagents += conversation.subagent_count
-            else:
+            elif provider == "openclaw":
                 bucket.openclaw_estimated_cost += conversation_cost.total_cost
                 bucket.openclaw_input_tokens += conversation.total_input_tokens
                 bucket.openclaw_output_tokens += conversation.total_output_tokens
@@ -388,6 +414,18 @@ def build_analytics(
                 bucket.openclaw_tool_calls += conversation.tool_use_count
                 bucket.openclaw_failed_tool_calls += conversation.failed_tool_call_count
                 bucket.openclaw_subagents += conversation.subagent_count
+            else:
+                bucket.hermes_estimated_cost += conversation_cost.total_cost
+                bucket.hermes_input_tokens += conversation.total_input_tokens
+                bucket.hermes_output_tokens += conversation.total_output_tokens
+                bucket.hermes_cache_write_tokens += conversation.total_cache_write_tokens
+                bucket.hermes_cache_read_tokens += conversation.total_cache_read_tokens
+                bucket.hermes_reasoning_tokens += reasoning_tokens
+                bucket.hermes_total_tokens += total_tokens
+                bucket.hermes_conversations += 1
+                bucket.hermes_tool_calls += conversation.tool_use_count
+                bucket.hermes_failed_tool_calls += conversation.failed_tool_call_count
+                bucket.hermes_subagents += conversation.subagent_count
 
     total_tokens = total_tokens_accumulator
     data.estimated_cost = data.cost_breakdown.total_cost
@@ -606,6 +644,9 @@ def _apply_tool_error_rates(point: AnalyticsTimeSeriesPoint) -> None:
     point.openclaw_tool_error_rate_pct = (
         (point.openclaw_failed_tool_calls / point.openclaw_tool_calls) * 100 if point.openclaw_tool_calls else 0.0
     )
+    point.hermes_tool_error_rate_pct = (
+        (point.hermes_failed_tool_calls / point.hermes_tool_calls) * 100 if point.hermes_tool_calls else 0.0
+    )
 
 
 def _increment_provider_breakdown(
@@ -619,8 +660,10 @@ def _increment_provider_breakdown(
         entry.claude += count
     elif provider == "codex":
         entry.codex += count
-    else:
+    elif provider == "openclaw":
         entry.openclaw += count
+    else:
+        entry.hermes += count
 
 
 def _add_cost_breakdown(target: AnalyticsCostBreakdown, source: AnalyticsCostBreakdown) -> None:

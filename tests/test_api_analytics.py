@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+import sqlite3
+from pathlib import Path
 from typing import Iterator
 
 from fastapi.testclient import TestClient
@@ -12,6 +14,7 @@ from helaicopter_api.application import analytics as analytics_application
 from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.bootstrap.services import BackendServices
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
+from helaicopter_api.server.config import Settings
 from helaicopter_api.server.dependencies import get_services
 from helaicopter_api.server.main import create_app
 
@@ -60,15 +63,84 @@ def _services_stub(**attrs: object) -> BackendServices:
     return services
 
 
+def _write_hermes_analytics_db(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE sessions (
+              id TEXT PRIMARY KEY,
+              source TEXT NOT NULL,
+              model TEXT,
+              started_at REAL NOT NULL,
+              ended_at REAL,
+              message_count INTEGER DEFAULT 0,
+              tool_call_count INTEGER DEFAULT 0,
+              input_tokens INTEGER DEFAULT 0,
+              output_tokens INTEGER DEFAULT 0,
+              cache_read_tokens INTEGER DEFAULT 0,
+              cache_write_tokens INTEGER DEFAULT 0,
+              reasoning_tokens INTEGER DEFAULT 0,
+              title TEXT
+            );
+            CREATE TABLE messages (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id TEXT NOT NULL,
+              role TEXT NOT NULL,
+              content TEXT,
+              tool_call_id TEXT,
+              tool_calls TEXT,
+              tool_name TEXT,
+              timestamp REAL NOT NULL,
+              token_count INTEGER,
+              reasoning TEXT,
+              reasoning_content TEXT
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO sessions (
+              id, source, model, started_at, ended_at, message_count,
+              tool_call_count, input_tokens, output_tokens, cache_read_tokens,
+              cache_write_tokens, reasoning_tokens, title
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "hermes-analytics-1",
+                "discord",
+                "gpt-5.5",
+                1_783_000_000.0,
+                1_783_000_090.0,
+                1,
+                0,
+                123,
+                45,
+                6,
+                7,
+                8,
+                "Hermes analytics",
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 @contextmanager
 def analytics_client(
     rows: list[HistoricalConversationSummary],
     *,
     warehouse_rows: list[HistoricalConversationSummary] | None = None,
+    settings: Settings | None = None,
 ) -> Iterator[tuple[TestClient, StubStore]]:
     store = StubStore(rows)
     application = create_app()
-    application.dependency_overrides[get_services] = lambda: _services_stub(app_sqlite_store=store)
+    application.dependency_overrides[get_services] = lambda: _services_stub(
+        app_sqlite_store=store,
+        settings=settings,
+    )
     original_loader = analytics_application.list_warehouse_historical_conversations
     analytics_application.list_warehouse_historical_conversations = lambda _services: list(warehouse_rows or [])
     try:
@@ -80,6 +152,24 @@ def analytics_client(
 
 
 class TestAnalyticsEndpoint:
+    def test_endpoint_includes_live_hermes_state_db_rows(self, tmp_path: Path) -> None:
+        hermes_dir = tmp_path / ".hermes"
+        _write_hermes_analytics_db(hermes_dir / "state.db")
+        settings = Settings(project_root=tmp_path, hermes_dir=hermes_dir)
+
+        with analytics_client([], settings=settings) as (client, _store):
+            response = client.get("/analytics", params={"provider": "hermes"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total_conversations"] == 1
+        assert payload["total_input_tokens"] == 123
+        assert payload["total_output_tokens"] == 45
+        assert payload["total_cache_creation_tokens"] == 7
+        assert payload["total_cache_read_tokens"] == 6
+        assert payload["total_reasoning_tokens"] == 8
+        assert payload["model_breakdown_by_provider"]["gpt-5.5"]["hermes"] == 1
+
     def test_endpoint_applies_days_and_provider_filters_without_backend_selector(self) -> None:
         now = datetime.now(UTC)
         recent_claude = _summary(
@@ -226,6 +316,7 @@ class TestAnalyticsEndpoint:
             "claude",
             "codex",
             "openclaw",
+            "hermes",
         ]
         assert analytics_get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
             "/AnalyticsDataResponse"

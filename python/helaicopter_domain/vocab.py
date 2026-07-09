@@ -2,8 +2,8 @@
 
 from typing import Literal
 
-ProviderName = Literal["claude", "codex", "openclaw"]
-ProviderSelection = Literal["all", "claude", "codex", "openclaw"]
+ProviderName = Literal["claude", "codex", "openclaw", "hermes"]
+ProviderSelection = Literal["all", "claude", "codex", "openclaw", "hermes"]
 
 EvaluationStatus = Literal["running", "completed", "failed"]
 EvaluationScope = Literal["full", "failed_tool_calls", "guided_subset"]

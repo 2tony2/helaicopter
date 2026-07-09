@@ -12,6 +12,7 @@ type ConversationSummaryTotals = {
 export function inferConversationProvider(projectPath: string): FrontendProvider {
   if (projectPath.startsWith("codex:")) return "codex";
   if (projectPath.startsWith("openclaw:")) return "openclaw";
+  if (projectPath.startsWith("hermes:")) return "hermes";
   return "claude";
 }
 

@@ -30,7 +30,7 @@ export function buildCheckoutInstance(repoRoot, overrides = {}) {
 export function buildDevChildEnv(instance, baseEnv) {
   const apiHost = baseEnv.HELA_API_HOST || "127.0.0.1";
   const webHost = baseEnv.HELA_WEB_HOST || "127.0.0.1";
-  const useApiProxy = baseEnv.HELA_USE_API_PROXY === "1";
+  const useApiProxy = baseEnv.HELA_USE_API_PROXY !== "0";
 
   return {
     ...baseEnv,

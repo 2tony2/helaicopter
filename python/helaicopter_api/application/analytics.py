@@ -10,11 +10,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ConfigDict, InstanceOf, validate_call
 
 from helaicopter_api.bootstrap.services import BackendServices
+from helaicopter_api.application.conversations import _list_hermes_live_summaries
 from helaicopter_api.application.conversation_refs import derive_route_slug
 from helaicopter_api.ports.app_sqlite import HistoricalConversationSummary
 from helaicopter_api.pure.analytics import build_analytics, filter_analytics_conversations
 from helaicopter_api.schema.analytics import AnalyticsDataResponse
 from helaicopter_db.db import create_olap_engine
+from helaicopter_db.utils import conversation_id
 from helaicopter_domain.vocab import ProviderName
 
 
@@ -40,7 +42,7 @@ def get_analytics(
             optional OLAP warehouse connection.
         days: Optional rolling window in days. When ``None`` all available
             history is included.
-        provider: Optional provider filter (``"claude"``, ``"codex"``, or
+        provider: Optional provider filter (``"claude"``, ``"codex"``, ``"openclaw"``, ``"hermes"``, or
             ``"all"``/``None`` for no filtering).
         now: Reference timestamp used as the end of the rolling window.
             Defaults to the current UTC time when omitted.
@@ -68,7 +70,7 @@ def get_analytics(
 def _normalize_provider(provider: str | None) -> ProviderName | None:
     if provider is None or provider == "all":
         return None
-    if provider in {"claude", "codex", "openclaw"}:
+    if provider in {"claude", "codex", "openclaw", "hermes"}:
         return cast(ProviderName, provider)
     raise ValueError(f"Unsupported analytics provider: {provider}")
 
@@ -88,20 +90,66 @@ def _load_authoritative_analytics_conversations(
 ) -> list[HistoricalConversationSummary]:
     warehouse_rows = list_warehouse_historical_conversations(services)
     sqlite_rows = services.app_sqlite_store.list_historical_conversations()
+    hermes_rows = _list_live_hermes_analytics_conversations(services)
     if not warehouse_rows:
-        return sqlite_rows
+        return _merge_analytics_rows(sqlite_rows, hermes_rows)
 
     supplement_cutoff = now - timedelta(hours=RECENT_SUPPLEMENT_HOURS)
     combined: dict[str, HistoricalConversationSummary] = {
         row.conversation_id: row for row in warehouse_rows
     }
-    for row in sqlite_rows:
+    for row in [*sqlite_rows, *hermes_rows]:
         if _ended_at_or_none(row) is None:
             combined[row.conversation_id] = row
             continue
         if _ended_at_or_none(row) >= supplement_cutoff:
             combined[row.conversation_id] = row
     return list(combined.values())
+
+
+def _merge_analytics_rows(
+    *row_groups: list[HistoricalConversationSummary],
+) -> list[HistoricalConversationSummary]:
+    merged: dict[str, HistoricalConversationSummary] = {}
+    for rows in row_groups:
+        for row in rows:
+            merged[row.conversation_id] = row
+    return list(merged.values())
+
+
+def _list_live_hermes_analytics_conversations(
+    services: BackendServices,
+) -> list[HistoricalConversationSummary]:
+    if getattr(services, "settings", None) is None:
+        return []
+    return [
+        HistoricalConversationSummary(
+            conversation_id=conversation_id("hermes", summary.session_id),
+            provider="hermes",
+            session_id=summary.session_id,
+            project_path=summary.project_path,
+            project_name=summary.project_name,
+            thread_type=summary.thread_type,
+            first_message=summary.first_message,
+            route_slug=summary.route_slug,
+            started_at=_epoch_ms_to_iso(summary.created_at),
+            ended_at=_epoch_ms_to_iso(summary.last_updated_at),
+            message_count=summary.message_count,
+            model=summary.model,
+            total_input_tokens=summary.total_input_tokens,
+            total_output_tokens=summary.total_output_tokens,
+            total_cache_write_tokens=summary.total_cache_creation_tokens,
+            total_cache_read_tokens=summary.total_cache_read_tokens,
+            total_reasoning_tokens=summary.total_reasoning_tokens or 0,
+            tool_use_count=summary.tool_use_count,
+            failed_tool_call_count=summary.failed_tool_call_count,
+            tool_breakdown=dict(summary.tool_breakdown),
+            subagent_count=summary.subagent_count,
+            subagent_type_breakdown=dict(summary.subagent_type_breakdown),
+            task_count=summary.task_count,
+        )
+        for summary in _list_hermes_live_summaries(services, project=None, days=None)
+    ]
 
 
 def list_warehouse_historical_conversations(
@@ -206,3 +254,7 @@ def _serialize_datetime(value: object) -> str:
             return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
         return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return str(value)
+
+
+def _epoch_ms_to_iso(value: float) -> str:
+    return datetime.fromtimestamp(value / 1000, tz=UTC).isoformat().replace("+00:00", "Z")

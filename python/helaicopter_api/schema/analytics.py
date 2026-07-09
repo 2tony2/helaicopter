@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AnalyticsProviderParam = Literal["all", "claude", "codex", "openclaw"]
+AnalyticsProviderParam = Literal["all", "claude", "codex", "openclaw", "hermes"]
 
 
 class AnalyticsQueryParams(BaseModel):
@@ -21,7 +21,7 @@ class AnalyticsQueryParams(BaseModel):
     )
     provider: AnalyticsProviderParam | None = Field(
         default=None,
-        description="Optional provider filter. Use `all` or omit for combined analytics across Claude, Codex, and OpenClaw.",
+        description="Optional provider filter. Use `all` or omit for combined analytics across Claude, Codex, OpenClaw, and Hermes.",
     )
 
 
@@ -43,6 +43,7 @@ class ProviderBreakdownResponse(BaseModel):
     claude: int = 0
     codex: int = 0
     openclaw: int = 0
+    hermes: int = 0
 
 
 class AnalyticsRateValueResponse(BaseModel):
@@ -80,6 +81,7 @@ class AnalyticsTimeSeriesPointResponse(BaseModel):
     estimated_cost: float = 0.0
     claude_estimated_cost: float = 0.0
     codex_estimated_cost: float = 0.0
+    hermes_estimated_cost: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
     cache_write_tokens: int = 0
@@ -113,6 +115,17 @@ class AnalyticsTimeSeriesPointResponse(BaseModel):
     codex_failed_tool_calls: int = 0
     codex_tool_error_rate_pct: float = 0.0
     codex_subagents: int = 0
+    hermes_input_tokens: int = 0
+    hermes_output_tokens: int = 0
+    hermes_cache_write_tokens: int = 0
+    hermes_cache_read_tokens: int = 0
+    hermes_reasoning_tokens: int = 0
+    hermes_total_tokens: int = 0
+    hermes_conversations: int = 0
+    hermes_tool_calls: int = 0
+    hermes_failed_tool_calls: int = 0
+    hermes_tool_error_rate_pct: float = 0.0
+    hermes_subagents: int = 0
 
 
 class AnalyticsTimeSeriesResponse(BaseModel):
@@ -144,8 +157,14 @@ class DailyUsageResponse(BaseModel):
     codex_cache_read_tokens: int = 0
     claude_conversations: int = 0
     codex_conversations: int = 0
+    hermes_input_tokens: int = 0
+    hermes_output_tokens: int = 0
+    hermes_cache_write_tokens: int = 0
+    hermes_cache_read_tokens: int = 0
+    hermes_conversations: int = 0
     claude_subagents: int = 0
     codex_subagents: int = 0
+    hermes_subagents: int = 0
 
 
 class AnalyticsDataResponse(BaseModel):

@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import sqlite3
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from helaicopter_api.application.conversations import (
     _get_codex_live_conversation,
@@ -92,6 +94,7 @@ def _iter_historical_envelopes(settings: Settings | None = None) -> Iterable[Exp
         _iter_claude_historical_envelopes(backend_settings),
         _iter_codex_historical_envelopes(backend_settings),
         _iter_openclaw_historical_envelopes(backend_settings),
+        _iter_hermes_historical_envelopes(backend_settings),
     ):
         for envelope in iterator:
             parsed = parse_export_conversation_envelope(_drop_none_fields(envelope))
@@ -235,6 +238,278 @@ def _iter_openclaw_historical_envelopes(settings: Settings) -> Iterable[dict[str
             source_path=artifact.path,
             source_file_modified_at=modified_at_ms,
         )
+
+
+def _iter_hermes_historical_envelopes(settings: Settings) -> Iterable[dict[str, object]]:
+    db_path = settings.hermes_state_db_path
+    if not db_path.exists():
+        return
+
+    cutoff_ms = _utc_now_ms() - MAX_WINDOW_DAYS * MILLIS_PER_DAY
+    start_of_today_ms = int(_start_of_today().timestamp() * 1000)
+    modified_at_ms = int(db_path.stat().st_mtime * 1000)
+    try:
+        connection = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return
+
+    connection.row_factory = sqlite3.Row
+    try:
+        sessions = connection.execute(
+            """
+            SELECT
+              id,
+              source,
+              model,
+              started_at,
+              ended_at,
+              message_count,
+              tool_call_count,
+              input_tokens,
+              output_tokens,
+              cache_read_tokens,
+              cache_write_tokens,
+              reasoning_tokens,
+              estimated_cost_usd,
+              title
+            FROM sessions
+            ORDER BY started_at ASC, id ASC
+            """
+        ).fetchall()
+        for session in sessions:
+            started_at_ms = _hermes_seconds_to_ms(session["started_at"])
+            if started_at_ms >= start_of_today_ms:
+                continue
+            messages = connection.execute(
+                """
+                SELECT
+                  id,
+                  role,
+                  content,
+                  tool_call_id,
+                  tool_calls,
+                  tool_name,
+                  timestamp,
+                  token_count,
+                  reasoning,
+                  reasoning_content
+                FROM messages
+                WHERE session_id = ?
+                ORDER BY timestamp ASC, id ASC
+                """,
+                (session["id"],),
+            ).fetchall()
+            latest_message_ms = max(
+                (_hermes_seconds_to_ms(message["timestamp"]) for message in messages),
+                default=started_at_ms,
+            )
+            source_file_modified_at = max(modified_at_ms, latest_message_ms)
+            if source_file_modified_at < cutoff_ms:
+                continue
+            yield _hermes_envelope_from_rows(
+                db_path=db_path,
+                session=session,
+                messages=messages,
+                source_file_modified_at=source_file_modified_at,
+            )
+    except sqlite3.Error:
+        return
+    finally:
+        connection.close()
+
+
+def _hermes_envelope_from_rows(
+    *,
+    db_path: Path,
+    session: sqlite3.Row,
+    messages: list[sqlite3.Row],
+    source_file_modified_at: int,
+) -> dict[str, object]:
+    source = str(session["source"] or "unknown").strip() or "unknown"
+    project_path = f"hermes:{source}"
+    model = session["model"] or "hermes"
+    started_at_ms = _hermes_seconds_to_ms(session["started_at"])
+    ended_at_ms = (
+        _hermes_seconds_to_ms(session["ended_at"])
+        if session["ended_at"] is not None
+        else max((_hermes_seconds_to_ms(message["timestamp"]) for message in messages), default=started_at_ms)
+    )
+    tool_breakdown = _hermes_tool_breakdown(messages)
+    estimated_cost = float(session["estimated_cost_usd"] or 0.0)
+    return {
+        "type": "conversation",
+        "summary": {
+            "sessionId": session["id"],
+            "provider": "hermes",
+            "projectPath": project_path,
+            "projectName": _hermes_project_name(source),
+            "threadType": "main",
+            "firstMessage": _hermes_first_message(session, messages),
+            "timestamp": started_at_ms,
+            "messageCount": int(session["message_count"] or len(messages)),
+            "model": model,
+            "totalInputTokens": int(session["input_tokens"] or 0),
+            "totalOutputTokens": int(session["output_tokens"] or 0),
+            "totalCacheCreationTokens": int(session["cache_write_tokens"] or 0),
+            "totalCacheReadTokens": int(session["cache_read_tokens"] or 0),
+            "totalReasoningTokens": int(session["reasoning_tokens"] or 0),
+            "toolUseCount": int(session["tool_call_count"] or sum(tool_breakdown.values())),
+            "subagentCount": 0,
+            "taskCount": 0,
+            "toolBreakdown": dict(sorted(tool_breakdown.items())),
+            "subagentTypeBreakdown": {},
+            "recordSource": str(db_path),
+            "sourcePath": str(db_path),
+            "sourceFileModifiedAt": source_file_modified_at,
+        },
+        "detail": {
+            "endTime": ended_at_ms,
+            "messages": [_hermes_message_payload(message, model=model) for message in messages],
+            "plans": [],
+            "subagents": [],
+            "contextAnalytics": {"buckets": [], "steps": []},
+        },
+        "tasks": [],
+        "cost": {
+            "inputCost": 0.0,
+            "outputCost": 0.0,
+            "cacheWriteCost": 0.0,
+            "cacheReadCost": 0.0,
+            "totalCost": estimated_cost,
+        },
+    }
+
+
+def _hermes_seconds_to_ms(value: object) -> int:
+    return int(float(value or 0) * 1000)
+
+
+def _hermes_project_name(source: str) -> str:
+    return f"Hermes {source.replace('_', ' ').replace('-', ' ').title()}"
+
+
+def _hermes_first_message(session: sqlite3.Row, messages: list[sqlite3.Row]) -> str:
+    title = session["title"]
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    for message in messages:
+        if message["role"] == "user" and isinstance(message["content"], str) and message["content"].strip():
+            return message["content"].strip()[:400]
+    return str(session["id"])
+
+
+def _hermes_message_payload(message: sqlite3.Row, *, model: str) -> dict[str, object]:
+    blocks: list[dict[str, object]] = []
+    reasoning = _hermes_reasoning_text(message)
+    if reasoning:
+        blocks.append({"type": "thinking", "thinking": reasoning})
+    content = message["content"]
+    if isinstance(content, str) and content:
+        blocks.append({"type": "text", "text": content})
+    for tool_call in _hermes_tool_call_blocks(message["tool_calls"]):
+        blocks.append(tool_call)
+    if message["tool_name"]:
+        blocks.append(
+            {
+                "type": "tool_call",
+                "toolUseId": message["tool_call_id"],
+                "toolName": message["tool_name"],
+                "input": {},
+                "result": content,
+                "isError": None,
+            }
+        )
+    return {
+        "role": message["role"],
+        "timestamp": _hermes_seconds_to_ms(message["timestamp"]),
+        "model": model,
+        "reasoningTokens": 0,
+        "usage": {
+            "input_tokens": int(message["token_count"] or 0) if message["role"] == "user" else 0,
+            "output_tokens": int(message["token_count"] or 0) if message["role"] == "assistant" else 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        },
+        "blocks": blocks,
+    }
+
+
+def _hermes_reasoning_text(message: sqlite3.Row) -> str | None:
+    for key in ("reasoning", "reasoning_content"):
+        value = message[key]
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _hermes_tool_breakdown(messages: list[sqlite3.Row]) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for message in messages:
+        if message["tool_name"]:
+            counts[str(message["tool_name"])] += 1
+        for block in _hermes_tool_call_blocks(message["tool_calls"]):
+            tool_name = block.get("toolName")
+            if isinstance(tool_name, str) and tool_name:
+                counts[tool_name] += 1
+    return counts
+
+
+def _hermes_tool_call_blocks(raw_tool_calls: object) -> list[dict[str, object]]:
+    parsed = _hermes_parse_json(raw_tool_calls)
+    if parsed is None:
+        return []
+    calls = parsed if isinstance(parsed, list) else [parsed]
+    blocks: list[dict[str, object]] = []
+    for call in calls:
+        block = _hermes_tool_call_block(call)
+        if block is not None:
+            blocks.append(block)
+    return blocks
+
+
+def _hermes_tool_call_block(call: object) -> dict[str, object] | None:
+    if not isinstance(call, dict):
+        return None
+    function = call.get("function")
+    function_payload = function if isinstance(function, dict) else {}
+    tool_name = call.get("name") or function_payload.get("name") or call.get("tool_name")
+    if not isinstance(tool_name, str) or not tool_name:
+        return None
+    raw_input = call.get("input")
+    if raw_input is None:
+        raw_input = call.get("arguments")
+    if raw_input is None:
+        raw_input = function_payload.get("arguments")
+    return {
+        "type": "tool_call",
+        "toolUseId": call.get("id") or call.get("tool_call_id"),
+        "toolName": tool_name,
+        "input": _hermes_tool_input(raw_input),
+        "result": None,
+        "isError": None,
+    }
+
+
+def _hermes_tool_input(value: object) -> object:
+    parsed = _hermes_parse_json(value)
+    if parsed is not None:
+        return parsed
+    if value is None:
+        return {}
+    if isinstance(value, (dict, list)):
+        return value
+    return {"value": value}
+
+
+def _hermes_parse_json(value: object) -> Any | None:
+    if not isinstance(value, str):
+        return value if isinstance(value, (dict, list)) else None
+    if not value.strip():
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return None
 
 
 def _build_envelope(

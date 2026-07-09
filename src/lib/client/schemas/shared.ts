@@ -25,7 +25,7 @@ export const isoDateString = trimmedString.refine(
 
 export const urlString = trimmedString.url("Expected an absolute URL.");
 
-export const providers = ["claude", "codex", "openclaw"] as const;
+export const providers = ["claude", "codex", "openclaw", "hermes"] as const;
 export const providerSchema = enumSchema(providers);
 
 export const providerFilters = ["all", ...providers] as const;

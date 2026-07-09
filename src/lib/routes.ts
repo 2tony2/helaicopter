@@ -10,7 +10,7 @@ export {
 };
 export type { ConversationDetailTab };
 
-export type ConversationRouteProvider = "claude" | "codex" | "openclaw";
+export type ConversationRouteProvider = "claude" | "codex" | "openclaw" | "hermes";
 
 export type ConversationCanonicalTarget =
   | {
@@ -68,7 +68,7 @@ export type ConversationRouteDecision =
   | {
       kind: "not-found";
     };
-const canonicalConversationProviders = ["claude", "codex", "openclaw"] as const;
+const canonicalConversationProviders = ["claude", "codex", "openclaw", "hermes"] as const;
 
 type ParsedConversationRef = {
   conversationRef: string;
