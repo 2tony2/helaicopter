@@ -12,7 +12,7 @@ uv sync --group dev
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:32506](http://localhost:32506).
 
 ## Install with Homebrew
 
@@ -44,7 +44,7 @@ This repository is a mixed **Next.js + FastAPI** app, not a single prebuilt bina
 - Homebrew installs the formula, plus system-level runtime dependencies: `node`, `python@3.13`, and `uv`.
 - The formula stages the repository into Homebrew’s read-only `libexec` area and installs a `helaicopter` launcher command.
 - On first run, the launcher copies the staged source into a user-writable runtime directory, runs `npm install --omit=dev`, runs `uv sync --frozen`, and builds the frontend with `npm run build`.
-- After bootstrap, `helaicopter serve` starts the FastAPI backend on `http://127.0.0.1:30000` and the Next.js frontend on `http://127.0.0.1:3000`.
+- After bootstrap, `helaicopter serve` starts the FastAPI backend on `http://127.0.0.1:31506` and the Next.js frontend on `http://127.0.0.1:32506`.
 
 The writable runtime directory defaults to:
 
@@ -72,9 +72,9 @@ The default local dev command starts both the Next.js frontend and the FastAPI b
 npm run dev
 ```
 
-- The frontend serves on `http://localhost:3000`.
-- The FastAPI backend serves on `http://127.0.0.1:30000`.
-- `npm run dev` sets `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:30000` unless you override it.
+- The frontend serves on `http://localhost:32506`.
+- The FastAPI backend serves on `http://127.0.0.1:31506`.
+- `npm run dev` sets `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:31506` unless you override it.
 
 For local iPhone testing, use the mobile-safe dev command instead:
 
@@ -105,9 +105,9 @@ HELA_OPENCLAW_DIR=/path/to/.openclaw
 Helpful checks:
 
 ```bash
-curl http://127.0.0.1:30000/health
-curl http://127.0.0.1:30000/gateway/direction
-open http://127.0.0.1:30000/openapi.json
+curl http://127.0.0.1:31506/health
+curl http://127.0.0.1:31506/gateway/direction
+open http://127.0.0.1:31506/openapi.json
 npm run api:openapi
 ```
 
@@ -116,7 +116,7 @@ npm run api:openapi
 The FastAPI backend now mounts a curated FastMCP endpoint for external agents at:
 
 ```text
-http://127.0.0.1:30000/mcp
+http://127.0.0.1:31506/mcp
 ```
 
 The MCP surface is intentionally analysis-oriented:
@@ -287,7 +287,7 @@ uv run --group dev pytest -q
 
 - If the frontend cannot reach the backend, confirm `npm run dev` or `npm run api:dev` is running and `NEXT_PUBLIC_API_BASE_URL` points to the correct origin.
 - If the backend cannot find local conversation data, set `HELA_CLAUDE_DIR`, `HELA_CODEX_DIR`, `HELA_OPENCLAW_DIR`, or `HELA_PROJECT_ROOT` explicitly.
-- If API behavior looks wrong, compare `http://127.0.0.1:30000/openapi.json` against the routers under `python/helaicopter_api/router/`.
+- If API behavior looks wrong, compare `http://127.0.0.1:31506/openapi.json` against the routers under `python/helaicopter_api/router/`.
 
 ## License
 

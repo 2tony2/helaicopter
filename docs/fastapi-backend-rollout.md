@@ -32,8 +32,8 @@ npm run dev
 
 Default local ports:
 
-- Frontend: `http://localhost:3000`
-- Backend: `http://127.0.0.1:30000`
+- Frontend: `http://localhost:32506`
+- Backend: `http://127.0.0.1:31506`
 
 If you want the split commands:
 
@@ -45,7 +45,7 @@ npm run api:dev
 Override the frontend target if the backend is not on the default origin:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:30000 npm run dev
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:31506 npm run dev
 ```
 
 Useful backend environment overrides:
@@ -60,9 +60,9 @@ HELA_OPENCLAW_DIR=/path/to/.openclaw
 Quick sanity checks:
 
 ```bash
-curl http://127.0.0.1:30000/health
-curl http://127.0.0.1:30000/gateway/direction
-open http://127.0.0.1:30000/openapi.json
+curl http://127.0.0.1:31506/health
+curl http://127.0.0.1:31506/gateway/direction
+open http://127.0.0.1:31506/openapi.json
 ```
 
 ## Gateway Direction

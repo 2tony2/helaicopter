@@ -15,6 +15,8 @@ from typing import Mapping, Sequence
 
 APP_NAME = "helaicopter"
 DISPLAY_NAME = "Helaicopter"
+DEFAULT_WEB_PORT = 32506
+DEFAULT_API_PORT = 31506
 EXCLUDED_SOURCE_NAMES = {
     ".git",
     ".next",
@@ -95,16 +97,11 @@ def backend_command(api_port: int) -> list[str]:
     ]
 
 
-def frontend_command(port: int) -> list[str]:
+def frontend_command() -> list[str]:
     return [
         "npm",
         "run",
         "start",
-        "--",
-        "--hostname",
-        "127.0.0.1",
-        "--port",
-        str(port),
     ]
 
 
@@ -136,8 +133,11 @@ def serve(
     app_root = ensure_runtime(staged_root, runtime_root, env)
     backend = subprocess.Popen(backend_command(api_port), cwd=app_root, env=dict(env))
     frontend_env = dict(env)
+    frontend_env["HELA_API_PORT"] = str(api_port)
+    frontend_env["HELA_WEB_HOST"] = "127.0.0.1"
     frontend_env["NEXT_PUBLIC_API_BASE_URL"] = f"http://127.0.0.1:{api_port}"
-    frontend = subprocess.Popen(frontend_command(port), cwd=app_root, env=frontend_env)
+    frontend_env["PORT"] = str(port)
+    frontend = subprocess.Popen(frontend_command(), cwd=app_root, env=frontend_env)
     processes = [backend, frontend]
 
     def handle_shutdown(signum: int, _frame: object) -> None:
@@ -181,8 +181,8 @@ def build_parser() -> argparse.ArgumentParser:
     paths_parser.add_argument("--pretty", action="store_true")
 
     serve_parser = subparsers.add_parser("serve", help="Bootstrap and run the backend and frontend")
-    serve_parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "3000")))
-    serve_parser.add_argument("--api-port", type=int, default=int(os.environ.get("HELA_API_PORT", "30000")))
+    serve_parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", str(DEFAULT_WEB_PORT))))
+    serve_parser.add_argument("--api-port", type=int, default=int(os.environ.get("HELA_API_PORT", str(DEFAULT_API_PORT))))
     serve_parser.add_argument("--open", action="store_true", help="Open the app in the default browser")
 
     return parser

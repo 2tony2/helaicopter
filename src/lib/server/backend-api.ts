@@ -8,7 +8,7 @@ export function getBackendBaseUrl(): string {
   if (configured) {
     return configured.replace(/\/+$/, "");
   }
-  const fallbackPort = process.env.HELA_API_PORT?.trim() || "30000";
+  const fallbackPort = process.env.HELA_API_PORT?.trim() || "31506";
   return `http://127.0.0.1:${fallbackPort}`;
 }
 

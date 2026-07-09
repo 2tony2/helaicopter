@@ -18,13 +18,13 @@ Helaicopter is a self-hosted analytics and operations platform that reads your A
 
 ```
 ┌─────────────────────────────────┐
-│   Next.js 16 Frontend (:3000)   │
+│   Next.js 16 Frontend (:32506)  │
 │   React 19 · SWR · Recharts     │
 │   Tailwind v4 · shadcn/ui       │
 └────────────┬────────────────────┘
              │ HTTP (JSON)
 ┌────────────▼────────────────────┐
-│   FastAPI Backend (:30000)      │
+│   FastAPI Backend (:31506)      │
 │   Pydantic v2 · SQLAlchemy 2    │
 │   Hexagonal architecture        │
 └────┬───────┬───────┬────────────┘
@@ -39,7 +39,7 @@ The frontend never touches the filesystem directly — all data flows through th
 
 ```bash
 # Start the backend
-cd python && uv run uvicorn helaicopter_api.server.main:create_app --factory --port 30000
+cd python && uv run uvicorn helaicopter_api.server.main:create_app --factory --port 31506
 
 # Start the frontend (separate terminal)
 npm run dev

@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const serverUrl =
-  process.env.HELA_MOBILE_SERVER_URL?.trim() || "http://YOUR_TAILSCALE_HOSTNAME:3000";
+  process.env.HELA_MOBILE_SERVER_URL?.trim() || "http://YOUR_TAILSCALE_HOSTNAME:32506";
 
 const config: CapacitorConfig = {
   appId: "com.helaicopter.app",

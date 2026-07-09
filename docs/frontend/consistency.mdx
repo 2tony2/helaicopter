@@ -31,12 +31,12 @@ import { conversationsUrl, analyticsUrl } from '@/lib/client/endpoints'
 const url = conversationsUrl(project, days)
 
 // Wrong — don't do this
-const url = `http://localhost:30000/conversations?project=${project}`
+const url = `http://localhost:31506/conversations?project=${project}`
 ```
 
 ### Backend origin
 
-Configured via `NEXT_PUBLIC_API_BASE_URL`. When unset on localhost, the client automatically falls back to `:30000`.
+Configured via `NEXT_PUBLIC_API_BASE_URL`. When unset on localhost, the client automatically falls back to `:31506`.
 
 ## Data fetching patterns
 

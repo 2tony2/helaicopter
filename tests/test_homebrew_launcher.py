@@ -65,3 +65,15 @@ def test_bootstrap_commands_use_production_installs(tmp_path: Path) -> None:
         ["uv", "sync", "--frozen"],
         ["npm", "run", "build"],
     ]
+
+
+def test_launcher_defaults_use_nonstandard_ports() -> None:
+    launcher = load_launcher()
+
+    parser = launcher.build_parser()
+    args = parser.parse_args(["--staged-root", "/tmp/staged", "serve"])
+
+    assert args.port == 32506
+    assert args.api_port == 31506
+    assert launcher.backend_command(args.api_port)[-1] == "31506"
+    assert launcher.frontend_command() == ["npm", "run", "start"]

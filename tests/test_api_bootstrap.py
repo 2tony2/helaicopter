@@ -158,7 +158,7 @@ class TestCORS:
         resp = client.options(
             "/health",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": "http://localhost:32506",
                 "Access-Control-Request-Method": "GET",
             },
         )
